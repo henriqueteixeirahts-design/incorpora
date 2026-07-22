@@ -1,0 +1,505 @@
+// Incorpora — schema de banco
+// Escopo desta versão: FASE 1 (Fundação da Plataforma) + FASE 2 (Empreendimentos)
+// conforme docs/PRD Mestre rev00.docx e docs/Arquitetura Incorpora REV00.docx.
+//
+// Decisões de modelagem relevantes:
+// - Todos os ids são UUID para compatibilidade nativa com Supabase Auth (auth.users.id).
+// - Multiempresa desde o início: Organization é o tenant raiz; SPE, Development e
+//   demais entidades pendem dele. Permissões são resolvidas por AccessGrant, com
+//   escopo opcional em SPE e/ou Development (PRD seção 23).
+// - Unidade principal e unidade acessória (vaga, escaninho, depósito etc.) usam a
+//   MESMA tabela Unit (campo isAccessory), evitando duplicar ~20 colunas comuns.
+//   O vínculo entre uma unidade principal e suas acessórias é modelado em UnitLink
+//   (arquitetura doc seção 3 e seção 25: Unit + AccessoryUnit + UnitLink).
+// - UnitStatus já contempla os estados do funil comercial completo (reserva,
+//   proposta, contrato, venda) descritos na seção 4 do doc de arquitetura, para que
+//   as Fases 3-9 (disponibilidade, propostas, vendas, carteira) não exijam alterar
+//   o enum depois. As tabelas de venda/contrato/carteira/indexadores em si (Sale,
+//   Contract, ReceivablePortfolio, Installment, IndexRule...) ficam para as Fases
+//   6-10, quando o motor financeiro for desenhado com atenção dedicada.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// FASE 1 — FUNDAÇÃO DA PLATAFORMA
+// ============================================================================
+
+/// Tenant raiz. Toda a plataforma é multiempresa a partir daqui.
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  document  String? // CNPJ da holding/matriz, quando houver
+  planTier  String   @default("internal") // "internal" | futuros planos SaaS (Fase 18)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  spes              SpecialPurposeEntity[]
+  developments      Development[]
+  roles             Role[]
+  accessGrants      AccessGrant[]
+  auditEvents       AuditEvent[]
+  developmentEvents DevelopmentEvent[]
+  documents         Document[]
+  notifications     Notification[]
+  settings          Setting[]
+
+  @@map("organizations")
+}
+
+/// Usuário da plataforma (funcionário da incorporadora, corretor, investidor,
+/// cliente do portal etc.). O id é o mesmo uuid do Supabase Auth (auth.users.id).
+model User {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  fullName  String
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accessGrants      AccessGrant[]
+  auditEvents       AuditEvent[]        @relation("AuditEventActor")
+  developmentEvents DevelopmentEvent[]  @relation("DevelopmentEventActor")
+  uploadedDocuments Document[]          @relation("DocumentUploadedBy")
+  notifications     Notification[]
+  unitStatusChanges UnitStatusHistory[] @relation("UnitStatusChangedBy")
+
+  @@map("users")
+}
+
+/// Papel atribuível a um usuário (Diretor, Comercial, Financeiro, Investidor...).
+/// organizationId nulo = papel de sistema (predefinido, reaproveitável por toda org).
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  RolePermission[]
+  accessGrants AccessGrant[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+/// Ação granular sobre um recurso, ex.: "unit.create", "proposal.approve".
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  resource    String // ex.: "unit", "proposal", "installment"
+  action      PermissionAction
+  description String?
+  createdAt   DateTime         @default(now())
+
+  roles RolePermission[]
+
+  @@unique([resource, action])
+  @@map("permissions")
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  EDIT
+  APPROVE
+  CANCEL
+  EXPORT
+  VIEW_SENSITIVE
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Concede um Role a um usuário, com escopo opcional por SPE e/ou Development.
+/// Sem speId/developmentId = acesso a toda a organização (PRD seção 23).
+model AccessGrant {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  roleId         String   @db.Uuid
+  speId          String?  @db.Uuid
+  developmentId  String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role                  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  spe          SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: Cascade)
+  development  Development?          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, speId, developmentId])
+  @@index([organizationId])
+  @@map("access_grants")
+}
+
+/// SPE — Sociedade de Propósito Específico, dona jurídica do(s) empreendimento(s).
+model SpecialPurposeEntity {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  document       String // CNPJ
+  address        String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  developments Development[]
+  accessGrants AccessGrant[]
+
+  @@unique([organizationId, document])
+  @@map("special_purpose_entities")
+}
+
+/// Trilha de auditoria genérica (before/after) para qualquer entidade do sistema.
+model AuditEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  actorUserId    String?  @db.Uuid
+  action         String // ex.: "create", "update", "delete", "approve"
+  entityType     String // ex.: "Unit", "Development"
+  entityId       String
+  beforeData     Json?
+  afterData      Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("AuditEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId])
+  @@map("audit_events")
+}
+
+/// Evento central do domínio (espinha dorsal, análoga ao WorkEvent do ObrIA —
+/// doc de arquitetura seção 26). Alimenta timeline, notificações e automações
+/// de cada empreendimento. Diferente de AuditEvent: é um fato de negócio
+/// ("proposta enviada", "parcela vencida"), não um diff técnico de registro.
+model DevelopmentEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  developmentId  String?  @db.Uuid
+  actorUserId    String?  @db.Uuid
+  eventType      String // ex.: "unit.created", "sale.completed", "installment.overdue"
+  entityType     String?
+  entityId       String?
+  payload        Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("DevelopmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, developmentId])
+  @@index([eventType])
+  @@map("development_events")
+}
+
+enum DocumentCategory {
+  PLAN // planta
+  MEMORIAL // memorial descritivo
+  REGISTRATION // matrícula
+  CONTRACT
+  PROOF // comprovante
+  REPORT
+  OTHER
+}
+
+/// Documento genérico, anexável a qualquer entidade via (entityType, entityId).
+/// Cobre plantas, memoriais, matrículas e demais arquivos do empreendimento.
+model Document {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  entityType     String // ex.: "Development", "Unit"
+  entityId       String
+  category       DocumentCategory @default(OTHER)
+  fileName       String
+  fileUrl        String // caminho no Supabase Storage
+  mimeType       String?
+  sizeBytes      Int?
+  uploadedById   String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId])
+  @@map("documents")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+model Notification {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  userId         String              @db.Uuid
+  channel        NotificationChannel @default(IN_APP)
+  type           String
+  title          String
+  body           String?
+  readAt         DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, readAt])
+  @@map("notifications")
+}
+
+/// Configurações gerais em chave/valor, por organização (ex.: cores do mapa de
+/// disponibilidade, prazos padrão de reserva — usadas a partir da Fase 3).
+model Setting {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  key            String
+  value          Json
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@map("settings")
+}
+
+// ============================================================================
+// FASE 2 — EMPREENDIMENTOS
+// ============================================================================
+
+enum DevelopmentType {
+  RESIDENTIAL_BUILDING
+  COMMERCIAL_BUILDING
+  MIXED_USE
+  HORIZONTAL_CONDOMINIUM
+  SUBDIVISION // loteamento
+  OTHER
+}
+
+/// Empreendimento. Doc de arquitetura seção 2 — cada um tem cadastro e
+/// configuração próprios, sempre amarrado a uma SPE.
+model Development {
+  id                     String          @id @default(uuid()) @db.Uuid
+  organizationId         String          @db.Uuid
+  speId                  String          @db.Uuid
+  name                   String
+  type                   DevelopmentType
+  address                String?
+  city                   String?
+  state                  String?
+  launchDate             DateTime?
+  expectedDeliveryDate   DateTime?
+  actualDeliveryDate     DateTime?
+  registrationNumber     String? // número do registro da incorporação
+  notaryOffice           String? // cartório
+  motherPropertyRecord   String? // matrícula-mãe
+  taxRegime              String?
+  hasPropertyAffectation Boolean         @default(false) // patrimônio de afetação
+  bankAccount            String?
+  // Denormalizado por ora: construtora e agência de marketing viram entidades
+  // relacionais (Supplier / RealEstateAgency) nas Fases 5 e 12.
+  builderCompanyName     String?
+  marketingAgencyName    String?
+  isActive               Boolean         @default(true)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  spe               SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Restrict)
+  buildings         Building[]
+  units             Unit[]
+  accessGrants      AccessGrant[]
+  developmentEvents DevelopmentEvent[]
+
+  @@index([organizationId])
+  @@index([speId])
+  @@map("developments")
+}
+
+/// Torre ou bloco de um empreendimento vertical. Não se aplica a loteamentos.
+model Building {
+  id            String   @id @default(uuid()) @db.Uuid
+  developmentId String   @db.Uuid
+  name          String // ex.: "Torre A"
+  createdAt     DateTime @default(now())
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  floors      Floor[]
+  units       Unit[]
+
+  @@unique([developmentId, name])
+  @@map("buildings")
+}
+
+/// Pavimento dentro de uma torre/bloco.
+model Floor {
+  id         String   @id @default(uuid()) @db.Uuid
+  buildingId String   @db.Uuid
+  level      Int // andar (pode ser negativo p/ subsolo)
+  label      String? // ex.: "Térreo", "Cobertura"
+  createdAt  DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  units    Unit[]
+
+  @@unique([buildingId, level])
+  @@map("floors")
+}
+
+enum UnitType {
+  APARTMENT
+  COMMERCIAL_ROOM
+  STORE
+  LOT
+  PARKING_SPACE
+  STORAGE_UNIT
+  BOX
+  OTHER
+}
+
+/// Status comercial da unidade — cobre desde a Fase 2 (cadastro) até o funil
+/// completo (Fases 3-9), para que o enum não precise mudar quando essas fases
+/// forem implementadas. Cor/ordem de exibição ficam em Setting (Fase 3).
+enum UnitStatus {
+  AVAILABLE
+  IN_SERVICE // em atendimento
+  RESERVED
+  PROPOSAL_UNDER_REVIEW
+  PROPOSAL_APPROVED
+  CONTRACT_IN_PROGRESS
+  AWAITING_SIGNATURE
+  SOLD
+  BLOCKED
+  EXCHANGE // permuta
+  DEVELOPER_UNIT
+  INVESTOR_UNIT
+  CANCELLED // distratada
+  UNAVAILABLE
+}
+
+/// Unidade sellable — cobre tanto unidades principais (apartamento, sala, loja,
+/// lote) quanto acessórias (vaga, escaninho, depósito, box), diferenciadas por
+/// isAccessory. Campos específicos de edifício vertical e de loteamento
+/// convivem na mesma tabela (nullable), já que nunca se aplicam ao mesmo tempo.
+model Unit {
+  id            String  @id @default(uuid()) @db.Uuid
+  developmentId String  @db.Uuid
+  buildingId    String? @db.Uuid
+  floorId       String? @db.Uuid
+
+  unitType    UnitType
+  isAccessory Boolean    @default(false)
+  number      String // identificador da unidade (ex.: "1201", "Lote 45")
+  status      UnitStatus @default(AVAILABLE)
+
+  // Campos de edifício vertical
+  bedrooms       Int?
+  suites         Int?
+  privateArea    Decimal? @db.Decimal(12, 2)
+  commonArea     Decimal? @db.Decimal(12, 2)
+  totalArea      Decimal? @db.Decimal(12, 2)
+  idealFraction  Decimal? @db.Decimal(12, 6)
+  position       String? // ex.: "Nascente"
+  sunOrientation String?
+
+  // Campos de condomínio de lotes
+  block                    String? // quadra
+  lotArea                  Decimal? @db.Decimal(12, 2)
+  frontage                 Decimal? @db.Decimal(12, 2) // testada
+  depth                    Decimal? @db.Decimal(12, 2) // profundidade
+  buildableArea            Decimal? @db.Decimal(12, 2)
+  constructionRestrictions String?
+  topography               String?
+  locationInCondo          String?
+  mapCoordinates           String?
+
+  // Comuns
+  registrationNumber String? // matrícula
+  hasOwnRegistration Boolean  @default(true)
+  referenceValue     Decimal? @db.Decimal(14, 2)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  building    Building?   @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  floor       Floor?      @relation(fields: [floorId], references: [id], onDelete: SetNull)
+
+  statusHistory    UnitStatusHistory[]
+  linksAsPrincipal UnitLink[]          @relation("UnitLinkPrincipal")
+  linksAsAccessory UnitLink[]          @relation("UnitLinkAccessory")
+
+  @@unique([developmentId, number])
+  @@index([developmentId, status])
+  @@map("units")
+}
+
+/// Histórico de mudança de status da unidade (PRD seção 4: "Cada status deve
+/// ter uma cor e um histórico").
+model UnitStatusHistory {
+  id              String      @id @default(uuid()) @db.Uuid
+  unitId          String      @db.Uuid
+  fromStatus      UnitStatus?
+  toStatus        UnitStatus
+  changedByUserId String?     @db.Uuid
+  reason          String?
+  occurredAt      DateTime    @default(now())
+
+  unit      Unit  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  changedBy User? @relation("UnitStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([unitId])
+  @@map("unit_status_history")
+}
+
+enum UnitLinkType {
+  MANDATORY // obrigatoriamente vinculada
+  OPTIONAL
+  SEPARATE_SALE // vendida separadamente
+}
+
+enum UnitLinkPricing {
+  INCLUDED_IN_PRICE // incorporada ao preço da unidade principal
+  SEPARATE_INSTRUMENT // contratada em instrumento separado
+}
+
+/// Vínculo entre uma unidade principal e uma unidade acessória (vaga,
+/// escaninho, depósito...). Ex.: Apto 1201 vinculado às vagas G45/G46 e ao
+/// escaninho E12 (doc de arquitetura seção 3).
+model UnitLink {
+  id              String          @id @default(uuid()) @db.Uuid
+  principalUnitId String          @db.Uuid
+  accessoryUnitId String          @db.Uuid
+  linkType        UnitLinkType    @default(MANDATORY)
+  pricing         UnitLinkPricing @default(INCLUDED_IN_PRICE)
+  createdAt       DateTime        @default(now())
+
+  principalUnit Unit @relation("UnitLinkPrincipal", fields: [principalUnitId], references: [id], onDelete: Cascade)
+  accessoryUnit Unit @relation("UnitLinkAccessory", fields: [accessoryUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([principalUnitId, accessoryUnitId])
+  @@map("unit_links")
+}
