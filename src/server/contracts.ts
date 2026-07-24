@@ -10,7 +10,17 @@ import type { Prisma } from "@/generated/prisma/client";
 export function getContractBySale(organizationId: string, saleId: string) {
   return prisma.contract.findFirst({
     where: { saleId, organizationId },
-    include: { portfolio: { include: { installments: { orderBy: { sequence: "asc" } } } } },
+    include: {
+      indexRule: true,
+      portfolio: {
+        include: {
+          installments: {
+            include: { payments: true },
+            orderBy: { sequence: "asc" },
+          },
+        },
+      },
+    },
   });
 }
 
@@ -21,8 +31,16 @@ export function getContract(organizationId: string, contractId: string) {
       unit: true,
       customer: true,
       development: true,
+      indexRule: true,
       sale: { include: { proposal: true } },
-      portfolio: { include: { installments: { orderBy: { sequence: "asc" } } } },
+      portfolio: {
+        include: {
+          installments: {
+            include: { payments: true },
+            orderBy: { sequence: "asc" },
+          },
+        },
+      },
     },
   });
 }

@@ -3,14 +3,26 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getSale } from "@/server/sales";
 import { getContractBySale } from "@/server/contracts";
+import { listIndexRules } from "@/server/index-rules";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { CreateContractForm, MarkAwaitingSignatureForm, ConfirmSignatureForm } from "./contract-forms";
+import { CorrectionRuleForm } from "./correction-rule-form";
+import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form";
+import { AnticipationForm } from "./anticipation-form";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
   AWAITING_SIGNATURE: "Aguardando assinatura",
   SIGNED: "Assinado",
   CANCELLED: "Cancelado",
+};
+
+const INSTALLMENT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "A vencer",
+  PARTIALLY_PAID: "Parcialmente paga",
+  PAID: "Paga",
+  OVERDUE: "Vencida",
+  CANCELLED: "Cancelada",
 };
 
 export default async function SaleDetailPage({
@@ -25,10 +37,17 @@ export default async function SaleDetailPage({
   if (!sale) notFound();
 
   const contract = await getContractBySale(context.organizationId, id);
+  const indexRules = contract ? await listIndexRules(context.organizationId) : [];
+
   const canCreateContract = hasPermission(context, "contract", "CREATE");
   const canEditContract = hasPermission(context, "contract", "EDIT");
+  const canRegisterPayment = hasPermission(context, "installment", "CREATE");
+  const canRecalculate = hasPermission(context, "installment", "EDIT");
 
   const paymentFlow = sale.proposal.paymentFlow as unknown as PaymentFlowResult | null;
+  const openInstallments = contract?.portfolio?.installments.filter(
+    (i) => i.status !== "PAID" && i.status !== "CANCELLED",
+  );
 
   return (
     <>
@@ -129,20 +148,59 @@ export default async function SaleDetailPage({
         )}
       </section>
 
+      {contract && canEditContract ? (
+        <section style={{ marginTop: "2rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Regra de correção</h2>
+          <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+            Índice contratual, juros adicionais e multa/mora usados para corrigir as parcelas
+            desta carteira. Só uma regra por contrato nesta versão (sem fases obra/pós-entrega
+            ainda — ver docs/STATUS_IMPLANTACAO.md).
+          </p>
+          <div style={{ marginTop: "0.75rem" }}>
+            <CorrectionRuleForm
+              saleId={id}
+              contractId={contract.id}
+              indexRules={indexRules.map((r) => ({ id: r.id, name: r.name }))}
+              current={{
+                indexRuleId: contract.indexRuleId,
+                monthlyInterestPercent: contract.monthlyInterestPercent
+                  ? Number(contract.monthlyInterestPercent)
+                  : null,
+                interestType: contract.interestType,
+                latePaymentFinePercent: Number(contract.latePaymentFinePercent),
+                latePaymentMonthlyInterestPercent: Number(
+                  contract.latePaymentMonthlyInterestPercent,
+                ),
+              }}
+            />
+          </div>
+        </section>
+      ) : null}
+
       {contract?.portfolio ? (
         <section style={{ marginTop: "2rem" }}>
           <h2 style={{ fontSize: "1.1rem" }}>Carteira</h2>
           <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-            Total: {formatCurrency(Number(contract.portfolio.totalValue))}
+            Total nominal: {formatCurrency(Number(contract.portfolio.totalValue))}
           </p>
-          <table style={{ marginTop: "0.5rem", maxWidth: 600 }}>
+
+          {canRecalculate ? (
+            <div style={{ marginTop: "0.5rem" }}>
+              <RecalculatePortfolioButton saleId={id} portfolioId={contract.portfolio.id} />
+            </div>
+          ) : null}
+
+          <table style={{ marginTop: "0.75rem", maxWidth: 900 }}>
             <thead>
               <tr>
                 <th>#</th>
                 <th>Parcela</th>
                 <th>Vencimento</th>
-                <th>Valor</th>
+                <th>Original</th>
+                <th>Corrigido</th>
+                <th>Pago</th>
                 <th>Status</th>
+                {canRegisterPayment ? <th>Recebimento</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -152,11 +210,41 @@ export default async function SaleDetailPage({
                   <td>{installment.label}</td>
                   <td>{new Date(installment.dueDate).toLocaleDateString("pt-BR")}</td>
                   <td>{formatCurrency(Number(installment.originalValue))}</td>
-                  <td>{installment.status}</td>
+                  <td>
+                    {installment.correctedValue
+                      ? formatCurrency(Number(installment.correctedValue))
+                      : "—"}
+                  </td>
+                  <td>{formatCurrency(Number(installment.paidAmount))}</td>
+                  <td>{INSTALLMENT_STATUS_LABELS[installment.status]}</td>
+                  {canRegisterPayment ? (
+                    <td>
+                      {installment.status !== "PAID" && installment.status !== "CANCELLED" ? (
+                        <RegisterPaymentForm saleId={id} installmentId={installment.id} />
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
+        </section>
+      ) : null}
+
+      {openInstallments && openInstallments.length > 0 ? (
+        <section style={{ marginTop: "2rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Simular antecipação</h2>
+          <div style={{ marginTop: "0.75rem" }}>
+            <AnticipationForm
+              installments={openInstallments.map((i) => ({
+                id: i.id,
+                label: i.label,
+                dueDate: new Date(i.dueDate).toLocaleDateString("pt-BR"),
+              }))}
+            />
+          </div>
         </section>
       ) : null}
     </>

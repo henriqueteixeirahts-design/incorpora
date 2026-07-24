@@ -58,6 +58,7 @@ model Organization {
   sales                Sale[]
   contracts            Contract[]
   receivablePortfolios ReceivablePortfolio[]
+  indexRules           IndexRule[]
 
   @@map("organizations")
 }
@@ -860,14 +861,25 @@ model Contract {
   signedAt          DateTime?
   signedDocumentUrl String? // referência/URL do contrato assinado (upload real quando houver Storage)
   notes             String?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+
+  // Regra de correção da carteira (PRD seção 12). V1: uma regra única por
+  // contrato (sem timeline de múltiplas fases obra/pós-entrega ainda —
+  // simplificação registrada em docs/STATUS_IMPLANTACAO.md).
+  indexRuleId                       String?      @db.Uuid
+  monthlyInterestPercent            Decimal?     @db.Decimal(5, 2) // juros contratuais somados ao índice
+  interestType                      InterestType @default(COMPOUND)
+  latePaymentFinePercent            Decimal      @default(2) @db.Decimal(5, 2)
+  latePaymentMonthlyInterestPercent Decimal      @default(1) @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   development  Development  @relation(fields: [developmentId], references: [id], onDelete: Cascade)
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  indexRule    IndexRule?   @relation(fields: [indexRuleId], references: [id], onDelete: SetNull)
 
   portfolio ReceivablePortfolio?
 
@@ -894,25 +906,121 @@ model ReceivablePortfolio {
 
 enum InstallmentStatus {
   PENDING
+  PARTIALLY_PAID
   PAID
+  OVERDUE
   CANCELLED
 }
 
-/// Parcela da carteira. Correção monetária, juros e recebimentos reais
-/// chegam junto do motor de indexadores (Fase 9-10) — por ora só o valor
-/// nominal congelado na proposta.
+/// Parcela da carteira. originalValue nunca muda após criada — é o valor
+/// nominal do fluxo simulado na proposta. correctedValue/lastCalculatedAt
+/// são um cache do último cálculo (Fase 9-10); o histórico completo e
+/// auditável de cada cálculo fica em FinancialCalculation.
 model Installment {
-  id            String            @id @default(uuid()) @db.Uuid
-  portfolioId   String            @db.Uuid
-  sequence      Int
-  label         String
-  dueDate       DateTime
-  originalValue Decimal           @db.Decimal(14, 2)
-  status        InstallmentStatus @default(PENDING)
-  createdAt     DateTime          @default(now())
+  id               String            @id @default(uuid()) @db.Uuid
+  portfolioId      String            @db.Uuid
+  sequence         Int
+  label            String
+  dueDate          DateTime
+  originalValue    Decimal           @db.Decimal(14, 2)
+  correctedValue   Decimal?          @db.Decimal(14, 2)
+  paidAmount       Decimal           @default(0) @db.Decimal(14, 2)
+  lastCalculatedAt DateTime?
+  status           InstallmentStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
 
-  portfolio ReceivablePortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio             ReceivablePortfolio    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  payments              InstallmentPayment[]
+  financialCalculations FinancialCalculation[]
 
   @@unique([portfolioId, sequence])
   @@map("installments")
+}
+
+/// Recebimento (baixa manual) lançado contra uma parcela. Uma parcela pode
+/// ter mais de um recebimento (pagamento parcial).
+model InstallmentPayment {
+  id              String   @id @default(uuid()) @db.Uuid
+  installmentId   String   @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  paidAt          DateTime
+  method          String? // ex.: "PIX", "Boleto", "TED" — texto livre até a Fase 17 (integração bancária)
+  notes           String?
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@map("installment_payments")
+}
+
+enum IndexCode {
+  INCC
+  IPCA
+  IGPM
+  FIXED
+}
+
+/// Catálogo de índices da organização (PRD seção 12). Os valores mensais
+/// (IndexValue) são cadastrados uma vez e reaproveitados por todos os
+/// contratos que usam aquele índice.
+model IndexRule {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  code           IndexCode
+  name           String
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  values       IndexValue[]
+  contracts    Contract[]
+
+  @@unique([organizationId, code, name])
+  @@map("index_rules")
+}
+
+/// Variação percentual do índice em um mês de referência (ex.: INCC de
+/// 07/2026 = 0,42%). A memória de cálculo de cada parcela referencia estes
+/// valores, nunca os substitui.
+model IndexValue {
+  id             String   @id @default(uuid()) @db.Uuid
+  indexRuleId    String   @db.Uuid
+  referenceMonth DateTime // sempre normalizado para o dia 1 do mês
+  ratePercent    Decimal  @db.Decimal(7, 4)
+  createdAt      DateTime @default(now())
+
+  indexRule IndexRule @relation(fields: [indexRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([indexRuleId, referenceMonth])
+  @@map("index_values")
+}
+
+enum InterestType {
+  SIMPLE
+  COMPOUND
+}
+
+/// Registro auditável de cada cálculo de correção de uma parcela (PRD seção
+/// 12: "o sistema deve manter o índice utilizado em cada cálculo e nunca
+/// simplesmente sobrescrever valores"). Nunca é atualizado, só criado.
+model FinancialCalculation {
+  id                    String   @id @default(uuid()) @db.Uuid
+  installmentId         String   @db.Uuid
+  asOfDate              DateTime
+  baseValue             Decimal  @db.Decimal(14, 2)
+  indexFactor           Decimal  @db.Decimal(10, 6)
+  interestFactor        Decimal  @db.Decimal(10, 6)
+  correctedValue        Decimal  @db.Decimal(14, 2) // valor na data de vencimento, já com índice + juros contratuais
+  daysOverdue           Int
+  fineAmount            Decimal  @db.Decimal(14, 2)
+  overdueInterestAmount Decimal  @db.Decimal(14, 2)
+  resultValue           Decimal  @db.Decimal(14, 2) // valor final na asOfDate (corrigido + multa + mora)
+  details               Json // memória: meses/índices aplicados e parâmetros usados
+  createdAt             DateTime @default(now())
+
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@index([installmentId])
+  @@map("financial_calculations")
 }
