@@ -135,10 +135,10 @@ async function main() {
     where: { id: "00000000-0000-0000-0000-000000000001" },
     create: {
       id: "00000000-0000-0000-0000-000000000001",
-      name: "Incorpora",
+      name: "TSH Incorporadora",
       planTier: "internal",
     },
-    update: {},
+    update: { name: "TSH Incorporadora" },
   });
 
   const permissionByKey = new Map<string, { id: string }>();

@@ -19,9 +19,10 @@ export function getSale(organizationId: string, saleId: string) {
   return prisma.sale.findFirst({
     where: { id: saleId, organizationId },
     include: {
+      organization: true,
       unit: true,
       customer: true,
-      development: true,
+      development: { include: { spe: true } },
       proposal: { include: { broker: true, agency: true } },
       commissionSplits: true,
     },

@@ -89,6 +89,10 @@ export default async function SaleDetailPage({
                 <p>
                   <strong>Contrato de Compra e Venda</strong> nº {contract.contractNumber}
                 </p>
+                <p>
+                  Incorporadora: {sale.organization.name} — SPE: {sale.development.spe.name} (
+                  {sale.development.spe.document})
+                </p>
                 <p>Empreendimento: {sale.development.name}</p>
                 <p>Unidade: {sale.unit.number}</p>
                 <p>Comprador: {sale.customer.name} — {sale.customer.document}</p>
