@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Sprint 5 concluída
+**Última atualização:** Sprint 6-7 concluída
 
 ---
 
@@ -27,7 +27,9 @@
 - Módulos entregues: contratos com numeração sequencial (`CT-2026-0001`) e ciclo `DRAFT → AWAITING_SIGNATURE → SIGNED`, minuta renderizada sob demanda com dados automáticos, criação automática da carteira a partir do fluxo simulado na proposta.
 
 ### Sprint 6-7 — Carteira e indexadores
-⏳ Não iniciada
+✅ Concluída e testada com script dedicado (12 conferências automáticas)
+- Fluxo validado: cadastro de índice INCC com valores mensais (1%, 1%, 1,5%) → configuração da regra de correção do contrato (índice + 0,5% de juros contratuais compostos + 2% de multa + 1% de mora ao mês) → parcela corrigida em 3 meses bateu exatamente com o cálculo manual (R$ 300.000 → R$ 315.303,09) → mesma parcela testada com 40 dias de atraso: multa e mora calculadas e conferidas centavo a centavo → parcela apareceu na lista de inadimplência → recebimento parcial (`PARTIALLY_PAID`) seguido de quitação (`PAID`) → parcela paga não é mais recalculada → antecipação simulada de uma parcela futura com 5% de desconto conferida (valor presente = atualizado − desconto).
+- Módulos entregues: catálogo de índices (INCC/IPCA/IGP-M/taxa fixa) com lançamento mensal manual, regra de correção por contrato (índice + juros contratuais + multa/mora), memória de cálculo auditável (cada recálculo gera um registro novo, nunca sobrescreve), recebimentos manuais com baixa parcial/total, lista de inadimplência com recálculo automático das parcelas vencidas, simulador de antecipação (não baixa nada, só demonstra).
 
 ### Sprint 8 — Financeiro básico
 ⏳ Não iniciada
@@ -45,7 +47,8 @@
 | Decisão | O que diz o PRD/arquitetura | O que foi implementado | Motivo | Precisa revisão? |
 |---|---|---|---|---|
 | Alçadas de aprovação de desconto | Valores citados como exemplo | Até 2% gerente comercial; 2-5% +diretor; acima de 5% +sócios | Usado o exemplo do PRD como padrão inicial | Confirmado pela TSH — manter |
-| Expiração de reserva | Não especificado o mecanismo | Varredura "preguiçosa" (verificação sob demanda) em vez de worker assíncrono | Ainda não existe processamento em background no sistema | Sim — avaliar necessidade de worker assíncrono real na Sprint 6-7 (correção diária de índices provavelmente vai exigir) |
+| Expiração de reserva e correção de carteira | Não especificado o mecanismo / PRD prevê rotina de correção contínua | Varredura "preguiçosa" (recálculo sob demanda, ao consultar a tela) em vez de worker assíncrono — agora usada também para recalcular parcelas vencidas antes de exibir a lista de inadimplência | Ainda não existe processamento em background no sistema | Sim — decisão adiada de novo na Sprint 6-7 por falta de infraestrutura de fila; reavaliar antes da Sprint 10 (estabilização), já que sem rotina automática ninguém é avisado de uma parcela vencendo sem que alguém abra a tela |
+| Regra de correção única por contrato | PRD seção 12 prevê fases de correção dentro do mesmo contrato (ex.: INCC durante a obra, IPCA + juros após a entrega) | Uma única regra (índice + juros + multa/mora) vale para toda a carteira do contrato, do início ao fim | Reduzir escopo da Sprint 6-7 para entregar o motor de correção funcionando e testado antes de construir a interface de múltiplas fases | Sim — precisa decisão da TSH: para os 2 empreendimentos-piloto, a regra de correção muda depois da entrega das chaves? Se sim, essa funcionalidade entra numa sprint futura antes de cadastrar contratos reais |
 
 ---
 
@@ -55,19 +58,20 @@
 |---|---|---|
 | Upload real de arquivo do contrato assinado (hoje é só campo de referência) | Contratos | Quando Supabase Storage for configurado — antes da Sprint 10 |
 | Minuta sem motor de template (dados corretos, mas sem geração de documento formatado) | Contratos | Antes da Sprint 10, ou fase 2 |
-| Ausência de worker assíncrono | Reservas (hoje), Carteira/indexadores (crítico a partir da Sprint 6-7) | Sprint 6-7 |
+| Ausência de worker assíncrono | Reservas, e agora também recálculo de carteira/inadimplência — tudo roda "sob demanda" ao abrir a tela, não sozinho todo dia | Continua em aberto; avaliar antes da Sprint 10. Sem isso, ninguém recebe aviso automático de parcela vencendo — alguém precisa abrir a tela de inadimplência para os cálculos rodarem |
+| Índices sem integração automática com fonte oficial (Banco Central/IBGE) | Correção de carteira | Fase 2 (fora do escopo da V1 original) — cadastro manual mensal é suficiente por ora, mas depende de disciplina do Financeiro |
+| Regra de correção única por contrato (sem fases obra/pós-entrega) | Carteira/indexadores | A definir com a TSH — ver linha correspondente na seção 2 |
 
 ---
 
-## 4. Riscos identificados antes da próxima sprint
+## 4. Riscos identificados antes da próxima sprint (Sprint 8 — Financeiro básico)
 
-| Risco | Por quê importa | Como estamos mitigando |
+| Risco | Por quê importa | Como pretendemos mitigar |
 |---|---|---|
-| Índices (INCC/IPCA/IGP-M) não vêm de fonte oficial automática | Não há integração com Banco Central/IBGE ainda; os valores mensais de cada índice terão que ser cadastrados manualmente. Se alguém esquecer de atualizar, a correção de todas as parcelas daquele mês fica errada. | Cadastro de índice vira uma tela própria, com data de referência clara e validação para não deixar mês faltando. Fica registrado quem lançou cada valor. |
-| Memória de cálculo auditável é obrigatória (PRD) | O sistema nunca pode simplesmente "sobrescrever" o valor de uma parcela corrigida — precisa guardar o histórico de cada cálculo (índice usado, data-base, valor antes/depois) para eventual auditoria ou contestação de cliente. | Cada recálculo de parcela vai gravar um registro próprio (não apaga o anterior), seguindo o mesmo padrão de trilha já usado em `AuditEvent`/`DevelopmentEvent`. |
-| Sem worker assíncrono | A correção mensal de milhares de parcelas em várias carteiras não pode ficar dependendo de alguém abrir uma tela para "disparar" o cálculo — isso é o tipo de rotina que precisa rodar sozinha, todo mês. | Nesta sprint a correção será feita sob demanda (calculada quando a parcela/extrato é consultada, sem alterar nada até confirmação), igual ao padrão já usado nas reservas. Fica marcado como pendência para virar rotina automática assim que houver infraestrutura de fila/agendamento. |
-| Regras de correção variam por fase do contrato | O PRD prevê que a mesma parcela pode ser corrigida por um índice durante a obra (ex.: INCC) e por outro depois da entrega (ex.: IPCA + juros) — e o `Development` hoje não tem campo de "Habite-se" cadastrado. | Vamos usar a data de entrega já existente como gatilho inicial da troca de fase; se a TSH precisar de uma data de Habite-se separada da entrega, ajustamos antes de fechar a sprint. |
-| Módulo mais complexo do sistema, com dinheiro real envolvido | O próprio PRD chama a carteira de "provavelmente o módulo mais complexo". Erro de arredondamento ou de fórmula aqui tem impacto financeiro direto, diferente de um bug visual em outra tela. | Cada fórmula de correção será testada com valores conhecidos antes de entrar no fluxo real (mesmo processo de conferência manual usado nas Sprints 3-5), e nada é lançado como "definitivo" sem essa checagem. |
+| Categorização de despesas inconsistente | O PRD lista categorias específicas (construtora, terreno, projetos, marketing, corretagem, impostos...). Se o campo for texto livre, cada usuário escreve diferente e o fluxo de caixa por categoria fica inutilizável. | Modelar categoria como lista fechada (igual fizemos com tipo de unidade/status), não texto livre. |
+| Rateio entre empreendimentos e SPEs | Uma despesa (ex.: contabilidade da holding) pode precisar ser dividida entre mais de um empreendimento/SPE — o PRD menciona "rateio" explicitamente. | Definir com a TSH se, para os 2 empreendimentos-piloto, existe esse cenário agora ou se pode ficar para depois — evita construir uma tela de rateio complexa sem necessidade real. |
+| Fluxo de caixa precisa combinar contas a pagar (novo) com a carteira a receber (já existe) | Se os dois modelos não conversarem bem, a projeção de caixa fica errada — e é exatamente esse número que a diretoria vai olhar primeiro. | Construir o fluxo de caixa como uma consulta que soma as duas fontes (parcelas em aberto da carteira + contas a pagar em aberto), sem duplicar dados, e conferir o total com um exemplo manual antes de fechar a sprint. |
+| Sem integração bancária ainda | Contas a pagar e recebimentos continuam sendo lançados manualmente — risco de atraso no lançamento afetar a confiabilidade do fluxo de caixa. | Fora do escopo da V1 por decisão do PRD (Fase 17); mitigação é apenas disciplina operacional da equipe financeira, não técnica. |
 
 ---
 
