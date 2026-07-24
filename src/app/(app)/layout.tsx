@@ -22,6 +22,7 @@ export default async function AppLayout({
         <strong style={{ marginBottom: "1rem" }}>Incorpora</strong>
         <Link href="/dashboard">Dashboard</Link>
         <Link href="/spes">SPEs</Link>
+        <Link href="/developments">Empreendimentos</Link>
         <Link href="/users">Usuários</Link>
 
         <form action={signOutAction} style={{ marginTop: "auto" }}>
