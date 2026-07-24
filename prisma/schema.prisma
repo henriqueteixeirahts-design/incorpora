@@ -41,21 +41,23 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  spes              SpecialPurposeEntity[]
-  developments      Development[]
-  roles             Role[]
-  accessGrants      AccessGrant[]
-  auditEvents       AuditEvent[]
-  developmentEvents DevelopmentEvent[]
-  documents         Document[]
-  notifications     Notification[]
-  settings          Setting[]
-  customers         Customer[]
-  brokers           Broker[]
-  agencies          RealEstateAgency[]
-  reservations      Reservation[]
-  proposals         Proposal[]
-  sales             Sale[]
+  spes                 SpecialPurposeEntity[]
+  developments         Development[]
+  roles                Role[]
+  accessGrants         AccessGrant[]
+  auditEvents          AuditEvent[]
+  developmentEvents    DevelopmentEvent[]
+  documents            Document[]
+  notifications        Notification[]
+  settings             Setting[]
+  customers            Customer[]
+  brokers              Broker[]
+  agencies             RealEstateAgency[]
+  reservations         Reservation[]
+  proposals            Proposal[]
+  sales                Sale[]
+  contracts            Contract[]
+  receivablePortfolios ReceivablePortfolio[]
 
   @@map("organizations")
 }
@@ -342,6 +344,7 @@ model Development {
   salesTables       SalesTable[]
   proposals         Proposal[]
   sales             Sale[]
+  contracts         Contract[]
 
   @@index([organizationId])
   @@index([speId])
@@ -465,6 +468,7 @@ model Unit {
   reservations      Reservation[]
   proposals         Proposal[]
   sale              Sale?
+  contract          Contract?
 
   @@unique([developmentId, number])
   @@index([developmentId, status])
@@ -554,6 +558,7 @@ model Customer {
   reservations Reservation[]
   proposals    Proposal[]
   sales        Sale[]
+  contracts    Contract[]
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -781,6 +786,7 @@ model Sale {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   commissionSplits CommissionSplit[]
+  contract         Contract?
 
   @@map("sales")
 }
@@ -818,4 +824,95 @@ model CommissionSplit {
   sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@map("commission_splits")
+}
+
+// ============================================================================
+// FASE 8 — CONTRATOS E CARTEIRA INICIAL
+// ============================================================================
+//
+// Escopo: Sprint 5 do plano (docs/SPRINTS_INCORPORA.md) — dados contratuais,
+// geração de minuta (renderizada sob demanda, sem motor de template ainda),
+// upload de contrato assinado (via Document, categoria CONTRACT — sem bucket
+// de Storage configurado ainda, então o campo guarda uma referência/URL
+// informada manualmente) e criação automática da carteira ao confirmar a
+// assinatura. O motor de indexadores e correção monetária de verdade
+// (IndexRule/IndexValue/FinancialCalculation) é da Fase 10 — por ora a
+// parcela nasce com o valor nominal do fluxo simulado na proposta.
+
+enum ContractStatus {
+  DRAFT // minuta gerada, ainda não enviada para assinatura
+  AWAITING_SIGNATURE
+  SIGNED
+  CANCELLED
+}
+
+/// Contrato de compra e venda gerado a partir de uma venda (PRD seção 9).
+model Contract {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @db.Uuid
+  developmentId     String         @db.Uuid
+  unitId            String         @unique @db.Uuid
+  saleId            String         @unique @db.Uuid
+  customerId        String         @db.Uuid
+  contractNumber    String
+  status            ContractStatus @default(DRAFT)
+  issuedAt          DateTime       @default(now())
+  signedAt          DateTime?
+  signedDocumentUrl String? // referência/URL do contrato assinado (upload real quando houver Storage)
+  notes             String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development  @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  portfolio ReceivablePortfolio?
+
+  @@unique([organizationId, contractNumber])
+  @@map("contracts")
+}
+
+/// Carteira de recebíveis de um contrato — criada automaticamente na
+/// confirmação de assinatura, a partir do Proposal.paymentFlow simulado.
+/// Motor de indexadores/inadimplência/recebimentos chega na Fase 9-10.
+model ReceivablePortfolio {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  contractId     String   @unique @db.Uuid
+  totalValue     Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  installments Installment[]
+
+  @@map("receivable_portfolios")
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+/// Parcela da carteira. Correção monetária, juros e recebimentos reais
+/// chegam junto do motor de indexadores (Fase 9-10) — por ora só o valor
+/// nominal congelado na proposta.
+model Installment {
+  id            String            @id @default(uuid()) @db.Uuid
+  portfolioId   String            @db.Uuid
+  sequence      Int
+  label         String
+  dueDate       DateTime
+  originalValue Decimal           @db.Decimal(14, 2)
+  status        InstallmentStatus @default(PENDING)
+  createdAt     DateTime          @default(now())
+
+  portfolio ReceivablePortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, sequence])
+  @@map("installments")
 }

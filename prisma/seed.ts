@@ -23,6 +23,8 @@ const RESOURCES = [
   "reservation",
   "proposal",
   "sale",
+  "contract",
+  "installment",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -49,6 +51,8 @@ const SYSTEM_ROLES: Record<
       document: ["VIEW", "CREATE", "EXPORT"],
       sale: ["VIEW", "EXPORT"],
       proposal: ["VIEW", "APPROVE"],
+      contract: ["VIEW", "EXPORT"],
+      installment: ["VIEW", "EXPORT"],
     },
   },
   Comercial: {
@@ -64,6 +68,8 @@ const SYSTEM_ROLES: Record<
       reservation: ["VIEW", "CREATE", "EDIT", "CANCEL"],
       proposal: ["VIEW", "CREATE", "EDIT"],
       sale: ["VIEW"],
+      contract: ["VIEW"],
+      installment: ["VIEW"],
     },
   },
   "Gerente comercial": {
@@ -79,6 +85,8 @@ const SYSTEM_ROLES: Record<
       reservation: ["VIEW", "CREATE", "EDIT", "CANCEL"],
       proposal: ["VIEW", "CREATE", "EDIT", "APPROVE"],
       sale: ["VIEW", "CREATE"],
+      contract: ["VIEW", "CREATE", "EDIT"],
+      installment: ["VIEW"],
     },
   },
   Jurídico: {
@@ -89,6 +97,7 @@ const SYSTEM_ROLES: Record<
       document: ["VIEW", "CREATE", "APPROVE"],
       proposal: ["VIEW", "APPROVE"],
       sale: ["VIEW"],
+      contract: ["VIEW", "CREATE", "EDIT", "APPROVE"],
     },
   },
   Contabilidade: {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listSales } from "@/server/sales";
 import { listBrokers, listAgencies } from "@/server/crm";
@@ -40,7 +41,8 @@ export default async function SalesPage() {
           </p>
           <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
             {formatCurrency(Number(sale.salePrice))} em{" "}
-            {new Date(sale.saleDate).toLocaleDateString("pt-BR")}
+            {new Date(sale.saleDate).toLocaleDateString("pt-BR")} ·{" "}
+            <Link href={`/sales/${sale.id}`}>Contrato e carteira →</Link>
           </p>
 
           {sale.commissionSplits.length > 0 ? (
