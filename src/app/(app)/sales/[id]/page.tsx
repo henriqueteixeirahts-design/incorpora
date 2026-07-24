@@ -150,11 +150,11 @@ export default async function SaleDetailPage({
 
       {contract && canEditContract ? (
         <section style={{ marginTop: "2rem" }}>
-          <h2 style={{ fontSize: "1.1rem" }}>Regra de correção</h2>
+          <h2 style={{ fontSize: "1.1rem" }}>Regra de correção — fase de obra</h2>
           <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-            Índice contratual, juros adicionais e multa/mora usados para corrigir as parcelas
-            desta carteira. Só uma regra por contrato nesta versão (sem fases obra/pós-entrega
-            ainda — ver docs/STATUS_IMPLANTACAO.md).
+            Índice, juros adicionais e multa/mora usados até o Habite-se do empreendimento. A
+            regra de correção pós-Habite-se é configurada no cadastro do empreendimento (mesma
+            para todos os contratos dele) — veja a página do empreendimento.
           </p>
           <div style={{ marginTop: "0.75rem" }}>
             <CorrectionRuleForm

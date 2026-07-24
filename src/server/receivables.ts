@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
-import { calculateInstallment } from "@/lib/index-correction";
+import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-correction";
 import { simulateAnticipation } from "@/lib/anticipation";
 import type { AccessContext } from "@/server/auth-context";
 import type { IndexCode, InterestType, Prisma } from "@/generated/prisma/client";
@@ -51,6 +51,91 @@ export async function setContractCorrectionRule(
   });
 }
 
+export type SetDevelopmentCorrectionRuleInput = {
+  habiteSeDate?: Date | null;
+  postHabiteSeIndexRuleId?: string | null;
+  postHabiteSeMonthlyInterestPercent?: number | null;
+  postHabiteSeInterestType?: InterestType;
+};
+
+/**
+ * Regra de correção pós-Habite-se — cadastrada no empreendimento, vale para
+ * todos os contratos dele (confirmado pela TSH: não é por contrato).
+ */
+export async function setDevelopmentCorrectionRule(
+  context: AccessContext,
+  developmentId: string,
+  input: SetDevelopmentCorrectionRuleInput,
+) {
+  return prisma.$transaction(async (tx) => {
+    const development = await tx.development.findFirst({
+      where: { id: developmentId, organizationId: context.organizationId },
+    });
+    if (!development) throw new Error("Empreendimento inválido.");
+
+    const updated = await tx.development.update({
+      where: { id: developmentId },
+      data: {
+        habiteSeDate: input.habiteSeDate,
+        postHabiteSeIndexRuleId: input.postHabiteSeIndexRuleId,
+        postHabiteSeMonthlyInterestPercent: input.postHabiteSeMonthlyInterestPercent,
+        postHabiteSeInterestType: input.postHabiteSeInterestType,
+      },
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Development",
+      entityId: developmentId,
+      afterData: input,
+    });
+
+    return updated;
+  });
+}
+
+type ContractWithIndexRule = {
+  indexRuleId: string | null;
+  monthlyInterestPercent: Prisma.Decimal | null;
+  interestType: InterestType;
+  indexRule: { values: { referenceMonth: Date; ratePercent: Prisma.Decimal }[] } | null;
+};
+
+type DevelopmentWithPostHabiteSe = {
+  habiteSeDate: Date | null;
+  postHabiteSeMonthlyInterestPercent: Prisma.Decimal | null;
+  postHabiteSeInterestType: InterestType;
+  postHabiteSeIndexRule: { values: { referenceMonth: Date; ratePercent: Prisma.Decimal }[] } | null;
+};
+
+function buildCorrectionPhases(contract: ContractWithIndexRule, development: DevelopmentWithPostHabiteSe) {
+  const preHabiteSe: CorrectionPhaseConfig = {
+    indexValues: (contract.indexRule?.values ?? []).map((v) => ({
+      referenceMonth: v.referenceMonth,
+      ratePercent: Number(v.ratePercent),
+    })),
+    monthlyInterestPercent: contract.monthlyInterestPercent ? Number(contract.monthlyInterestPercent) : null,
+    interestType: contract.interestType,
+  };
+
+  const postHabiteSe: CorrectionPhaseConfig | null = development.postHabiteSeIndexRule
+    ? {
+        indexValues: development.postHabiteSeIndexRule.values.map((v) => ({
+          referenceMonth: v.referenceMonth,
+          ratePercent: Number(v.ratePercent),
+        })),
+        monthlyInterestPercent: development.postHabiteSeMonthlyInterestPercent
+          ? Number(development.postHabiteSeMonthlyInterestPercent)
+          : null,
+        interestType: development.postHabiteSeInterestType,
+      }
+    : null;
+
+  return { habiteSeDate: development.habiteSeDate, preHabiteSe, postHabiteSe };
+}
+
 /**
  * Recalcula uma parcela na data de referência informada (padrão: hoje) e
  * grava o resultado em FinancialCalculation — nunca sobrescreve cálculos
@@ -64,7 +149,16 @@ export async function recalculateInstallment(
   const installment = await tx.installment.findUniqueOrThrow({
     where: { id: installmentId },
     include: {
-      portfolio: { include: { contract: { include: { indexRule: { include: { values: true } } } } } },
+      portfolio: {
+        include: {
+          contract: {
+            include: {
+              indexRule: { include: { values: true } },
+              development: { include: { postHabiteSeIndexRule: { include: { values: true } } } },
+            },
+          },
+        },
+      },
       payments: true,
     },
   });
@@ -75,20 +169,19 @@ export async function recalculateInstallment(
 
   const contract = installment.portfolio.contract;
   const baseMonth = contract.signedAt ?? contract.issuedAt;
+  const { habiteSeDate, preHabiteSe, postHabiteSe } = buildCorrectionPhases(
+    contract,
+    contract.development,
+  );
 
   const result = calculateInstallment({
     originalValue: Number(installment.originalValue),
     baseMonth,
     dueDate: installment.dueDate,
     asOfDate,
-    indexValues: (contract.indexRule?.values ?? []).map((v) => ({
-      referenceMonth: v.referenceMonth,
-      ratePercent: Number(v.ratePercent),
-    })),
-    monthlyInterestPercent: contract.monthlyInterestPercent
-      ? Number(contract.monthlyInterestPercent)
-      : null,
-    interestType: contract.interestType,
+    habiteSeDate,
+    preHabiteSe,
+    postHabiteSe,
     latePaymentFinePercent: Number(contract.latePaymentFinePercent),
     latePaymentMonthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent),
   });
@@ -254,12 +347,27 @@ export async function simulateInstallmentAnticipation(
       portfolio: { organizationId },
       status: { notIn: ["PAID", "CANCELLED"] },
     },
-    include: { portfolio: { include: { contract: { include: { indexRule: { include: { values: true } } } } } } },
+    include: {
+      portfolio: {
+        include: {
+          contract: {
+            include: {
+              indexRule: { include: { values: true } },
+              development: { include: { postHabiteSeIndexRule: { include: { values: true } } } },
+            },
+          },
+        },
+      },
+    },
   });
   if (installments.length === 0) throw new Error("Selecione ao menos uma parcela em aberto.");
 
   const contract = installments[0].portfolio.contract;
   const baseMonth = contract.signedAt ?? contract.issuedAt;
+  const { habiteSeDate, preHabiteSe, postHabiteSe } = buildCorrectionPhases(
+    contract,
+    contract.development,
+  );
 
   return simulateAnticipation({
     installments: installments.map((i) => ({
@@ -270,14 +378,9 @@ export async function simulateInstallmentAnticipation(
     })),
     baseMonth,
     asOfDate: new Date(),
-    indexValues: (contract.indexRule?.values ?? []).map((v) => ({
-      referenceMonth: v.referenceMonth,
-      ratePercent: Number(v.ratePercent),
-    })),
-    monthlyInterestPercent: contract.monthlyInterestPercent
-      ? Number(contract.monthlyInterestPercent)
-      : null,
-    interestType: contract.interestType,
+    habiteSeDate,
+    preHabiteSe,
+    postHabiteSe,
     discountPercent,
   });
 }

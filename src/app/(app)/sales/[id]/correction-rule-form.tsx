@@ -34,7 +34,7 @@ export function CorrectionRuleForm({
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
 
-      <label htmlFor="indexRuleId">Índice</label>
+      <label htmlFor="indexRuleId">Índice (fase de obra, até o Habite-se)</label>
       <select id="indexRuleId" name="indexRuleId" defaultValue={current.indexRuleId ?? ""}>
         <option value="">Nenhum (só juros/taxa fixa)</option>
         {indexRules.map((rule) => (

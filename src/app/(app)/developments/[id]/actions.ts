@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { createBuilding, createFloor } from "@/server/developments";
 import { createUnit, updateUnitStatus, linkUnits } from "@/server/units";
+import { setDevelopmentCorrectionRule } from "@/server/receivables";
+import type { InterestType } from "@/generated/prisma/client";
 import type {
   UnitType,
   UnitStatus,
@@ -158,6 +160,46 @@ export async function linkUnitsAction(
     await linkUnits(context, principalUnitId, accessoryUnitId, linkType, pricing);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao vincular unidades." };
+  }
+
+  revalidatePath(`/developments/${developmentId}`);
+  return {};
+}
+
+export async function setDevelopmentCorrectionRuleAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) {
+    return { error: "Sem permissão." };
+  }
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const habiteSeDateRaw = String(formData.get("habiteSeDate") ?? "").trim();
+  const postHabiteSeIndexRuleId =
+    String(formData.get("postHabiteSeIndexRuleId") ?? "").trim() || null;
+  const postHabiteSeMonthlyInterestPercentRaw = formData.get("postHabiteSeMonthlyInterestPercent");
+  const postHabiteSeMonthlyInterestPercent = postHabiteSeMonthlyInterestPercentRaw
+    ? Number(postHabiteSeMonthlyInterestPercentRaw)
+    : null;
+  const postHabiteSeInterestType = String(
+    formData.get("postHabiteSeInterestType") ?? "COMPOUND",
+  ) as InterestType;
+
+  if (!developmentId) return { error: "Empreendimento inválido." };
+
+  try {
+    await setDevelopmentCorrectionRule(context, developmentId, {
+      habiteSeDate: habiteSeDateRaw ? new Date(habiteSeDateRaw) : null,
+      postHabiteSeIndexRuleId,
+      postHabiteSeMonthlyInterestPercent,
+      postHabiteSeInterestType,
+    });
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Falha ao configurar correção pós-Habite-se.",
+    };
   }
 
   revalidatePath(`/developments/${developmentId}`);

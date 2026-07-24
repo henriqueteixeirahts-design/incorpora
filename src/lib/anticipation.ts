@@ -1,4 +1,7 @@
-import { calculateInstallment, type IndexValuePoint } from "@/lib/index-correction";
+import {
+  calculateInstallment,
+  type CorrectionPhaseConfig,
+} from "@/lib/index-correction";
 
 // Antecipação simulada (PRD seção 13). Puramente uma simulação — não baixa
 // parcela nenhuma. A baixa real acontece pelo fluxo normal de recebimento
@@ -15,9 +18,9 @@ export type SimulateAnticipationInput = {
   installments: AnticipationInstallmentInput[];
   baseMonth: Date;
   asOfDate: Date;
-  indexValues: IndexValuePoint[];
-  monthlyInterestPercent?: number | null;
-  interestType?: "SIMPLE" | "COMPOUND";
+  habiteSeDate?: Date | null;
+  preHabiteSe: CorrectionPhaseConfig;
+  postHabiteSe?: CorrectionPhaseConfig | null;
   discountPercent: number;
 };
 
@@ -41,9 +44,9 @@ export function simulateAnticipation(input: SimulateAnticipationInput): Simulate
       baseMonth: input.baseMonth,
       dueDate: installment.dueDate,
       asOfDate: input.asOfDate,
-      indexValues: input.indexValues,
-      monthlyInterestPercent: input.monthlyInterestPercent,
-      interestType: input.interestType,
+      habiteSeDate: input.habiteSeDate,
+      preHabiteSe: input.preHabiteSe,
+      postHabiteSe: input.postHabiteSe,
       // antecipação não deve gerar multa/mora — só faz sentido para parcelas futuras
       latePaymentFinePercent: 0,
       latePaymentMonthlyInterestPercent: 0,

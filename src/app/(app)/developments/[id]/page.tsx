@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { listUnits } from "@/server/units";
+import { listIndexRules } from "@/server/index-rules";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
 import { NewBuildingForm, NewFloorForm } from "./building-floor-forms";
 import { CreateUnitForm } from "./create-unit-form";
 import { UnitStatusSelect } from "./unit-status-select";
 import { LinkAccessoryForm } from "./link-accessory-form";
+import { HabiteSeForm } from "./habite-se-form";
 
 export default async function DevelopmentDetailPage({
   params,
@@ -21,6 +23,7 @@ export default async function DevelopmentDetailPage({
   if (!development) notFound();
 
   const units = await listUnits(id);
+  const indexRules = await listIndexRules(context.organizationId);
   const canEdit = hasPermission(context, "development", "EDIT");
   const canCreateUnit = hasPermission(context, "unit", "CREATE");
   const canEditUnit = hasPermission(context, "unit", "EDIT");
@@ -115,6 +118,32 @@ export default async function DevelopmentDetailPage({
           <CreateUnitForm developmentId={id} buildings={development.buildings} />
         ) : null}
       </section>
+
+      {canEdit ? (
+        <section style={{ marginTop: "2rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Habite-se e correção pós-entrega</h2>
+          <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+            Gatilho da troca de regra de correção da carteira (PRD seção 12) — vale para todos os
+            contratos deste empreendimento, diferente da regra de obra que fica em cada contrato.
+          </p>
+          <div style={{ marginTop: "0.75rem" }}>
+            <HabiteSeForm
+              developmentId={id}
+              indexRules={indexRules.map((r) => ({ id: r.id, name: r.name }))}
+              current={{
+                habiteSeDate: development.habiteSeDate
+                  ? new Date(development.habiteSeDate).toISOString().slice(0, 10)
+                  : null,
+                postHabiteSeIndexRuleId: development.postHabiteSeIndexRuleId,
+                postHabiteSeMonthlyInterestPercent: development.postHabiteSeMonthlyInterestPercent
+                  ? Number(development.postHabiteSeMonthlyInterestPercent)
+                  : null,
+                postHabiteSeInterestType: development.postHabiteSeInterestType,
+              }}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {canEditUnit && principalUnits.length > 0 && accessoryUnits.length > 0 ? (
         <section style={{ marginTop: "2rem" }}>

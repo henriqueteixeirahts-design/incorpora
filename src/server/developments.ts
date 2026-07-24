@@ -19,6 +19,7 @@ export function getDevelopment(organizationId: string, developmentId: string) {
     where: { id: developmentId, organizationId },
     include: {
       spe: true,
+      postHabiteSeIndexRule: true,
       buildings: { include: { floors: true }, orderBy: { name: "asc" } },
     },
   });
