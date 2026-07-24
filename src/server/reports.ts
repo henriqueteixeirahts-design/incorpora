@@ -1,0 +1,153 @@
+import "server-only";
+
+import { prisma } from "@/lib/prisma";
+import { getCashFlow } from "@/server/cash-flow";
+
+// Relatórios executivos (Sprint 9, PRD seção 22 e 28). Reaproveitam os dados
+// já modelados nas sprints anteriores — nenhuma tabela nova. "Mapa de vendas"
+// visual (por torre/pavimento) já existe em /developments/[id]/map; aqui
+// entram as visões agregadas (contagens e totais) que faltavam.
+
+export type InventoryStatusRow = { status: string; count: number; value: number };
+
+export async function getInventoryPosition(organizationId: string, developmentId?: string) {
+  const units = await prisma.unit.findMany({
+    where: {
+      isAccessory: false,
+      development: { organizationId, id: developmentId },
+    },
+    select: { status: true, referenceValue: true },
+  });
+
+  const byStatus = new Map<string, InventoryStatusRow>();
+  let totalUnits = 0;
+  let totalValue = 0;
+
+  for (const unit of units) {
+    const value = Number(unit.referenceValue ?? 0);
+    const row = byStatus.get(unit.status) ?? { status: unit.status, count: 0, value: 0 };
+    row.count += 1;
+    row.value += value;
+    byStatus.set(unit.status, row);
+    totalUnits += 1;
+    totalValue += value;
+  }
+
+  return {
+    rows: [...byStatus.values()].sort((a, b) => b.count - a.count),
+    totalUnits,
+    totalValue: round2(totalValue),
+  };
+}
+
+export async function getSalesSummary(organizationId: string, developmentId?: string) {
+  const [inventory, sales] = await Promise.all([
+    getInventoryPosition(organizationId, developmentId),
+    prisma.sale.findMany({
+      where: { organizationId, developmentId, status: "ACTIVE" },
+      select: { salePrice: true },
+    }),
+  ]);
+
+  const vgvSold = sales.reduce((sum, sale) => sum + Number(sale.salePrice), 0);
+  const unitsSoldCount = sales.length;
+
+  return {
+    vgvTotal: inventory.totalValue,
+    vgvSold: round2(vgvSold),
+    vgvAvailable: round2(inventory.totalValue - vgvSold),
+    percentSold: inventory.totalUnits > 0 ? round2((unitsSoldCount / inventory.totalUnits) * 100) : 0,
+    unitsTotal: inventory.totalUnits,
+    unitsSold: unitsSoldCount,
+    averageTicket: unitsSoldCount > 0 ? round2(vgvSold / unitsSoldCount) : 0,
+  };
+}
+
+export async function getReceivablesSummary(organizationId: string, developmentId?: string) {
+  const contractFilter = developmentId ? { developmentId } : undefined;
+
+  const [payments, openInstallments, overdueInstallments] = await Promise.all([
+    prisma.installmentPayment.findMany({
+      where: { installment: { portfolio: { organizationId, contract: contractFilter } } },
+      select: { amount: true },
+    }),
+    prisma.installment.findMany({
+      where: {
+        status: { notIn: ["PAID", "CANCELLED"] },
+        portfolio: { organizationId, contract: contractFilter },
+      },
+      select: { originalValue: true, correctedValue: true, paidAmount: true },
+    }),
+    prisma.installment.findMany({
+      where: { status: "OVERDUE", portfolio: { organizationId, contract: contractFilter } },
+      select: { originalValue: true, correctedValue: true, paidAmount: true },
+    }),
+  ]);
+
+  const totalReceived = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const totalOutstanding = openInstallments.reduce(
+    (sum, installment) =>
+      sum + (Number(installment.correctedValue ?? installment.originalValue) - Number(installment.paidAmount)),
+    0,
+  );
+  const overdueAmount = overdueInstallments.reduce(
+    (sum, installment) =>
+      sum + (Number(installment.correctedValue ?? installment.originalValue) - Number(installment.paidAmount)),
+    0,
+  );
+
+  return {
+    totalReceived: round2(totalReceived),
+    totalOutstanding: round2(totalOutstanding),
+    overdueAmount: round2(overdueAmount),
+    overdueCount: overdueInstallments.length,
+  };
+}
+
+export async function getPayablesSummary(organizationId: string, developmentId?: string) {
+  const payables = await prisma.payable.findMany({
+    where: { organizationId, developmentId, status: { not: "CANCELLED" } },
+    select: { amount: true, paidAmount: true, status: true },
+  });
+
+  const totalPaid = payables
+    .filter((p) => p.status === "PAID" || p.status === "RECONCILED")
+    .reduce((sum, p) => sum + Number(p.paidAmount ?? p.amount), 0);
+  const totalPending = payables
+    .filter((p) => p.status !== "PAID" && p.status !== "RECONCILED")
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+
+  return {
+    totalPaid: round2(totalPaid),
+    totalPending: round2(totalPending),
+    count: payables.length,
+  };
+}
+
+/**
+ * Relatório do investidor (PRD seção 21) — resumo executivo de um
+ * empreendimento. Não modela participação/aporte de investidor ainda (Fase
+ * 13, fora do V1); é a consolidação dos números já existentes, o que já
+ * cobre o essencial pedido no PRD (estoque, vendas, carteira, despesas,
+ * fluxo de caixa).
+ */
+export async function getInvestorReport(organizationId: string, developmentId: string) {
+  const [development, sales, receivables, payables, cashFlow] = await Promise.all([
+    prisma.development.findFirst({
+      where: { id: developmentId, organizationId },
+      include: { spe: true },
+    }),
+    getSalesSummary(organizationId, developmentId),
+    getReceivablesSummary(organizationId, developmentId),
+    getPayablesSummary(organizationId, developmentId),
+    getCashFlow(organizationId, { developmentId, monthsBack: 1, monthsForward: 3 }),
+  ]);
+
+  if (!development) throw new Error("Empreendimento inválido.");
+
+  return { development, sales, receivables, payables, cashFlow };
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}

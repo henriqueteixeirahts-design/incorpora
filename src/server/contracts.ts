@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
+import { changeUnitStatusTx } from "@/server/units";
 import type { AccessContext } from "@/server/auth-context";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import type { Prisma } from "@/generated/prisma/client";
@@ -110,6 +111,7 @@ export async function markAwaitingSignature(context: AccessContext, contractId: 
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
+      include: { unit: true },
     });
     if (!contract) throw new Error("Contrato inválido.");
     if (contract.status !== "DRAFT") throw new Error("Contrato não está em rascunho.");
@@ -118,6 +120,18 @@ export async function markAwaitingSignature(context: AccessContext, contractId: 
       where: { id: contractId },
       data: { status: "AWAITING_SIGNATURE" },
     });
+
+    if (contract.unit.status === "CONTRACT_IN_PROGRESS") {
+      await changeUnitStatusTx(tx, {
+        organizationId: context.organizationId,
+        developmentId: contract.developmentId,
+        unitId: contract.unitId,
+        fromStatus: contract.unit.status,
+        toStatus: "AWAITING_SIGNATURE",
+        actorUserId: context.userId,
+        reason: "Contrato enviado para assinatura",
+      });
+    }
 
     await recordDevelopmentEvent(tx, {
       organizationId: context.organizationId,
@@ -145,7 +159,7 @@ export async function confirmSignature(
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
-      include: { sale: { include: { proposal: true } }, portfolio: true },
+      include: { sale: { include: { proposal: true } }, portfolio: true, unit: true },
     });
     if (!contract) throw new Error("Contrato inválido.");
     if (contract.status === "SIGNED") throw new Error("Contrato já está assinado.");
@@ -157,6 +171,18 @@ export async function confirmSignature(
       where: { id: contractId },
       data: { status: "SIGNED", signedAt, signedDocumentUrl },
     });
+
+    if (contract.unit.status !== "SOLD" && contract.unit.status !== "CANCELLED") {
+      await changeUnitStatusTx(tx, {
+        organizationId: context.organizationId,
+        developmentId: contract.developmentId,
+        unitId: contract.unitId,
+        fromStatus: contract.unit.status,
+        toStatus: "SOLD",
+        actorUserId: context.userId,
+        reason: "Contrato assinado",
+      });
+    }
 
     if (!contract.portfolio) {
       const paymentFlow = contract.sale.proposal.paymentFlow as unknown as PaymentFlowResult | null;

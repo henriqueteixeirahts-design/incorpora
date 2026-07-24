@@ -26,6 +26,7 @@ export default async function AppLayout({
         <Link href="/customers">Clientes</Link>
         <Link href="/partners">Imobiliárias/Corretores</Link>
         <Link href="/sales">Vendas</Link>
+        <Link href="/reports">Relatórios</Link>
         <Link href="/receivables/overdue">Inadimplência</Link>
         <Link href="/index-rules">Índices</Link>
         <Link href="/payables">Contas a pagar</Link>
