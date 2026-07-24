@@ -59,6 +59,9 @@ model Organization {
   contracts            Contract[]
   receivablePortfolios ReceivablePortfolio[]
   indexRules           IndexRule[]
+  suppliers            Supplier[]
+  costCenters          CostCenter[]
+  payables             Payable[]
 
   @@map("organizations")
 }
@@ -173,6 +176,7 @@ model SpecialPurposeEntity {
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   developments Development[]
   accessGrants AccessGrant[]
+  payables     Payable[]
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
@@ -363,6 +367,8 @@ model Development {
   proposals             Proposal[]
   sales                 Sale[]
   contracts             Contract[]
+  costCenters           CostCenter[]
+  payables              Payable[]
 
   @@index([organizationId])
   @@index([speId])
@@ -1043,4 +1049,122 @@ model FinancialCalculation {
 
   @@index([installmentId])
   @@map("financial_calculations")
+}
+
+// ============================================================================
+// FASE 12 — FINANCEIRO DA INCORPORAÇÃO
+// ============================================================================
+//
+// Escopo: Sprint 8 (docs/SPRINTS_INCORPORA.md) — contas a pagar, fornecedores,
+// centros de custo e fluxo de caixa. Fluxo de aprovação da conta a pagar é
+// sequencial (Lançada → Conferida → Aprovada → Programada → Paga →
+// Conciliada), sem alçada por valor como nas propostas (PRD seção 16 não
+// menciona alçada aqui). Rateio de uma despesa entre vários empreendimentos
+// (mencionado no PRD) fica fora do V1 — cada conta pertence a no máximo um
+// empreendimento; despesas da holding/organização inteira ficam com
+// developmentId nulo. Documentado em docs/STATUS_IMPLANTACAO.md.
+
+model Supplier {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  document       String? // CNPJ ou CPF
+  email          String?
+  phone          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payables     Payable[]
+
+  @@map("suppliers")
+}
+
+/// Centro de custo — pode ser específico de um empreendimento (ex.: "Obra —
+/// Torre A") ou da organização inteira (ex.: "Administração central").
+model CostCenter {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  developmentId  String?  @db.Uuid
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  payables     Payable[]
+
+  @@unique([organizationId, name])
+  @@map("cost_centers")
+}
+
+enum PayableCategory {
+  CONSTRUCTION // construtora
+  LAND // terreno
+  PROJECTS // projetos
+  APPROVALS // aprovações
+  NOTARY // cartório
+  MARKETING
+  AGENCY // agência
+  MEDIA // mídia
+  SALES_BOOTH // estande de vendas
+  SALES_BOOTH_MAINTENANCE // manutenção do estande
+  SALES_TEAM // equipe comercial
+  BROKERAGE // corretagem
+  FEES // taxas
+  TAXES // impostos
+  LEGAL // jurídico
+  ACCOUNTING // contabilidade
+  INSURANCE // seguros
+  BANK_FEES // despesas bancárias
+  UTILITIES // concessionárias
+  ADMINISTRATION
+  CANCELLATION_REFUND // devoluções de distrato
+  OTHER // despesas diversas
+}
+
+enum PayableStatus {
+  ENTERED // lançada
+  REVIEWED // conferida
+  APPROVED // aprovada
+  SCHEDULED // programada
+  PAID // paga
+  RECONCILED // conciliada
+  CANCELLED
+}
+
+/// Conta a pagar da incorporação (PRD seção 16).
+model Payable {
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  developmentId   String?         @db.Uuid // nulo = despesa da organização/holding
+  speId           String?         @db.Uuid
+  supplierId      String?         @db.Uuid
+  costCenterId    String?         @db.Uuid
+  category        PayableCategory
+  description     String
+  competenceDate  DateTime // mês de competência
+  dueDate         DateTime
+  amount          Decimal         @db.Decimal(14, 2)
+  paymentMethod   String?
+  bankAccount     String?
+  fiscalDocument  String? // número da nota fiscal/documento
+  contractId      String?         @db.Uuid // contrato relacionado (ex.: construtora), quando houver
+  status          PayableStatus   @default(ENTERED)
+  paidAt          DateTime?
+  paidAmount      Decimal?        @db.Decimal(14, 2)
+  notes           String?
+  createdByUserId String?         @db.Uuid
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development?          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  spe          SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
+  supplier     Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  costCenter   CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([organizationId, developmentId])
+  @@map("payables")
 }

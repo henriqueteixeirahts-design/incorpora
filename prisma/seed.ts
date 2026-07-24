@@ -26,6 +26,9 @@ const RESOURCES = [
   "contract",
   "installment",
   "index_rule",
+  "supplier",
+  "cost_center",
+  "payable",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -55,6 +58,9 @@ const SYSTEM_ROLES: Record<
       contract: ["VIEW", "EDIT", "EXPORT"],
       installment: ["VIEW", "CREATE", "EDIT", "EXPORT"],
       index_rule: ["VIEW", "CREATE", "EDIT"],
+      supplier: ["VIEW", "CREATE", "EDIT"],
+      cost_center: ["VIEW", "CREATE", "EDIT"],
+      payable: ["VIEW", "CREATE", "EDIT", "APPROVE", "CANCEL", "EXPORT"],
     },
   },
   Comercial: {
@@ -114,6 +120,7 @@ const SYSTEM_ROLES: Record<
       unit: ["VIEW"],
       sale: ["VIEW"],
       installment: ["VIEW"],
+      payable: ["VIEW"],
     },
   },
   Imobiliária: {

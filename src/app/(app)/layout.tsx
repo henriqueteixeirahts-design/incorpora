@@ -28,6 +28,9 @@ export default async function AppLayout({
         <Link href="/sales">Vendas</Link>
         <Link href="/receivables/overdue">Inadimplência</Link>
         <Link href="/index-rules">Índices</Link>
+        <Link href="/payables">Contas a pagar</Link>
+        <Link href="/finance-setup">Fornecedores/Centros de custo</Link>
+        <Link href="/cash-flow">Fluxo de caixa</Link>
         <Link href="/users">Usuários</Link>
 
         <form action={signOutAction} style={{ marginTop: "auto" }}>
