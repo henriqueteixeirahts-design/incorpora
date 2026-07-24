@@ -23,6 +23,9 @@ export default async function AppLayout({
         <Link href="/dashboard">Dashboard</Link>
         <Link href="/spes">SPEs</Link>
         <Link href="/developments">Empreendimentos</Link>
+        <Link href="/customers">Clientes</Link>
+        <Link href="/partners">Imobiliárias/Corretores</Link>
+        <Link href="/sales">Vendas</Link>
         <Link href="/users">Usuários</Link>
 
         <form action={signOutAction} style={{ marginTop: "auto" }}>

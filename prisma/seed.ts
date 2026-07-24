@@ -16,6 +16,13 @@ const RESOURCES = [
   "user",
   "role",
   "document",
+  "customer",
+  "broker",
+  "agency",
+  "sales_table",
+  "reservation",
+  "proposal",
+  "sale",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -40,6 +47,8 @@ const SYSTEM_ROLES: Record<
       development: ["VIEW"],
       unit: ["VIEW"],
       document: ["VIEW", "CREATE", "EXPORT"],
+      sale: ["VIEW", "EXPORT"],
+      proposal: ["VIEW", "APPROVE"],
     },
   },
   Comercial: {
@@ -48,6 +57,13 @@ const SYSTEM_ROLES: Record<
       development: ["VIEW"],
       unit: ["VIEW", "CREATE", "EDIT"],
       document: ["VIEW", "CREATE"],
+      customer: ["VIEW", "CREATE", "EDIT"],
+      broker: ["VIEW"],
+      agency: ["VIEW"],
+      sales_table: ["VIEW"],
+      reservation: ["VIEW", "CREATE", "EDIT", "CANCEL"],
+      proposal: ["VIEW", "CREATE", "EDIT"],
+      sale: ["VIEW"],
     },
   },
   "Gerente comercial": {
@@ -56,6 +72,13 @@ const SYSTEM_ROLES: Record<
       development: ["VIEW"],
       unit: ["VIEW", "CREATE", "EDIT", "APPROVE"],
       document: ["VIEW", "CREATE"],
+      customer: ["VIEW", "CREATE", "EDIT"],
+      broker: ["VIEW", "CREATE", "EDIT"],
+      agency: ["VIEW", "CREATE", "EDIT"],
+      sales_table: ["VIEW", "CREATE", "EDIT"],
+      reservation: ["VIEW", "CREATE", "EDIT", "CANCEL"],
+      proposal: ["VIEW", "CREATE", "EDIT", "APPROVE"],
+      sale: ["VIEW", "CREATE"],
     },
   },
   Jurídico: {
@@ -64,6 +87,8 @@ const SYSTEM_ROLES: Record<
       development: ["VIEW"],
       unit: ["VIEW"],
       document: ["VIEW", "CREATE", "APPROVE"],
+      proposal: ["VIEW", "APPROVE"],
+      sale: ["VIEW"],
     },
   },
   Contabilidade: {
@@ -75,15 +100,16 @@ const SYSTEM_ROLES: Record<
     grants: {
       development: ["VIEW"],
       unit: ["VIEW"],
+      sale: ["VIEW"],
     },
   },
   Imobiliária: {
     description: "Parceiro comercial externo.",
-    grants: { unit: ["VIEW"] },
+    grants: { unit: ["VIEW"], reservation: ["VIEW", "CREATE"], proposal: ["VIEW", "CREATE"] },
   },
   Corretor: {
     description: "Corretor de vendas.",
-    grants: { unit: ["VIEW"] },
+    grants: { unit: ["VIEW"], reservation: ["VIEW", "CREATE"], proposal: ["VIEW", "CREATE"] },
   },
   Cliente: {
     description: "Acesso ao portal do cliente (Fase 14).",

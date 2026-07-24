@@ -50,6 +50,12 @@ model Organization {
   documents         Document[]
   notifications     Notification[]
   settings          Setting[]
+  customers         Customer[]
+  brokers           Broker[]
+  agencies          RealEstateAgency[]
+  reservations      Reservation[]
+  proposals         Proposal[]
+  sales             Sale[]
 
   @@map("organizations")
 }
@@ -333,6 +339,9 @@ model Development {
   units             Unit[]
   accessGrants      AccessGrant[]
   developmentEvents DevelopmentEvent[]
+  salesTables       SalesTable[]
+  proposals         Proposal[]
+  sales             Sale[]
 
   @@index([organizationId])
   @@index([speId])
@@ -452,6 +461,11 @@ model Unit {
   linksAsPrincipal UnitLink[]          @relation("UnitLinkPrincipal")
   linksAsAccessory UnitLink[]          @relation("UnitLinkAccessory")
 
+  salesTableEntries SalesTableUnit[]
+  reservations      Reservation[]
+  proposals         Proposal[]
+  sale              Sale?
+
   @@unique([developmentId, number])
   @@index([developmentId, status])
   @@map("units")
@@ -502,4 +516,306 @@ model UnitLink {
 
   @@unique([principalUnitId, accessoryUnitId])
   @@map("unit_links")
+}
+
+// ============================================================================
+// FASE 4-7 — TABELAS DE VENDA, CRM COMERCIAL, PROPOSTAS E VENDAS
+// ============================================================================
+//
+// Escopo: Sprint 3-4 do plano (docs/SPRINTS_INCORPORA.md) — da tabela de
+// vendas até a venda fechada com comissão. Contratos/minuta (Sprint 5) e
+// carteira/indexadores de verdade (Sprint 6-7) ainda não existem; o fluxo de
+// pagamento da proposta fica congelado em Proposal.paymentFlow (JSON) como
+// simulação, e a carteira real (Installment/IndexRule) é criada só quando
+// esse motor for desenhado.
+
+enum CustomerType {
+  INDIVIDUAL // pessoa física
+  COMPANY // pessoa jurídica
+}
+
+/// Comprador (pessoa física ou jurídica). Checklist completo de documentos
+/// pessoais/cônjuge (PRD seção 8) fica para quando o módulo de contratos
+/// precisar deles — aqui ficam os dados mínimos para reserva/proposta/venda.
+model Customer {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  type           CustomerType @default(INDIVIDUAL)
+  name           String
+  document       String // CPF ou CNPJ
+  email          String?
+  phone          String?
+  address        String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+  proposals    Proposal[]
+  sales        Sale[]
+
+  @@unique([organizationId, document])
+  @@map("customers")
+}
+
+/// Imobiliária parceira.
+model RealEstateAgency {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  document       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brokers      Broker[]
+  reservations Reservation[]
+  proposals    Proposal[]
+
+  @@map("real_estate_agencies")
+}
+
+/// Corretor de vendas, opcionalmente vinculado a uma imobiliária.
+model Broker {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  agencyId       String?  @db.Uuid
+  name           String
+  document       String?
+  email          String?
+  phone          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  reservations Reservation[]
+  proposals    Proposal[]
+
+  @@map("brokers")
+}
+
+/// Tabela de vendas de um empreendimento (PRD seção 5). Um empreendimento
+/// pode ter várias tabelas simultâneas (lançamento, promocional, investidor...).
+model SalesTable {
+  id                     String    @id @default(uuid()) @db.Uuid
+  developmentId          String    @db.Uuid
+  name                   String
+  startDate              DateTime  @default(now())
+  validUntil             DateTime?
+  downPaymentPercent     Decimal?  @db.Decimal(5, 2) // % de entrada
+  monthlyInstallments    Int? // quantidade de parcelas mensais
+  keysInstallmentPercent Decimal?  @db.Decimal(5, 2) // % na parcela de chaves
+  maxDiscountPercent     Decimal?  @db.Decimal(5, 2)
+  commissionPercent      Decimal?  @db.Decimal(5, 2)
+  indexCode              String? // ex.: "INCC", "IPCA", "FIXED" — motor real na Fase 10
+  isActive               Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  development Development      @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  units       SalesTableUnit[]
+  proposals   Proposal[]
+
+  @@index([developmentId])
+  @@map("sales_tables")
+}
+
+/// Preço de uma unidade dentro de uma tabela de vendas específica.
+model SalesTableUnit {
+  id           String   @id @default(uuid()) @db.Uuid
+  salesTableId String   @db.Uuid
+  unitId       String   @db.Uuid
+  price        Decimal  @db.Decimal(14, 2)
+  pricePerSqm  Decimal? @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+
+  salesTable SalesTable @relation(fields: [salesTableId], references: [id], onDelete: Cascade)
+  unit       Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([salesTableId, unitId])
+  @@map("sales_table_units")
+}
+
+enum ReservationStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED // virou proposta
+  CANCELLED
+}
+
+/// Reserva de unidade — objeto próprio, não apenas um status (PRD seção 6).
+model Reservation {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  unitId          String            @db.Uuid
+  customerId      String            @db.Uuid
+  brokerId        String?           @db.Uuid
+  agencyId        String?           @db.Uuid
+  salesTableId    String?           @db.Uuid
+  status          ReservationStatus @default(ACTIVE)
+  expiresAt       DateTime
+  reason          String?
+  createdByUserId String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  cancelledAt     DateTime?
+  cancelReason    String?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  broker       Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([unitId])
+  @@map("reservations")
+}
+
+enum ProposalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CONVERTED // virou venda
+  CANCELLED
+}
+
+enum ApprovalLevel {
+  COMMERCIAL
+  SALES_MANAGER
+  DIRECTOR
+  FINANCIAL
+  LEGAL
+  PARTNERS
+}
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Proposta comercial (PRD seção 7). Versionada via parentProposalId — cada
+/// alteração relevante gera uma nova versão em vez de sobrescrever a anterior.
+model Proposal {
+  id                String         @id @default(uuid()) @db.Uuid
+  organizationId    String         @db.Uuid
+  developmentId     String         @db.Uuid
+  unitId            String         @db.Uuid
+  customerId        String         @db.Uuid
+  salesTableId      String?        @db.Uuid
+  brokerId          String?        @db.Uuid
+  agencyId          String?        @db.Uuid
+  parentProposalId  String?        @db.Uuid
+  version           Int            @default(1)
+  listPrice         Decimal        @db.Decimal(14, 2)
+  discountPercent   Decimal        @default(0) @db.Decimal(5, 2)
+  salePrice         Decimal        @db.Decimal(14, 2)
+  commissionPercent Decimal?       @db.Decimal(5, 2)
+  paymentFlow       Json? // snapshot do simulador (entrada/mensais/chaves)
+  status            ProposalStatus @default(DRAFT)
+  notes             String?
+  createdByUserId   String?        @db.Uuid
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development    Development        @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  unit           Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  customer       Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  salesTable     SalesTable?        @relation(fields: [salesTableId], references: [id], onDelete: SetNull)
+  broker         Broker?            @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  agency         RealEstateAgency?  @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  parentProposal Proposal?          @relation("ProposalVersion", fields: [parentProposalId], references: [id], onDelete: SetNull)
+  childVersions  Proposal[]         @relation("ProposalVersion")
+  approvals      ProposalApproval[]
+  sale           Sale?
+
+  @@index([organizationId, status])
+  @@index([unitId])
+  @@map("proposals")
+}
+
+/// Uma etapa de alçada de aprovação da proposta (PRD seção 7: comercial,
+/// gerente, diretor, financeiro, jurídico, sócios).
+model ProposalApproval {
+  id             String           @id @default(uuid()) @db.Uuid
+  proposalId     String           @db.Uuid
+  level          ApprovalLevel
+  approverUserId String?          @db.Uuid
+  decision       ApprovalDecision @default(PENDING)
+  comment        String?
+  decidedAt      DateTime?
+  createdAt      DateTime         @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, level])
+  @@map("proposal_approvals")
+}
+
+enum SaleStatus {
+  ACTIVE
+  CANCELLED // distrato — tratamento completo na Fase 15
+}
+
+/// Venda — criada a partir da conversão de uma proposta aprovada (PRD seção 8).
+model Sale {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  developmentId  String     @db.Uuid
+  unitId         String     @unique @db.Uuid
+  proposalId     String     @unique @db.Uuid
+  customerId     String     @db.Uuid
+  saleDate       DateTime   @default(now())
+  salePrice      Decimal    @db.Decimal(14, 2)
+  status         SaleStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development  @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  proposal     Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  commissionSplits CommissionSplit[]
+
+  @@map("sales")
+}
+
+enum CommissionBeneficiaryType {
+  BROKER
+  AGENCY
+  COORDINATOR
+  MANAGER
+  CAMPAIGN
+}
+
+enum CommissionStatus {
+  PENDING
+  INVOICED
+  PAID
+  CANCELLED
+}
+
+/// Split de comissão da venda (PRD seção 10) — pode ser dividida entre
+/// corretor, imobiliária, coordenador, gerente e campanha.
+model CommissionSplit {
+  id              String                    @id @default(uuid()) @db.Uuid
+  saleId          String                    @db.Uuid
+  beneficiaryType CommissionBeneficiaryType
+  brokerId        String?                   @db.Uuid
+  agencyId        String?                   @db.Uuid
+  label           String? // nome do coordenador/gerente/campanha, quando não for broker/agency
+  percent         Decimal                   @db.Decimal(5, 2)
+  value           Decimal                   @db.Decimal(14, 2)
+  dueDate         DateTime?
+  status          CommissionStatus          @default(PENDING)
+  createdAt       DateTime                  @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("commission_splits")
 }

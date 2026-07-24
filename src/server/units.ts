@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
 import {
+  Prisma,
   type UnitType,
   type UnitStatus,
   type UnitLinkType,
@@ -104,6 +105,61 @@ export async function createUnit(context: AccessContext, input: CreateUnitInput)
   });
 }
 
+/**
+ * Muda o status de uma unidade dentro de uma transação já aberta pelo
+ * chamador (reserva, proposta, venda...). Não valida organização — quem
+ * chama já deve ter carregado/validado a unidade nessa mesma transação.
+ */
+export async function changeUnitStatusTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    organizationId: string;
+    developmentId: string;
+    unitId: string;
+    fromStatus: UnitStatus;
+    toStatus: UnitStatus;
+    actorUserId?: string | null;
+    reason?: string;
+  },
+) {
+  const updated = await tx.unit.update({
+    where: { id: params.unitId },
+    data: { status: params.toStatus },
+  });
+
+  await tx.unitStatusHistory.create({
+    data: {
+      unitId: params.unitId,
+      fromStatus: params.fromStatus,
+      toStatus: params.toStatus,
+      changedByUserId: params.actorUserId ?? null,
+      reason: params.reason,
+    },
+  });
+
+  await recordAuditEvent(tx, {
+    organizationId: params.organizationId,
+    actorUserId: params.actorUserId,
+    action: "update",
+    entityType: "Unit",
+    entityId: params.unitId,
+    beforeData: { status: params.fromStatus },
+    afterData: { status: params.toStatus },
+  });
+
+  await recordDevelopmentEvent(tx, {
+    organizationId: params.organizationId,
+    developmentId: params.developmentId,
+    actorUserId: params.actorUserId,
+    eventType: "unit.status_changed",
+    entityType: "Unit",
+    entityId: params.unitId,
+    payload: { fromStatus: params.fromStatus, toStatus: params.toStatus, reason: params.reason },
+  });
+
+  return updated;
+}
+
 export async function updateUnitStatus(
   context: AccessContext,
   unitId: string,
@@ -116,44 +172,15 @@ export async function updateUnitStatus(
     });
     if (!unit) throw new Error("Unidade inválida.");
 
-    const fromStatus = unit.status;
-
-    const updated = await tx.unit.update({
-      where: { id: unitId },
-      data: { status: toStatus },
-    });
-
-    await tx.unitStatusHistory.create({
-      data: {
-        unitId,
-        fromStatus,
-        toStatus,
-        changedByUserId: context.userId,
-        reason,
-      },
-    });
-
-    await recordAuditEvent(tx, {
-      organizationId: context.organizationId,
-      actorUserId: context.userId,
-      action: "update",
-      entityType: "Unit",
-      entityId: unitId,
-      beforeData: { status: fromStatus },
-      afterData: { status: toStatus },
-    });
-
-    await recordDevelopmentEvent(tx, {
+    return changeUnitStatusTx(tx, {
       organizationId: context.organizationId,
       developmentId: unit.developmentId,
+      unitId,
+      fromStatus: unit.status,
+      toStatus,
       actorUserId: context.userId,
-      eventType: "unit.status_changed",
-      entityType: "Unit",
-      entityId: unitId,
-      payload: { fromStatus, toStatus, reason },
+      reason,
     });
-
-    return updated;
   });
 }
 

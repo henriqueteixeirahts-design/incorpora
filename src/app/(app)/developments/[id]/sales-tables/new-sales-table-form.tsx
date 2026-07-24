@@ -1,0 +1,61 @@
+"use client";
+
+import { useActionState } from "react";
+import { createSalesTableAction, type FormState } from "./actions";
+
+const initialState: FormState = {};
+
+export function NewSalesTableForm({ developmentId }: { developmentId: string }) {
+  const [state, formAction, pending] = useActionState(createSalesTableAction, initialState);
+
+  return (
+    <form
+      action={formAction}
+      style={{ display: "flex", flexDirection: "column", gap: "0.6rem", maxWidth: 360, marginTop: "1rem" }}
+    >
+      <input type="hidden" name="developmentId" value={developmentId} />
+
+      <label htmlFor="name">Nome</label>
+      <input id="name" name="name" required placeholder="Ex.: Tabela de lançamento" />
+
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="downPaymentPercent">Entrada (%)</label>
+          <input id="downPaymentPercent" name="downPaymentPercent" type="number" step="0.01" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="monthlyInstallments">Parcelas mensais</label>
+          <input id="monthlyInstallments" name="monthlyInstallments" type="number" />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="keysInstallmentPercent">Chaves (%)</label>
+          <input id="keysInstallmentPercent" name="keysInstallmentPercent" type="number" step="0.01" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="maxDiscountPercent">Desconto máx. (%)</label>
+          <input id="maxDiscountPercent" name="maxDiscountPercent" type="number" step="0.01" />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="commissionPercent">Comissão (%)</label>
+          <input id="commissionPercent" name="commissionPercent" type="number" step="0.01" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="indexCode">Indexador</label>
+          <input id="indexCode" name="indexCode" placeholder="INCC, IPCA..." />
+        </div>
+      </div>
+
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+
+      <button type="submit" disabled={pending}>
+        {pending ? "Salvando..." : "Criar tabela"}
+      </button>
+    </form>
+  );
+}
