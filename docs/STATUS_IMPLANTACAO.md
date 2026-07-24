@@ -61,7 +61,13 @@
 
 ## 4. Riscos identificados antes da próxima sprint
 
-*(preencher pelo Claude Code antes de iniciar a Sprint 6-7)*
+| Risco | Por quê importa | Como estamos mitigando |
+|---|---|---|
+| Índices (INCC/IPCA/IGP-M) não vêm de fonte oficial automática | Não há integração com Banco Central/IBGE ainda; os valores mensais de cada índice terão que ser cadastrados manualmente. Se alguém esquecer de atualizar, a correção de todas as parcelas daquele mês fica errada. | Cadastro de índice vira uma tela própria, com data de referência clara e validação para não deixar mês faltando. Fica registrado quem lançou cada valor. |
+| Memória de cálculo auditável é obrigatória (PRD) | O sistema nunca pode simplesmente "sobrescrever" o valor de uma parcela corrigida — precisa guardar o histórico de cada cálculo (índice usado, data-base, valor antes/depois) para eventual auditoria ou contestação de cliente. | Cada recálculo de parcela vai gravar um registro próprio (não apaga o anterior), seguindo o mesmo padrão de trilha já usado em `AuditEvent`/`DevelopmentEvent`. |
+| Sem worker assíncrono | A correção mensal de milhares de parcelas em várias carteiras não pode ficar dependendo de alguém abrir uma tela para "disparar" o cálculo — isso é o tipo de rotina que precisa rodar sozinha, todo mês. | Nesta sprint a correção será feita sob demanda (calculada quando a parcela/extrato é consultada, sem alterar nada até confirmação), igual ao padrão já usado nas reservas. Fica marcado como pendência para virar rotina automática assim que houver infraestrutura de fila/agendamento. |
+| Regras de correção variam por fase do contrato | O PRD prevê que a mesma parcela pode ser corrigida por um índice durante a obra (ex.: INCC) e por outro depois da entrega (ex.: IPCA + juros) — e o `Development` hoje não tem campo de "Habite-se" cadastrado. | Vamos usar a data de entrega já existente como gatilho inicial da troca de fase; se a TSH precisar de uma data de Habite-se separada da entrega, ajustamos antes de fechar a sprint. |
+| Módulo mais complexo do sistema, com dinheiro real envolvido | O próprio PRD chama a carteira de "provavelmente o módulo mais complexo". Erro de arredondamento ou de fórmula aqui tem impacto financeiro direto, diferente de um bug visual em outra tela. | Cada fórmula de correção será testada com valores conhecidos antes de entrar no fluxo real (mesmo processo de conferência manual usado nas Sprints 3-5), e nada é lançado como "definitivo" sem essa checagem. |
 
 ---
 
