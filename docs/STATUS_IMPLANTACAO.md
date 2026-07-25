@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Sprint 10 (regressão técnica concluída — aguardando decisões da TSH antes do encerramento)
+**Última atualização:** Pós-Sprint 10 — pendências técnicas priorizadas pela TSH resolvidas e testadas (upload real de contrato, cron de correção mensal, teste de agregação de inadimplência). Motor de template de minuta segue fora de escopo por decisão consciente. Próximo passo: cadastro dos dois empreendimentos-piloto reais.
 
 ---
 
@@ -50,7 +50,16 @@
 - Também testado neste ciclo: papel "Comercial" confirmado **sem** permissão de aprovar proposta nem conta a pagar (RBAC funcionando como esperado).
 - Varredura manual de todas as telas do menu (dashboard, empreendimentos, mapa vertical e de loteamento, comercial, tabelas de venda, relatórios gerais e por empreendimento, vendas, contas a pagar, fluxo de caixa, inadimplência, índices, clientes, parceiros, fornecedores/centros de custo, usuários, SPEs) com o cenário misto acima — nenhum erro de console, nenhuma requisição falhando.
 - **Nenhum bug novo encontrado nesta sprint** (o único bug de status encontrado na jornada foi na Sprint 9, já corrigido e coberto por teste).
-- **O que falta para a sprint estar de fato concluída** (não é trabalho técnico, é decisão/ação da TSH): (1) revisar a lista de pendências da seção 3 e decidir o que fecha agora vs. o que fica para depois; (2) cadastrar os usuários reais da equipe com os papéis corretos; (3) fazer o primeiro cadastro real dos dois empreendimentos-piloto — que é o teste que efetivamente valida se o sistema está "pronto", já que tudo até aqui foi testado com dados sintéticos.
+- **O que falta para a sprint estar de fato concluída** (não é trabalho técnico, é decisão/ação da TSH): (1) ~~revisar a lista de pendências da seção 3 e decidir o que fecha agora vs. o que fica para depois~~ — feito, ver "Pós-Sprint 10" abaixo; (2) cadastrar os usuários reais da equipe com os papéis corretos; (3) fazer o primeiro cadastro real dos dois empreendimentos-piloto — que é o teste que efetivamente valida se o sistema está "pronto", já que tudo até aqui foi testado com dados sintéticos.
+
+### Pós-Sprint 10 — Pendências técnicas priorizadas pela TSH
+✅ Concluídas e testadas as três pendências que a TSH pediu para resolver antes do cadastro dos empreendimentos reais (motor de template de minuta mantido fora de escopo por decisão consciente):
+
+1. **Upload real do contrato assinado.** Bucket privado `contracts` criado no Supabase Storage (limite 10MB, só PDF). O upload acontece no servidor (`src/server/storage.ts`), nunca expõe o arquivo publicamente — o download na tela do contrato usa uma URL assinada de curto prazo (1 hora), gerada sob demanda a cada acesso. Campo do banco renomeado de `signedDocumentUrl` (texto livre) para `signedDocumentPath` (caminho interno do bucket). Testado ponta a ponta: upload de um PDF real, rejeição de arquivo não-PDF, rejeição de arquivo acima de 10MB, geração do link assinado e download funcionando na tela de venda em ambiente real (Vercel + Supabase de produção).
+2. **Worker assíncrono para correção mensal.** Rota `/api/cron/recalculate-installments`, protegida por segredo (`CRON_SECRET`, bearer token), agendada pela Vercel para rodar automaticamente todo dia 2 às 03:00 (`vercel.json`). Recalcula as parcelas em aberto de todas as organizações, sem depender de alguém abrir a tela de inadimplência. A varredura "sob demanda" que já existia continua ativa como rede de segurança complementar (ex.: se alguém abrir a tela entre duas execuções do cron). **Bug encontrado e corrigido durante a implementação:** o middleware de autenticação (`src/proxy.ts`) redirecionava qualquer chamada a `/api/cron/*` para a tela de login (por não haver sessão de usuário), o que faria a Vercel nunca conseguir disparar o job em produção — corrigido excluindo `api/cron` do redirecionamento. Testado localmente: chamada sem segredo e com segredo errado retornam 401; com o segredo correto, retorna 200 e o resumo do recálculo.
+3. **Teste da agregação de inadimplência com valor real.** Cobre o gap identificado no relatório da Sprint 9: script dedicado cria 3 parcelas vencidas de valores diferentes (R$ 120.000, R$ 85.000 e R$ 200.000 — soma nominal R$ 405.000) e confirma que a lista de inadimplência agrega um valor corrigido real e não-zero (multa de 2% + mora de 1% ao mês aplicadas corretamente por parcela, conferidas centavo a centavo contra o cálculo manual), além de confirmar que o recálculo em massa (mesmo motor usado pelo cron) é idempotente — rodar duas vezes não duplica nem quebra nada.
+
+**Importante — ação pendente do lado da TSH:** o segredo `CRON_SECRET` usado pela rota do cron ainda não foi cadastrado nas variáveis de ambiente do projeto na Vercel. Enquanto isso não for feito, o endpoint sempre responde 401 e o job agendado não executa em produção (só localmente, onde já foi testado). Precisa ser adicionado manualmente no painel da Vercel (Project Settings → Environment Variables).
 
 ---
 
@@ -68,11 +77,11 @@
 
 ## 3. Pendências técnicas conhecidas
 
-| Pendência | Onde impacta | Sprint sugerida para resolver |
+| Pendência | Onde impacta | Status |
 |---|---|---|
-| Upload real de arquivo do contrato assinado (hoje é só campo de referência) | Contratos | Quando Supabase Storage for configurado — antes da Sprint 10 |
-| Minuta sem motor de template (dados corretos, mas sem geração de documento formatado) | Contratos | Antes da Sprint 10, ou fase 2 |
-| Ausência de worker assíncrono | Reservas, e agora também recálculo de carteira/inadimplência — tudo roda "sob demanda" ao abrir a tela, não sozinho todo dia | Continua em aberto; avaliar antes da Sprint 10. Sem isso, ninguém recebe aviso automático de parcela vencendo — alguém precisa abrir a tela de inadimplência para os cálculos rodarem |
+| ~~Upload real de arquivo do contrato assinado~~ | Contratos | ✅ Resolvido pós-Sprint 10 — ver seção 1 |
+| Minuta sem motor de template (dados corretos, mas sem geração de documento formatado) | Contratos | Fora de escopo por decisão consciente da TSH — mantido como está |
+| ~~Ausência de worker assíncrono~~ para recálculo de carteira/inadimplência | Recálculo de parcelas vencidas | ✅ Resolvido pós-Sprint 10 (cron mensal via Vercel) — ver seção 1. A varredura sob demanda continua como rede de segurança complementar. Reservas expiradas continuam sendo tratadas sob demanda (não fazia parte do pedido da TSH neste round) |
 | Índices sem integração automática com fonte oficial (Banco Central/IBGE) | Correção de carteira | Fase 2 (fora do escopo da V1 original) — cadastro manual mensal é suficiente por ora, mas depende de disciplina do Financeiro |
 
 ---
@@ -84,7 +93,8 @@ A Sprint 10 é a última do plano original. A regressão técnica (seção 1) n�
 | Item em aberto | Por quê importa | Próximo passo |
 |---|---|---|
 | Sistema nunca foi testado com os dados reais dos empreendimentos-piloto | Toda a regressão (inclusive a da Sprint 10) usou dados sintéticos. A estrutura real da TSH pode ter um caso que os testes não cobriram. | Cadastrar os dois empreendimentos reais é o próximo passo — e é o teste que realmente valida o sistema, não mais testes automatizados. |
-| Pendências técnicas acumuladas (seção 3) ainda em aberto | Upload real de contrato, worker assíncrono, motor de template — nenhuma impede o uso, mas juntas definem o que "pronto para produção" significa para a TSH. | Revisar a lista da seção 3 e decidir explicitamente o que fecha agora vs. o que fica para depois. |
+| ~~Pendências técnicas acumuladas (seção 3) ainda em aberto~~ | Upload real de contrato, worker assíncrono — resolvidos e testados pós-Sprint 10 (ver seção 1). Motor de template segue fora de escopo por decisão consciente. | Resolvido — nenhuma ação pendente aqui. |
+| `CRON_SECRET` ainda não cadastrado na Vercel | Sem essa variável de ambiente em produção, o job agendado de correção mensal sempre responde 401 e nunca executa de fato, mesmo já implementado e testado localmente. | TSH precisa adicionar `CRON_SECRET` nas variáveis de ambiente do projeto na Vercel (Project Settings → Environment Variables). |
 | Ambiente de preview da Vercel aponta para o mesmo banco de produção | Sem banco de staging separado — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; separar um projeto Supabase de staging se for abrir acesso a mais gente. |
 | Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Usuários. |
 | UX mínima (HTML simples, sem design system) | Foi suficiente para validar o fluxo de dados em todas as sprints, mas pode gerar atrito quando a equipe operacional usar no dia a dia. | Coletar feedback específico durante o cadastro dos empreendimentos reais e decidir se algum ajuste é prioridade. |
