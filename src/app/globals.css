@@ -1,12 +1,25 @@
 :root {
+  /* Paleta oficial TSH (Brandbook v.1.0) */
+  --tsh-blue: #445c6c;
+  --tsh-blue-light: #8abddd;
+  --tsh-brown: #4f3f42;
+  --tsh-gold: #b19b72;
+  --tsh-beige: #fff2e0;
+
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: var(--tsh-beige);
+  --foreground: var(--tsh-blue);
+  --accent: var(--tsh-blue-light);
+  --border-color: color-mix(in srgb, var(--tsh-blue) 18%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1b262c;
+    --surface: #24333b;
+    --foreground: #eef2f4;
+    --accent: var(--tsh-blue-light);
+    --border-color: color-mix(in srgb, #ffffff 16%, transparent);
   }
 }
 
@@ -26,7 +39,7 @@ body {
   flex-direction: column;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -38,14 +51,38 @@ body {
 }
 
 a {
-  color: inherit;
+  color: var(--tsh-blue-light);
   text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;
   }
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+
+h2 {
+  font-size: 1.375rem;
+}
+
+h3 {
+  font-size: 1.125rem;
 }
 
 input,
@@ -60,23 +97,53 @@ input,
 select,
 textarea {
   padding: 0.5rem 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: transparent;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--tsh-blue-light);
+  outline-offset: 1px;
 }
 
 button {
   cursor: pointer;
   padding: 0.5rem 1rem;
-  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border: 1px solid var(--tsh-blue);
   border-radius: 6px;
-  background: var(--foreground);
-  color: var(--background);
+  background: var(--tsh-blue);
+  color: #ffffff;
+  font-weight: 500;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--tsh-blue) 85%, black);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 button.secondary {
   background: transparent;
-  color: var(--foreground);
+  color: var(--tsh-blue);
+  border-color: var(--border-color);
+}
+
+button.secondary:hover {
+  background: color-mix(in srgb, var(--tsh-blue) 8%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  button.secondary {
+    color: var(--foreground);
+  }
 }
 
 table {
@@ -88,10 +155,45 @@ th,
 td {
   text-align: left;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  border-bottom: 1px solid var(--border-color);
+}
+
+th {
+  font-weight: 600;
+  color: var(--tsh-blue);
+}
+
+@media (prefers-color-scheme: dark) {
+  th {
+    color: var(--foreground);
+  }
 }
 
 .error-text {
   color: #d1453b;
   font-size: 0.875rem;
+}
+
+.app-nav-link {
+  color: #fff2e0;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.app-nav-link:hover {
+  background: color-mix(in srgb, #ffffff 12%, transparent);
+  text-decoration: none;
+}
+
+/* Grafismo TSH: padrão de barras derivado do símbolo da marca — uso
+   decorativo e pontual (Brandbook, seção Identidade Visual). Reservado
+   para áreas de destaque (ex.: painel do login), nunca como fundo de
+   telas de trabalho. */
+.tsh-grafismo-bg {
+  background-image: url("/brand/tsh-pattern.svg");
+  background-repeat: repeat;
+  background-size: 160px auto;
+  opacity: 0.12;
 }

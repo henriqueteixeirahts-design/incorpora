@@ -15,13 +15,36 @@ export default function LoginPage() {
         minHeight: "100vh",
         alignItems: "center",
         justifyContent: "center",
+        position: "relative",
       }}
     >
+      <div
+        className="tsh-grafismo-bg"
+        aria-hidden="true"
+        style={{ position: "absolute", inset: 0 }}
+      />
+
       <form
         action={formAction}
-        style={{ display: "flex", flexDirection: "column", gap: "0.75rem", width: 320 }}
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+          width: 320,
+          padding: "2rem",
+          background: "var(--background)",
+          border: "1px solid var(--border-color)",
+          borderRadius: 12,
+          boxShadow: "0 8px 24px rgba(68, 92, 108, 0.12)",
+        }}
       >
-        <h1 style={{ marginBottom: "0.5rem" }}>Incorpora</h1>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/tsh-logo-color.svg"
+          alt="TSH"
+          style={{ height: 28, width: "auto", marginBottom: "1.25rem" }}
+        />
 
         <label htmlFor="email">E-mail</label>
         <input id="email" name="email" type="email" required autoComplete="email" />

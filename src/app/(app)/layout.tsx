@@ -11,31 +11,66 @@ export default async function AppLayout({
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <aside
         style={{
-          width: 220,
+          width: 232,
           padding: "1.5rem 1rem",
-          borderRight: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+          background: "var(--tsh-blue)",
           display: "flex",
           flexDirection: "column",
-          gap: "0.5rem",
+          gap: "0.4rem",
         }}
       >
-        <strong style={{ marginBottom: "1rem" }}>Incorpora</strong>
-        <Link href="/dashboard">Dashboard</Link>
-        <Link href="/spes">SPEs</Link>
-        <Link href="/developments">Empreendimentos</Link>
-        <Link href="/customers">Clientes</Link>
-        <Link href="/partners">Imobiliárias/Corretores</Link>
-        <Link href="/sales">Vendas</Link>
-        <Link href="/reports">Relatórios</Link>
-        <Link href="/receivables/overdue">Inadimplência</Link>
-        <Link href="/index-rules">Índices</Link>
-        <Link href="/payables">Contas a pagar</Link>
-        <Link href="/finance-setup">Fornecedores/Centros de custo</Link>
-        <Link href="/cash-flow">Fluxo de caixa</Link>
-        <Link href="/users">Usuários</Link>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/tsh-logo-white.svg"
+          alt="TSH"
+          style={{ height: 24, width: "auto", marginBottom: "1.5rem" }}
+        />
+        <Link href="/dashboard" className="app-nav-link">
+          Dashboard
+        </Link>
+        <Link href="/spes" className="app-nav-link">
+          SPEs
+        </Link>
+        <Link href="/developments" className="app-nav-link">
+          Empreendimentos
+        </Link>
+        <Link href="/customers" className="app-nav-link">
+          Clientes
+        </Link>
+        <Link href="/partners" className="app-nav-link">
+          Imobiliárias/Corretores
+        </Link>
+        <Link href="/sales" className="app-nav-link">
+          Vendas
+        </Link>
+        <Link href="/reports" className="app-nav-link">
+          Relatórios
+        </Link>
+        <Link href="/receivables/overdue" className="app-nav-link">
+          Inadimplência
+        </Link>
+        <Link href="/index-rules" className="app-nav-link">
+          Índices
+        </Link>
+        <Link href="/payables" className="app-nav-link">
+          Contas a pagar
+        </Link>
+        <Link href="/finance-setup" className="app-nav-link">
+          Fornecedores/Centros de custo
+        </Link>
+        <Link href="/cash-flow" className="app-nav-link">
+          Fluxo de caixa
+        </Link>
+        <Link href="/users" className="app-nav-link">
+          Usuários
+        </Link>
 
         <form action={signOutAction} style={{ marginTop: "auto" }}>
-          <button type="submit" className="secondary">
+          <button
+            type="submit"
+            className="secondary"
+            style={{ borderColor: "#8abddd", color: "#fff2e0", width: "100%" }}
+          >
             Sair
           </button>
         </form>
