@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Sprint 6-7 concluída
+**Última atualização:** Sprint 9 concluída
 
 ---
 
@@ -33,10 +33,16 @@
 - **Retrabalho pontual (mesma sprint):** correção em duas fases (obra + pós-Habite-se), detalhado na seção 2. Testado com 5 cenários na função pura (sem Habite-se, Habite-se futuro, Habite-se no meio do período, contrato assinado após o Habite-se, multa/mora sobre as duas fases combinadas) mais um teste de integração completo via banco: contrato com INCC na fase de obra e IPCA + juros simples na fase pós-Habite-se, valores conferidos e as duas fases visíveis na memória de cálculo.
 
 ### Sprint 8 — Financeiro básico
-⏳ Não iniciada
+✅ Concluída e testada com script dedicado (12 conferências automáticas)
+- Fluxo validado: fornecedor e centro de custo cadastrados → conta a pagar lançada → avançada pelo fluxo completo Lançada → Conferida → Aprovada → Programada → Paga (com `paidAmount`/`paidAt` preenchidos automaticamente) → Conciliada → bloqueio confirmado de avançar depois de Conciliada e de cancelar conta já paga → segunda conta cancelada antes de pagar (corretamente excluída dos totais) → fluxo de caixa consolidando a conta paga (R$ 50.000 previsto e realizado no mesmo mês) sem duplicar dados com a carteira a receber.
+- Módulos entregues: fornecedores, centros de custo (por empreendimento ou da organização), contas a pagar com categoria fechada (evita texto livre inconsistente) e fluxo de caixa combinando contas a pagar com a carteira a receber já existente.
+- Também aplicado direto no ambiente real: deploy na Vercel conectado ao Supabase de produção, com usuário de teste "Administrador da plataforma" validado por você (Henrique) fazendo login real e navegando pelo sistema.
 
 ### Sprint 9 — Relatórios executivos
-⏳ Não iniciada
+✅ Concluída e testada com script dedicado (18 conferências automáticas)
+- Fluxo validado: empreendimento com 4 unidades de R$ 100.000 (VGV total R$ 400.000) → 1 unidade vendida com 5% de desconto (R$ 95.000), aprovada em 2 alçadas, contrato assinado → posição de estoque mostrando 1 vendida/3 disponíveis batendo com os valores certos → VGV vendido/disponível/% vendido/ticket médio conferidos → parcela recebida parcialmente (R$ 30.000 de R$ 95.000) refletindo em "carteira recebida" e "a receber" → conta a pagar quitada refletindo em "despesas pagas" → relatório do investidor consolidando tudo isso em uma página só.
+- Módulos entregues: painel de relatórios (`/reports`) com posição de estoque e indicadores comerciais/financeiros consolidados da organização inteira, e relatório do investidor por empreendimento (`/reports/[id]`) combinando vendas, carteira, despesas e fluxo de caixa.
+- **Bug corrigido durante a sprint:** a unidade nunca chegava ao status "Vendida" depois do contrato assinado — ficava presa em "Contrato em elaboração" desde a Sprint 5, porque a confirmação de assinatura nunca atualizava o status da unidade. Isso quebraria qualquer relatório de vendas/estoque. Corrigido e coberto pelo teste (unidade confirmada "Vendida" após a assinatura).
 
 ### Sprint 10 — Estabilização e implantação
 ⏳ Não iniciada
@@ -50,6 +56,8 @@
 | Alçadas de aprovação de desconto | Valores citados como exemplo | Até 2% gerente comercial; 2-5% +diretor; acima de 5% +sócios | Usado o exemplo do PRD como padrão inicial | Confirmado pela TSH — manter |
 | Expiração de reserva e correção de carteira | Não especificado o mecanismo / PRD prevê rotina de correção contínua | Varredura "preguiçosa" (recálculo sob demanda, ao consultar a tela) em vez de worker assíncrono — agora usada também para recalcular parcelas vencidas antes de exibir a lista de inadimplência | Ainda não existe processamento em background no sistema | Sim — decisão adiada de novo na Sprint 6-7 por falta de infraestrutura de fila; reavaliar antes da Sprint 10 (estabilização), já que sem rotina automática ninguém é avisado de uma parcela vencendo sem que alguém abra a tela |
 | Correção em duas fases (obra e pós-Habite-se) | PRD seção 12 prevê fases de correção dentro do mesmo contrato (ex.: INCC durante a obra, IPCA + juros após a entrega) | Implementado com gatilho pela **data do Habite-se** (campo novo no empreendimento, diferente da data de entrega ao cliente). A regra da fase de obra fica no contrato (pode variar por negociação); a regra pós-Habite-se fica **no empreendimento** e vale para todos os contratos dele — confirmado pela TSH que não é configurável por contrato individual | Decisão confirmada pela TSH em 2026-07-24, resolvida ainda dentro da Sprint 6-7 como retrabalho pontual | Não — decisão fechada e testada (ver seção 1) |
+| Sem rateio de despesa entre empreendimentos/SPEs | PRD menciona "rateio" no cadastro de conta a pagar | Cada conta a pagar pertence a no máximo um empreendimento (ou fica "da organização", sem empreendimento específico, quando é uma despesa da holding) | Risco identificado antes da Sprint 8; TSH não sinalizou necessidade imediata para os 2 empreendimentos-piloto, então a tela de rateio (dividir uma despesa entre vários empreendimentos) não foi construída | Sim — se surgir um caso real de despesa compartilhada, revisar antes de depender do relatório de despesas por empreendimento para decisões |
+| Relatório do investidor sem módulo de participação/aporte | PRD seção 21 descreve painel do investidor com capital aportado, percentual de participação, distribuição de resultados | Implementado como resumo executivo do empreendimento (VGV, estoque, carteira, despesas, fluxo de caixa) — sem cadastro de quais investidores têm quanto de participação | A gestão de investidores (Fase 13 do PRD) nunca esteve no escopo do V1 (seção 28 do PRD não lista "gestão de investidores" nos módulos da primeira versão, só o relatório) | Sim — se a TSH precisar de extrato individual por investidor (não só o resumo do empreendimento), isso é um módulo novo, não um ajuste no relatório atual |
 
 ---
 
@@ -64,14 +72,15 @@
 
 ---
 
-## 4. Riscos identificados antes da próxima sprint (Sprint 8 — Financeiro básico)
+## 4. Riscos identificados antes da próxima sprint (Sprint 10 — Estabilização e implantação)
 
 | Risco | Por quê importa | Como pretendemos mitigar |
 |---|---|---|
-| Categorização de despesas inconsistente | O PRD lista categorias específicas (construtora, terreno, projetos, marketing, corretagem, impostos...). Se o campo for texto livre, cada usuário escreve diferente e o fluxo de caixa por categoria fica inutilizável. | Modelar categoria como lista fechada (igual fizemos com tipo de unidade/status), não texto livre. |
-| Rateio entre empreendimentos e SPEs | Uma despesa (ex.: contabilidade da holding) pode precisar ser dividida entre mais de um empreendimento/SPE — o PRD menciona "rateio" explicitamente. | Definir com a TSH se, para os 2 empreendimentos-piloto, existe esse cenário agora ou se pode ficar para depois — evita construir uma tela de rateio complexa sem necessidade real. |
-| Fluxo de caixa precisa combinar contas a pagar (novo) com a carteira a receber (já existe) | Se os dois modelos não conversarem bem, a projeção de caixa fica errada — e é exatamente esse número que a diretoria vai olhar primeiro. | Construir o fluxo de caixa como uma consulta que soma as duas fontes (parcelas em aberto da carteira + contas a pagar em aberto), sem duplicar dados, e conferir o total com um exemplo manual antes de fechar a sprint. |
-| Sem integração bancária ainda | Contas a pagar e recebimentos continuam sendo lançados manualmente — risco de atraso no lançamento afetar a confiabilidade do fluxo de caixa. | Fora do escopo da V1 por decisão do PRD (Fase 17); mitigação é apenas disciplina operacional da equipe financeira, não técnica. |
+| Sistema nunca foi testado com dados reais dos empreendimentos-piloto | Todas as sprints até aqui foram validadas com dados sintéticos (scripts de teste), nunca com a estrutura real de unidades/tabelas/contratos da TSH. A estrutura real pode revelar campos faltando ou regras não previstas. | A Sprint 10 é justamente para isso — cadastrar os dois empreendimentos reais é o primeiro teste de verdade, antes de qualquer ajuste final. |
+| Pendências técnicas acumuladas (seção 3) ainda em aberto | Upload real de contrato, worker assíncrono, motor de template — nenhuma é bloqueante isoladamente, mas juntas definem o que "pronto para produção" realmente significa. | Revisar a lista da seção 3 com a TSH antes de declarar a Sprint 10 concluída, decidindo explicitamente o que fica para depois e o que precisa fechar agora. |
+| Ambiente de preview da Vercel aponta para o mesmo banco de produção | Combinado anteriormente (sem banco de staging separado) — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; reavaliar se for abrir acesso a mais pessoas antes de separar um projeto Supabase de staging. |
+| Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Antes de ir para uso real, cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo — hoje só existe um usuário de teste com acesso total. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Usuários antes de considerar a implantação concluída. |
+| UX mínima (HTML simples, sem design system) | Aceitável para validar o fluxo de dados nas sprints anteriores, mas pode gerar atrito real quando a equipe operacional (não técnica) começar a usar no dia a dia. | Coletar feedback específico durante o teste com dados reais na Sprint 10 e decidir com a TSH se algum ajuste de UX é prioridade antes do uso contínuo, ou se fica para depois. |
 
 ---
 
