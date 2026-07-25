@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Sprint 9 concluída
+**Última atualização:** Sprint 10 (regressão técnica concluída — aguardando decisões da TSH antes do encerramento)
 
 ---
 
@@ -45,7 +45,12 @@
 - **Bug corrigido durante a sprint:** a unidade nunca chegava ao status "Vendida" depois do contrato assinado — ficava presa em "Contrato em elaboração" desde a Sprint 5, porque a confirmação de assinatura nunca atualizava o status da unidade. Isso quebraria qualquer relatório de vendas/estoque. Corrigido e coberto pelo teste (unidade confirmada "Vendida" após a assinatura).
 
 ### Sprint 10 — Estabilização e implantação
-⏳ Não iniciada
+🔶 Regressão técnica concluída (testada com 17 conferências automáticas + varredura manual de todas as telas) — **falta uma decisão da TSH sobre as pendências acumuladas antes de considerar a implantação encerrada** (ver abaixo)
+- Fluxo validado: cenário combinando os dois tipos de empreendimento num teste só — **um vertical** (torre, pavimento, unidade principal + vaga + escaninho vinculados, tabela de venda, corretor/imobiliária, comissão com split, correção em duas fases obra/pós-Habite-se) e **um loteamento** (lotes com quadra/testada/profundidade, sem torre/pavimento) — cada um passando pelo ciclo completo reserva → proposta → aprovação → venda → contrato → assinatura → carteira → recebimento parcial. Também testado: reserva cancelada devolvendo a unidade para "Disponível", bloqueio manual de unidade, conta a pagar em cada empreendimento, e confirmação de que os relatórios somam corretamente quando têm mais de um empreendimento mas continuam isolados quando filtrados por um só (nenhum vazamento de dado entre empreendimentos).
+- Também testado neste ciclo: papel "Comercial" confirmado **sem** permissão de aprovar proposta nem conta a pagar (RBAC funcionando como esperado).
+- Varredura manual de todas as telas do menu (dashboard, empreendimentos, mapa vertical e de loteamento, comercial, tabelas de venda, relatórios gerais e por empreendimento, vendas, contas a pagar, fluxo de caixa, inadimplência, índices, clientes, parceiros, fornecedores/centros de custo, usuários, SPEs) com o cenário misto acima — nenhum erro de console, nenhuma requisição falhando.
+- **Nenhum bug novo encontrado nesta sprint** (o único bug de status encontrado na jornada foi na Sprint 9, já corrigido e coberto por teste).
+- **O que falta para a sprint estar de fato concluída** (não é trabalho técnico, é decisão/ação da TSH): (1) revisar a lista de pendências da seção 3 e decidir o que fecha agora vs. o que fica para depois; (2) cadastrar os usuários reais da equipe com os papéis corretos; (3) fazer o primeiro cadastro real dos dois empreendimentos-piloto — que é o teste que efetivamente valida se o sistema está "pronto", já que tudo até aqui foi testado com dados sintéticos.
 
 ---
 
@@ -72,15 +77,17 @@
 
 ---
 
-## 4. Riscos identificados antes da próxima sprint (Sprint 10 — Estabilização e implantação)
+## 4. Riscos identificados — pendentes de decisão da TSH (não há Sprint 11 planejada)
 
-| Risco | Por quê importa | Como pretendemos mitigar |
+A Sprint 10 é a última do plano original. A regressão técnica (seção 1) não encontrou bugs novos, então os riscos abaixo não são mais "o que pode dar errado no código" — são decisões de negócio que só a TSH pode tomar antes de considerar a implantação encerrada.
+
+| Item em aberto | Por quê importa | Próximo passo |
 |---|---|---|
-| Sistema nunca foi testado com dados reais dos empreendimentos-piloto | Todas as sprints até aqui foram validadas com dados sintéticos (scripts de teste), nunca com a estrutura real de unidades/tabelas/contratos da TSH. A estrutura real pode revelar campos faltando ou regras não previstas. | A Sprint 10 é justamente para isso — cadastrar os dois empreendimentos reais é o primeiro teste de verdade, antes de qualquer ajuste final. |
-| Pendências técnicas acumuladas (seção 3) ainda em aberto | Upload real de contrato, worker assíncrono, motor de template — nenhuma é bloqueante isoladamente, mas juntas definem o que "pronto para produção" realmente significa. | Revisar a lista da seção 3 com a TSH antes de declarar a Sprint 10 concluída, decidindo explicitamente o que fica para depois e o que precisa fechar agora. |
-| Ambiente de preview da Vercel aponta para o mesmo banco de produção | Combinado anteriormente (sem banco de staging separado) — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; reavaliar se for abrir acesso a mais pessoas antes de separar um projeto Supabase de staging. |
-| Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Antes de ir para uso real, cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo — hoje só existe um usuário de teste com acesso total. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Usuários antes de considerar a implantação concluída. |
-| UX mínima (HTML simples, sem design system) | Aceitável para validar o fluxo de dados nas sprints anteriores, mas pode gerar atrito real quando a equipe operacional (não técnica) começar a usar no dia a dia. | Coletar feedback específico durante o teste com dados reais na Sprint 10 e decidir com a TSH se algum ajuste de UX é prioridade antes do uso contínuo, ou se fica para depois. |
+| Sistema nunca foi testado com os dados reais dos empreendimentos-piloto | Toda a regressão (inclusive a da Sprint 10) usou dados sintéticos. A estrutura real da TSH pode ter um caso que os testes não cobriram. | Cadastrar os dois empreendimentos reais é o próximo passo — e é o teste que realmente valida o sistema, não mais testes automatizados. |
+| Pendências técnicas acumuladas (seção 3) ainda em aberto | Upload real de contrato, worker assíncrono, motor de template — nenhuma impede o uso, mas juntas definem o que "pronto para produção" significa para a TSH. | Revisar a lista da seção 3 e decidir explicitamente o que fecha agora vs. o que fica para depois. |
+| Ambiente de preview da Vercel aponta para o mesmo banco de produção | Sem banco de staging separado — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; separar um projeto Supabase de staging se for abrir acesso a mais gente. |
+| Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Usuários. |
+| UX mínima (HTML simples, sem design system) | Foi suficiente para validar o fluxo de dados em todas as sprints, mas pode gerar atrito quando a equipe operacional usar no dia a dia. | Coletar feedback específico durante o cadastro dos empreendimentos reais e decidir se algum ajuste é prioridade. |
 
 ---
 
