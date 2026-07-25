@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getSale } from "@/server/sales";
 import { getContractBySale } from "@/server/contracts";
+import { getSignedContractUrl } from "@/server/storage";
 import { listIndexRules } from "@/server/index-rules";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { CreateContractForm, MarkAwaitingSignatureForm, ConfirmSignatureForm } from "./contract-forms";
@@ -38,6 +39,9 @@ export default async function SaleDetailPage({
 
   const contract = await getContractBySale(context.organizationId, id);
   const indexRules = contract ? await listIndexRules(context.organizationId) : [];
+  const signedDocumentUrl = contract?.signedDocumentPath
+    ? await getSignedContractUrl(contract.signedDocumentPath).catch(() => null)
+    : null;
 
   const canCreateContract = hasPermission(context, "contract", "CREATE");
   const canEditContract = hasPermission(context, "contract", "EDIT");
@@ -93,12 +97,16 @@ export default async function SaleDetailPage({
                 ? ` · assinado em ${new Date(contract.signedAt).toLocaleDateString("pt-BR")}`
                 : ""}
             </p>
-            {contract.signedDocumentUrl ? (
+            {signedDocumentUrl ? (
               <p style={{ fontSize: "0.85rem" }}>
-                Documento assinado:{" "}
-                <a href={contract.signedDocumentUrl} target="_blank" rel="noreferrer">
-                  {contract.signedDocumentUrl}
-                </a>
+                <a href={signedDocumentUrl} target="_blank" rel="noreferrer">
+                  Baixar contrato assinado (PDF)
+                </a>{" "}
+                <span style={{ opacity: 0.6 }}>— link válido por 1 hora</span>
+              </p>
+            ) : contract.signedDocumentPath ? (
+              <p style={{ fontSize: "0.85rem" }} className="error-text">
+                Contrato assinado enviado, mas não foi possível gerar o link agora.
               </p>
             ) : null}
 

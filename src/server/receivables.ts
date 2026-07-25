@@ -305,9 +305,31 @@ export async function registerInstallmentPayment(
 }
 
 /**
- * Sem worker assíncrono ainda: recalcula sob demanda todas as parcelas em
- * aberto ao consultar a lista de inadimplência (mesmo padrão usado nas
- * reservas). Substituir por rotina agendada quando houver infraestrutura.
+ * Recalcula todas as parcelas em aberto da organização — usado pela rotina
+ * mensal agendada (src/app/api/cron/recalculate-installments/route.ts,
+ * configurada em vercel.json). Também é seguro chamar manualmente; parcelas
+ * já pagas/canceladas são ignoradas por `recalculateInstallment`.
+ */
+export async function recalculateAllOpenInstallments(organizationId: string) {
+  const openInstallments = await prisma.installment.findMany({
+    where: { portfolio: { organizationId }, status: { notIn: ["PAID", "CANCELLED"] } },
+    select: { id: true },
+  });
+
+  const asOfDate = new Date();
+  let recalculated = 0;
+  for (const installment of openInstallments) {
+    await prisma.$transaction((tx) => recalculateInstallment(tx, installment.id, asOfDate));
+    recalculated += 1;
+  }
+
+  return { totalOpen: openInstallments.length, recalculated };
+}
+
+/**
+ * Varredura preguiçosa complementar à rotina mensal: garante que a tela de
+ * inadimplência sempre mostra números atualizados mesmo entre execuções do
+ * cron (ex.: alguém consultando no meio do mês).
  */
 export async function listOverdueInstallments(organizationId: string) {
   const openInstallments = await prisma.installment.findMany({

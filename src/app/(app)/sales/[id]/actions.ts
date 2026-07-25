@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
+import { uploadContractDocument } from "@/server/storage";
 import {
   setContractCorrectionRule,
   recalculatePortfolio,
@@ -59,11 +60,15 @@ export async function confirmSignatureAction(
 
   const saleId = String(formData.get("saleId") ?? "");
   const contractId = String(formData.get("contractId") ?? "");
-  const signedDocumentUrl = String(formData.get("signedDocumentUrl") ?? "").trim() || undefined;
+  const file = formData.get("signedDocument");
   if (!contractId) return { error: "Contrato inválido." };
 
   try {
-    await confirmSignature(context, contractId, signedDocumentUrl);
+    let signedDocumentPath: string | undefined;
+    if (file instanceof File && file.size > 0) {
+      signedDocumentPath = await uploadContractDocument(file, contractId);
+    }
+    await confirmSignature(context, contractId, signedDocumentPath);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao confirmar assinatura." };
   }

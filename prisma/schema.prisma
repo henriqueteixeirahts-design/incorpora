@@ -872,18 +872,18 @@ enum ContractStatus {
 
 /// Contrato de compra e venda gerado a partir de uma venda (PRD seção 9).
 model Contract {
-  id                String         @id @default(uuid()) @db.Uuid
-  organizationId    String         @db.Uuid
-  developmentId     String         @db.Uuid
-  unitId            String         @unique @db.Uuid
-  saleId            String         @unique @db.Uuid
-  customerId        String         @db.Uuid
-  contractNumber    String
-  status            ContractStatus @default(DRAFT)
-  issuedAt          DateTime       @default(now())
-  signedAt          DateTime?
-  signedDocumentUrl String? // referência/URL do contrato assinado (upload real quando houver Storage)
-  notes             String?
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @db.Uuid
+  developmentId      String         @db.Uuid
+  unitId             String         @unique @db.Uuid
+  saleId             String         @unique @db.Uuid
+  customerId         String         @db.Uuid
+  contractNumber     String
+  status             ContractStatus @default(DRAFT)
+  issuedAt           DateTime       @default(now())
+  signedAt           DateTime?
+  signedDocumentPath String? // caminho no bucket privado "contracts" do Supabase Storage (não é uma URL pública — acesso via URL assinada de curto prazo)
+  notes              String?
 
   // Regra de correção da fase de obra (pré-Habite-se), por contrato — pode
   // variar por tabela/negociação. A fase pós-Habite-se usa a regra

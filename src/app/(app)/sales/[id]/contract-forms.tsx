@@ -46,15 +46,11 @@ export function ConfirmSignatureForm({ saleId, contractId }: { saleId: string; c
     >
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
-      <label htmlFor="signed-url">Referência do contrato assinado (URL/arquivo)</label>
-      <input
-        id="signed-url"
-        name="signedDocumentUrl"
-        placeholder="Cole o link do PDF assinado (sem Storage configurado ainda)"
-      />
+      <label htmlFor="signed-document">Contrato assinado (PDF, até 10MB)</label>
+      <input id="signed-document" name="signedDocument" type="file" accept="application/pdf" />
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <button type="submit" disabled={pending}>
-        {pending ? "Confirmando..." : "Confirmar assinatura"}
+        {pending ? "Enviando..." : "Confirmar assinatura"}
       </button>
     </form>
   );

@@ -149,12 +149,14 @@ export async function markAwaitingSignature(context: AccessContext, contractId: 
 /**
  * Confirma a assinatura (manual — sem provedor de assinatura eletrônica
  * integrado na V1) e cria a carteira de recebíveis automaticamente a
- * partir do fluxo simulado na proposta (PRD seção 8).
+ * partir do fluxo simulado na proposta (PRD seção 8). `signedDocumentPath`
+ * é o caminho retornado por `uploadContractDocument` (Supabase Storage),
+ * não uma URL — o link de download é gerado sob demanda com validade curta.
  */
 export async function confirmSignature(
   context: AccessContext,
   contractId: string,
-  signedDocumentUrl?: string,
+  signedDocumentPath?: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
@@ -169,7 +171,7 @@ export async function confirmSignature(
 
     const updated = await tx.contract.update({
       where: { id: contractId },
-      data: { status: "SIGNED", signedAt, signedDocumentUrl },
+      data: { status: "SIGNED", signedAt, signedDocumentPath },
     });
 
     if (contract.unit.status !== "SOLD" && contract.unit.status !== "CANCELLED") {
