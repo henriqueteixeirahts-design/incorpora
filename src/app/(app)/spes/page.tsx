@@ -1,43 +1,51 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { listSpes } from "@/server/spes";
-import { NewSpeForm } from "./new-spe-form";
+import { listSpesPaged, type SpeSortField } from "@/server/spes";
+import { SpesManager } from "./spes-manager";
 
-export default async function SpesPage() {
+const PAGE_SIZE = 20;
+
+export default async function SpesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const params = await searchParams;
   const context = await requireAccessContext();
-  const spes = await listSpes(context.organizationId);
+
+  const search = params.q ?? "";
+  const sortBy = (params.sort as SpeSortField) ?? "name";
+  const sortDir = params.dir === "desc" ? "desc" : "asc";
+  const page = Math.max(1, Number(params.page) || 1);
+
+  const { items, total } = await listSpesPaged(context.organizationId, {
+    search,
+    sortBy,
+    sortDir,
+    page,
+    pageSize: PAGE_SIZE,
+  });
+
   const canCreate = hasPermission(context, "spe", "CREATE");
+  const canEdit = hasPermission(context, "spe", "EDIT");
+  const canDelete = hasPermission(context, "spe", "DELETE");
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <>
       <h1>SPEs</h1>
 
-      <table style={{ marginTop: "1.5rem", maxWidth: 720 }}>
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>CNPJ</th>
-            <th>Endereço</th>
-          </tr>
-        </thead>
-        <tbody>
-          {spes.map((spe) => (
-            <tr key={spe.id}>
-              <td>{spe.name}</td>
-              <td>{spe.document}</td>
-              <td>{spe.address ?? "—"}</td>
-            </tr>
-          ))}
-          {spes.length === 0 ? (
-            <tr>
-              <td colSpan={3} style={{ opacity: 0.7 }}>
-                Nenhuma SPE cadastrada.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-
-      {canCreate ? <NewSpeForm /> : null}
+      <SpesManager
+        spes={items}
+        total={total}
+        page={page}
+        totalPages={totalPages}
+        search={search}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        canCreate={canCreate}
+        canEdit={canEdit}
+        canDelete={canDelete}
+      />
     </>
   );
 }
