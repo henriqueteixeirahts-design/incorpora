@@ -1,6 +1,6 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listIndexRules } from "@/server/index-rules";
-import { NewIndexRuleForm, NewIndexValueForm } from "./index-rule-forms";
+import { NewIndexRuleForm, NewIndexValueForm, SyncIndexRuleButton } from "./index-rule-forms";
 
 const CODE_LABELS: Record<string, string> = {
   INCC: "INCC",
@@ -9,17 +9,21 @@ const CODE_LABELS: Record<string, string> = {
   FIXED: "Taxa fixa",
 };
 
+const OFFICIAL_SOURCE_CODES = new Set(["INCC", "IPCA", "IGPM"]);
+
 export default async function IndexRulesPage() {
   const context = await requireAccessContext();
   const rules = await listIndexRules(context.organizationId);
   const canManage = hasPermission(context, "index_rule", "CREATE");
+  const canEdit = hasPermission(context, "index_rule", "EDIT");
 
   return (
     <>
       <h1>Índices</h1>
       <p style={{ opacity: 0.7, maxWidth: 600 }}>
-        Catálogo de índices usados para corrigir as carteiras. Os valores mensais precisam ser
-        lançados manualmente — ainda não há integração automática com Banco Central/IBGE.
+        Catálogo de índices usados para corrigir as carteiras. INCC, IPCA e IGP-M podem ser
+        buscados automaticamente do Banco Central (semanalmente, e sob demanda aqui); lançamento
+        manual continua disponível e nunca é sobrescrito por uma busca automática.
       </p>
 
       {rules.map((rule) => (
@@ -42,6 +46,7 @@ export default async function IndexRulesPage() {
                 <tr>
                   <th>Mês</th>
                   <th>%</th>
+                  <th>Origem</th>
                 </tr>
               </thead>
               <tbody>
@@ -49,6 +54,9 @@ export default async function IndexRulesPage() {
                   <tr key={value.id}>
                     <td>{new Date(value.referenceMonth).toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" })}</td>
                     <td>{Number(value.ratePercent)}%</td>
+                    <td style={{ fontSize: "0.8rem", opacity: 0.75 }}>
+                      {value.source === "OFFICIAL" ? "Banco Central" : "Manual"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -58,6 +66,9 @@ export default async function IndexRulesPage() {
               Nenhum valor mensal lançado ainda.
             </p>
           )}
+          {canEdit && OFFICIAL_SOURCE_CODES.has(rule.code) ? (
+            <SyncIndexRuleButton indexRuleId={rule.id} />
+          ) : null}
         </div>
       ))}
       {rules.length === 0 ? <p style={{ opacity: 0.7, marginTop: "1rem" }}>Nenhum índice cadastrado.</p> : null}

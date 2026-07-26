@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/recalculate-installments",
       "schedule": "0 3 2 * *"
+    },
+    {
+      "path": "/api/cron/sync-index-values",
+      "schedule": "0 4 * * 1"
     }
   ]
 }

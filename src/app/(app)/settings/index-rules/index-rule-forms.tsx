@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { createIndexRuleAction, upsertIndexValueAction, type FormState } from "./actions";
+import { useActionState, useState } from "react";
+import { createIndexRuleAction, upsertIndexValueAction, syncIndexRuleAction, type FormState } from "./actions";
 
 const initialState: FormState = {};
 
@@ -25,6 +25,36 @@ export function NewIndexRuleForm() {
       </button>
       {state.error ? <span className="error-text">{state.error}</span> : null}
     </form>
+  );
+}
+
+export function SyncIndexRuleButton({ indexRuleId }: { indexRuleId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleClick() {
+    setBusy(true);
+    setMessage(null);
+    const result = await syncIndexRuleAction(indexRuleId);
+    setBusy(false);
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+    setMessage(
+      result.filled
+        ? `${result.filled} mês(es) preenchido(s) com valor oficial.`
+        : "Nenhum mês novo disponível no Banco Central por enquanto.",
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <button type="button" className="secondary" disabled={busy} onClick={handleClick}>
+        {busy ? "Buscando..." : "Buscar do Banco Central"}
+      </button>
+      {message ? <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>{message}</span> : null}
+    </div>
   );
 }
 

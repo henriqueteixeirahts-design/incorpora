@@ -1026,15 +1026,21 @@ model IndexRule {
   @@map("index_rules")
 }
 
+enum IndexValueSource {
+  MANUAL // lançado manualmente por alguém do Financeiro
+  OFFICIAL // buscado automaticamente do Banco Central (SGS)
+}
+
 /// Variação percentual do índice em um mês de referência (ex.: INCC de
 /// 07/2026 = 0,42%). A memória de cálculo de cada parcela referencia estes
 /// valores, nunca os substitui.
 model IndexValue {
-  id             String   @id @default(uuid()) @db.Uuid
-  indexRuleId    String   @db.Uuid
+  id             String           @id @default(uuid()) @db.Uuid
+  indexRuleId    String           @db.Uuid
   referenceMonth DateTime // sempre normalizado para o dia 1 do mês
-  ratePercent    Decimal  @db.Decimal(7, 4)
-  createdAt      DateTime @default(now())
+  ratePercent    Decimal          @db.Decimal(7, 4)
+  source         IndexValueSource @default(MANUAL)
+  createdAt      DateTime         @default(now())
 
   indexRule IndexRule @relation(fields: [indexRuleId], references: [id], onDelete: Cascade)
 

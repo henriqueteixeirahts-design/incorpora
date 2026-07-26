@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { createIndexRule, upsertIndexValue } from "@/server/index-rules";
+import { createIndexRule, upsertIndexValue, syncIndexRuleValues } from "@/server/index-rules";
 import type { IndexCode } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
@@ -54,4 +54,19 @@ export async function upsertIndexValueAction(
 
   revalidatePath("/settings/index-rules");
   return {};
+}
+
+export async function syncIndexRuleAction(
+  indexRuleId: string,
+): Promise<{ error?: string; checked?: number; filled?: number }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "index_rule", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    const result = await syncIndexRuleValues(context, indexRuleId);
+    revalidatePath("/settings/index-rules");
+    return result;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao buscar valores oficiais." };
+  }
 }

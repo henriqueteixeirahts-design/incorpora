@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { fetchOfficialIndexRate, isOfficialSourceAvailable } from "@/server/index-sources";
 import type { AccessContext } from "@/server/auth-context";
 import type { IndexCode } from "@/generated/prisma/client";
 
@@ -53,8 +54,13 @@ export async function upsertIndexValue(
 
     const value = await tx.indexValue.upsert({
       where: { indexRuleId_referenceMonth: { indexRuleId: input.indexRuleId, referenceMonth } },
-      create: { indexRuleId: input.indexRuleId, referenceMonth, ratePercent: input.ratePercent },
-      update: { ratePercent: input.ratePercent },
+      create: {
+        indexRuleId: input.indexRuleId,
+        referenceMonth,
+        ratePercent: input.ratePercent,
+        source: "MANUAL",
+      },
+      update: { ratePercent: input.ratePercent, source: "MANUAL" },
     });
 
     await recordAuditEvent(tx, {
@@ -68,4 +74,90 @@ export async function upsertIndexValue(
 
     return value;
   });
+}
+
+/**
+ * Preenche automaticamente os meses sem valor lançado, buscando a variação
+ * oficial no Banco Central (SGS). Nunca sobrescreve um mês que já tem valor
+ * — manual ou já buscado antes — só preenche lacunas reais. Só considera
+ * meses já fechados (não busca o mês corrente, que ainda não fechou).
+ */
+async function syncIndexRuleValuesInternal(
+  organizationId: string,
+  indexRuleId: string,
+  actorUserId: string | null,
+  monthsBack = 24,
+) {
+  const rule = await prisma.indexRule.findFirst({
+    where: { id: indexRuleId, organizationId },
+  });
+  if (!rule) throw new Error("Índice inválido.");
+  if (!isOfficialSourceAvailable(rule.code)) {
+    return { checked: 0, filled: 0 };
+  }
+
+  const now = new Date();
+  const lastClosedMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const earliestMonth = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
+
+  const existingValues = await prisma.indexValue.findMany({
+    where: { indexRuleId, referenceMonth: { gte: earliestMonth, lte: lastClosedMonth } },
+    select: { referenceMonth: true },
+  });
+  const existingMonths = new Set(
+    existingValues.map((v) => v.referenceMonth.toISOString().slice(0, 7)),
+  );
+
+  let checked = 0;
+  let filled = 0;
+  for (
+    let month = new Date(earliestMonth);
+    month <= lastClosedMonth;
+    month = new Date(month.getFullYear(), month.getMonth() + 1, 1)
+  ) {
+    const key = month.toISOString().slice(0, 7);
+    if (existingMonths.has(key)) continue;
+
+    checked += 1;
+    const rate = await fetchOfficialIndexRate(rule.code, month);
+    if (rate === null) continue;
+
+    await prisma.$transaction(async (tx) => {
+      const value = await tx.indexValue.create({
+        data: { indexRuleId, referenceMonth: month, ratePercent: rate, source: "OFFICIAL" },
+      });
+      await recordAuditEvent(tx, {
+        organizationId,
+        actorUserId,
+        action: "create",
+        entityType: "IndexValue",
+        entityId: value.id,
+        afterData: value,
+      });
+    });
+    filled += 1;
+  }
+
+  return { checked, filled };
+}
+
+/** Sincronização sob demanda, disparada por um usuário pela tela de Índices. */
+export function syncIndexRuleValues(context: AccessContext, indexRuleId: string) {
+  return syncIndexRuleValuesInternal(context.organizationId, indexRuleId, context.userId);
+}
+
+/** Roda a sincronização para todos os índices com fonte oficial de todas as organizações (uso do cron). */
+export async function syncAllIndexRules() {
+  const rules = await prisma.indexRule.findMany({
+    where: { code: { in: ["INCC", "IPCA", "IGPM"] }, isActive: true },
+    select: { id: true, organizationId: true, name: true, code: true },
+  });
+
+  const results: { indexRuleId: string; name: string; filled: number }[] = [];
+  for (const rule of rules) {
+    const result = await syncIndexRuleValuesInternal(rule.organizationId, rule.id, null);
+    results.push({ indexRuleId: rule.id, name: rule.name, filled: result.filled });
+  }
+
+  return results;
 }
