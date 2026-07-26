@@ -5,7 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import type { AccessContext } from "@/server/auth-context";
-import type { CommissionBeneficiaryType } from "@/generated/prisma/client";
+import type { CommissionBeneficiaryType, Prisma } from "@/generated/prisma/client";
 
 export function listSales(organizationId: string) {
   return prisma.sale.findMany({
@@ -13,6 +13,52 @@ export function listSales(organizationId: string) {
     include: { unit: true, customer: true, development: true, commissionSplits: true },
     orderBy: { saleDate: "desc" },
   });
+}
+
+export type SaleSortField = "saleDate" | "salePrice" | "customer" | "development";
+
+export async function listSalesPaged(
+  organizationId: string,
+  params: { search?: string; sortBy?: SaleSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
+) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = params.pageSize ?? 20;
+  const sortBy = params.sortBy ?? "saleDate";
+  const sortDir = params.sortDir ?? "desc";
+  const search = params.search?.trim();
+
+  const where: Prisma.SaleWhereInput = {
+    organizationId,
+    ...(search
+      ? {
+          OR: [
+            { customer: { name: { contains: search, mode: "insensitive" } } },
+            { development: { name: { contains: search, mode: "insensitive" } } },
+            { unit: { number: { contains: search, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const orderBy: Prisma.SaleOrderByWithRelationInput =
+    sortBy === "customer"
+      ? { customer: { name: sortDir } }
+      : sortBy === "development"
+        ? { development: { name: sortDir } }
+        : { [sortBy]: sortDir };
+
+  const [items, total] = await Promise.all([
+    prisma.sale.findMany({
+      where,
+      include: { unit: true, customer: true, development: true, commissionSplits: true },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.sale.count({ where }),
+  ]);
+
+  return { items, total, page, pageSize };
 }
 
 export function getSale(organizationId: string, saleId: string) {

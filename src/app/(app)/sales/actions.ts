@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { addCommissionSplit } from "@/server/sales";
+import { addCommissionSplit, getSale } from "@/server/sales";
 import type { CommissionBeneficiaryType } from "@/generated/prisma/client";
 
-export type FormState = { error?: string };
+export type FormState = { error?: string; success?: boolean };
 
 export async function addCommissionSplitAction(
   _prevState: FormState,
@@ -32,5 +32,12 @@ export async function addCommissionSplitAction(
   }
 
   revalidatePath("/sales");
-  return {};
+  return { success: true };
+}
+
+export async function getSaleCommissionSplitsAction(saleId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "sale", "VIEW")) return null;
+  const sale = await getSale(context.organizationId, saleId);
+  return sale?.commissionSplits ?? null;
 }

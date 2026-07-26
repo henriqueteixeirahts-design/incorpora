@@ -3,8 +3,15 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
+import {
+  getSignedDocumentUrl,
+  uploadEntityDocument,
+  deleteEntityDocumentFile,
+} from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
-import type { PayableCategory, PayableStatus } from "@/generated/prisma/client";
+import type { PayableCategory, PayableStatus, DocumentCategory, Prisma } from "@/generated/prisma/client";
+
+const ENTITY_TYPE = "Payable";
 
 export function listPayables(organizationId: string, developmentId?: string) {
   return prisma.payable.findMany({
@@ -12,6 +19,58 @@ export function listPayables(organizationId: string, developmentId?: string) {
     include: { development: true, spe: true, supplier: true, costCenter: true },
     orderBy: { dueDate: "asc" },
   });
+}
+
+export type PayableSortField = "dueDate" | "amount" | "description" | "status";
+
+export async function listPayablesPaged(
+  organizationId: string,
+  params: { search?: string; sortBy?: PayableSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
+) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = params.pageSize ?? 20;
+  const sortBy = params.sortBy ?? "dueDate";
+  const sortDir = params.sortDir ?? "asc";
+  const search = params.search?.trim();
+
+  const where: Prisma.PayableWhereInput = {
+    organizationId,
+    ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.payable.findMany({
+      where,
+      include: { development: true, spe: true, supplier: true, costCenter: true },
+      orderBy: { [sortBy]: sortDir },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.payable.count({ where }),
+  ]);
+
+  return { items, total, page, pageSize };
+}
+
+export async function getPayableDetail(organizationId: string, payableId: string) {
+  const payable = await prisma.payable.findFirst({
+    where: { id: payableId, organizationId },
+    include: { development: true, spe: true, supplier: true, costCenter: true },
+  });
+  if (!payable) return null;
+
+  const documents = await prisma.document.findMany({
+    where: { organizationId, entityType: ENTITY_TYPE, entityId: payableId },
+    orderBy: { createdAt: "desc" },
+  });
+  const documentsWithUrl = await Promise.all(
+    documents.map(async (doc) => ({
+      ...doc,
+      signedUrl: await getSignedDocumentUrl(doc.fileUrl).catch(() => null),
+    })),
+  );
+
+  return { ...payable, documents: documentsWithUrl };
 }
 
 export type CreatePayableInput = {
@@ -60,6 +119,44 @@ export async function createPayable(context: AccessContext, input: CreatePayable
         payload: { amount: Number(payable.amount), category: payable.category },
       });
     }
+
+    return payable;
+  });
+}
+
+export type UpdatePayableInput = CreatePayableInput;
+
+/**
+ * Edição de dados só é permitida enquanto a conta está "Lançada" (ENTERED) —
+ * uma vez conferida/aprovada, os valores viram parte de um fluxo auditável e
+ * não devem mudar silenciosamente; para corrigir depois disso, cancele e
+ * lance de novo.
+ */
+export async function updatePayable(
+  context: AccessContext,
+  payableId: string,
+  input: UpdatePayableInput,
+) {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.payable.findFirst({
+      where: { id: payableId, organizationId: context.organizationId },
+    });
+    if (!before) throw new Error("Conta a pagar não encontrada.");
+    if (before.status !== "ENTERED") {
+      throw new Error("Só é possível editar contas com status Lançada.");
+    }
+
+    const payable = await tx.payable.update({ where: { id: payableId }, data: input });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Payable",
+      entityId: payable.id,
+      beforeData: before,
+      afterData: payable,
+    });
 
     return payable;
   });
@@ -147,4 +244,42 @@ export async function cancelPayable(context: AccessContext, payableId: string) {
 
     return updated;
   });
+}
+
+export async function uploadPayableDocument(
+  context: AccessContext,
+  payableId: string,
+  file: File,
+  category: DocumentCategory,
+) {
+  const payable = await prisma.payable.findFirst({
+    where: { id: payableId, organizationId: context.organizationId },
+  });
+  if (!payable) throw new Error("Conta a pagar não encontrada.");
+
+  const path = await uploadEntityDocument(file, ENTITY_TYPE, payableId);
+
+  return prisma.document.create({
+    data: {
+      organizationId: context.organizationId,
+      entityType: ENTITY_TYPE,
+      entityId: payableId,
+      category,
+      fileName: file.name,
+      fileUrl: path,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      uploadedById: context.userId,
+    },
+  });
+}
+
+export async function deletePayableDocument(context: AccessContext, documentId: string) {
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, organizationId: context.organizationId, entityType: ENTITY_TYPE },
+  });
+  if (!document) throw new Error("Anexo não encontrado.");
+
+  await prisma.document.delete({ where: { id: documentId } });
+  await deleteEntityDocumentFile(document.fileUrl);
 }

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
-import type { DevelopmentType } from "@/generated/prisma/client";
+import type { DevelopmentType, Prisma } from "@/generated/prisma/client";
 
 export function listDevelopments(organizationId: string) {
   return prisma.development.findMany({
@@ -12,6 +12,44 @@ export function listDevelopments(organizationId: string) {
     include: { spe: true, _count: { select: { units: true } } },
     orderBy: { name: "asc" },
   });
+}
+
+export type DevelopmentSortField = "name" | "type" | "city" | "createdAt";
+
+export async function listDevelopmentsPaged(
+  organizationId: string,
+  params: { search?: string; sortBy?: DevelopmentSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
+) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = params.pageSize ?? 20;
+  const sortBy = params.sortBy ?? "name";
+  const sortDir = params.sortDir ?? "asc";
+  const search = params.search?.trim();
+
+  const where: Prisma.DevelopmentWhereInput = {
+    organizationId,
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" } },
+            { city: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.development.findMany({
+      where,
+      include: { spe: true, _count: { select: { units: true } } },
+      orderBy: { [sortBy]: sortDir },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.development.count({ where }),
+  ]);
+
+  return { items, total, page, pageSize };
 }
 
 export function getDevelopment(organizationId: string, developmentId: string) {
@@ -76,6 +114,79 @@ export async function createDevelopment(
     });
 
     return development;
+  });
+}
+
+export async function updateDevelopment(
+  context: AccessContext,
+  developmentId: string,
+  input: CreateDevelopmentInput,
+) {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.development.findFirst({
+      where: { id: developmentId, organizationId: context.organizationId },
+    });
+    if (!before) throw new Error("Empreendimento não encontrado.");
+
+    const spe = await tx.specialPurposeEntity.findFirst({
+      where: { id: input.speId, organizationId: context.organizationId },
+    });
+    if (!spe) throw new Error("SPE inválida.");
+
+    const development = await tx.development.update({
+      where: { id: developmentId },
+      data: {
+        speId: input.speId,
+        name: input.name,
+        type: input.type,
+        city: input.city,
+        state: input.state,
+        address: input.address,
+      },
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Development",
+      entityId: development.id,
+      beforeData: before,
+      afterData: development,
+    });
+
+    return development;
+  });
+}
+
+export async function deleteDevelopment(context: AccessContext, developmentId: string) {
+  const development = await prisma.development.findFirst({
+    where: { id: developmentId, organizationId: context.organizationId },
+  });
+  if (!development) throw new Error("Empreendimento não encontrado.");
+
+  const [units, costCenters, payables] = await Promise.all([
+    prisma.unit.count({ where: { developmentId } }),
+    prisma.costCenter.count({ where: { developmentId } }),
+    prisma.payable.count({ where: { developmentId } }),
+  ]);
+  const totalLinks = units + costCenters + payables;
+  if (totalLinks > 0) {
+    throw new Error(
+      `Não é possível excluir: o empreendimento tem ${totalLinks} registro(s) vinculado(s) (unidades, centros de custo ou contas a pagar).`,
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.development.delete({ where: { id: developmentId } });
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "delete",
+      entityType: "Development",
+      entityId: developmentId,
+      beforeData: development,
+    });
   });
 }
 
