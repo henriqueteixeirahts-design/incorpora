@@ -571,10 +571,17 @@ model Customer {
   organizationId String       @db.Uuid
   type           CustomerType @default(INDIVIDUAL)
   name           String
-  document       String // CPF ou CNPJ
+  document       String // CPF ou CNPJ, validado por dígito verificador em novos cadastros/edições
   email          String?
   phone          String?
-  address        String?
+  address        String? // legado — cadastros anteriores ao endereço estruturado (ver campos abaixo). Não é mais escrito por cadastros novos, mas nunca apagado.
+  zipCode        String? // CEP, autocompleta os campos abaixo via ViaCEP
+  street         String?
+  number         String?
+  complement     String?
+  neighborhood   String?
+  city           String?
+  state          String? @db.VarChar(2)
   notes          String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

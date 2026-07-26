@@ -73,7 +73,24 @@ export async function getCustomerDetail(organizationId: string, customerId: stri
     })),
   );
 
-  return { ...customer, documents: documentsWithUrl };
+  const auditTrail = await prisma.auditEvent.findMany({
+    where: { organizationId, entityType: ENTITY_TYPE, entityId: customerId },
+    orderBy: { createdAt: "asc" },
+    include: { actor: true },
+  });
+  const createdEvent = auditTrail[0] ?? null;
+  const updatedEvent = auditTrail[auditTrail.length - 1] ?? null;
+
+  return {
+    ...customer,
+    documents: documentsWithUrl,
+    audit: {
+      createdByName: createdEvent?.actor?.fullName ?? null,
+      createdAt: createdEvent?.createdAt ?? customer.createdAt,
+      updatedByName: updatedEvent?.actor?.fullName ?? null,
+      updatedAt: updatedEvent?.createdAt ?? customer.updatedAt,
+    },
+  };
 }
 
 export type CreateCustomerInput = {
@@ -82,11 +99,39 @@ export type CreateCustomerInput = {
   document: string;
   email?: string;
   phone?: string;
-  address?: string;
+  zipCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
   notes?: string;
 };
 
+export class DuplicateDocumentError extends Error {
+  constructor(
+    public customerId: string,
+    public customerName: string,
+  ) {
+    super(`Já existe um cliente cadastrado com este documento: ${customerName}.`);
+  }
+}
+
+async function assertDocumentNotDuplicated(
+  organizationId: string,
+  document: string,
+  excludeCustomerId?: string,
+) {
+  const existing = await prisma.customer.findFirst({
+    where: { organizationId, document, ...(excludeCustomerId ? { id: { not: excludeCustomerId } } : {}) },
+  });
+  if (existing) throw new DuplicateDocumentError(existing.id, existing.name);
+}
+
 export async function createCustomer(context: AccessContext, input: CreateCustomerInput) {
+  await assertDocumentNotDuplicated(context.organizationId, input.document);
+
   return prisma.$transaction(async (tx) => {
     const customer = await tx.customer.create({
       data: { organizationId: context.organizationId, ...input },
@@ -108,12 +153,14 @@ export async function updateCustomer(
   customerId: string,
   input: CreateCustomerInput,
 ) {
-  return prisma.$transaction(async (tx) => {
-    const before = await tx.customer.findFirst({
-      where: { id: customerId, organizationId: context.organizationId },
-    });
-    if (!before) throw new Error("Cliente não encontrado.");
+  const before = await prisma.customer.findFirst({
+    where: { id: customerId, organizationId: context.organizationId },
+  });
+  if (!before) throw new Error("Cliente não encontrado.");
 
+  await assertDocumentNotDuplicated(context.organizationId, input.document, customerId);
+
+  return prisma.$transaction(async (tx) => {
     const customer = await tx.customer.update({
       where: { id: customerId },
       data: input,

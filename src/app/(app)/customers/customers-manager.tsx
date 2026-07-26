@@ -204,6 +204,7 @@ export function CustomersManager({
           customer={modal.mode === "edit" ? modal.customer : null}
           onClose={() => setModal(null)}
           onCreated={(customer) => setModal({ mode: "edit", customer })}
+          onOpenDuplicate={openEdit}
         />
       ) : null}
     </>
