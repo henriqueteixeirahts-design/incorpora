@@ -35,7 +35,14 @@ export default async function SpesPage({
       <h1>SPEs</h1>
 
       <SpesManager
-        spes={items}
+        spes={items.map((spe) => ({
+          id: spe.id,
+          name: spe.name,
+          document: spe.document,
+          status: spe.status,
+          city: spe.city,
+          state: spe.state,
+        }))}
         total={total}
         page={page}
         totalPages={totalPages}

@@ -1,27 +1,33 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
-import { createSpeAction, updateSpeAction, deleteSpeAction, type CreateSpeState } from "./actions";
+import { deleteSpeAction, getSpeDetailAction } from "./actions";
+import { SpeModal, type SpeDetail } from "./spe-modal";
 import type { SpeSortField } from "@/server/spes";
 
 export type SpeRow = {
   id: string;
   name: string;
   document: string;
-  address: string | null;
+  status: string;
+  city: string | null;
+  state: string | null;
 };
 
-type ModalState = { mode: "create" } | { mode: "edit"; spe: SpeRow } | null;
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Ativa",
+  IN_FORMATION: "Em constituição",
+  CLOSED: "Encerrada",
+};
+
+type ModalState = { mode: "create" } | { mode: "edit"; spe: SpeDetail } | null;
 
 const SORTABLE_COLUMNS: { field: SpeSortField; label: string }[] = [
   { field: "name", label: "Nome" },
   { field: "document", label: "CNPJ" },
 ];
-
-const initialState: CreateSpeState = {};
 
 export function SpesManager({
   spes,
@@ -47,6 +53,7 @@ export function SpesManager({
   canDelete: boolean;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -66,6 +73,13 @@ export function SpesManager({
     qs.set("dir", sortDir);
     qs.set("page", String(targetPage));
     return `/spes?${qs.toString()}`;
+  }
+
+  async function openEdit(speId: string) {
+    setLoadingId(speId);
+    const detail = await getSpeDetailAction(speId);
+    setLoadingId(null);
+    if (detail) setModal({ mode: "edit", spe: detail });
   }
 
   function handleDelete(speId: string, name: string) {
@@ -116,14 +130,15 @@ export function SpesManager({
                 </Link>
               </th>
             ))}
-            <th>Endereço</th>
+            <th>Situação</th>
+            <th>Cidade/UF</th>
             {canEdit || canDelete ? <th aria-label="Ações" /> : null}
           </tr>
         </thead>
         <tbody>
           {spes.length === 0 ? (
             <tr>
-              <td colSpan={4} style={{ opacity: 0.7 }}>
+              <td colSpan={5} style={{ opacity: 0.7 }}>
                 {search ? "Nenhuma SPE encontrada para essa busca." : "Nenhuma SPE cadastrada."}
               </td>
             </tr>
@@ -132,7 +147,8 @@ export function SpesManager({
             <tr key={spe.id}>
               <td>{spe.name}</td>
               <td>{spe.document}</td>
-              <td>{spe.address ?? "—"}</td>
+              <td>{STATUS_LABELS[spe.status] ?? spe.status}</td>
+              <td>{[spe.city, spe.state].filter(Boolean).join("/") || "—"}</td>
               {canEdit || canDelete ? (
                 <td>
                   <div className="row-actions">
@@ -141,7 +157,8 @@ export function SpesManager({
                         type="button"
                         className="icon-btn"
                         aria-label={`Editar ${spe.name}`}
-                        onClick={() => setModal({ mode: "edit", spe })}
+                        disabled={loadingId === spe.id}
+                        onClick={() => openEdit(spe.id)}
                       >
                         <EditIcon />
                       </button>
@@ -182,69 +199,10 @@ export function SpesManager({
           mode={modal.mode}
           spe={modal.mode === "edit" ? modal.spe : null}
           onClose={() => setModal(null)}
+          onCreated={(spe) => setModal({ mode: "edit", spe })}
+          onOpenDuplicate={openEdit}
         />
       ) : null}
     </>
-  );
-}
-
-function SpeModal({
-  mode,
-  spe,
-  onClose,
-}: {
-  mode: "create" | "edit";
-  spe: SpeRow | null;
-  onClose: () => void;
-}) {
-  const formRef = useRef<HTMLFormElement>(null);
-  const formAction = mode === "create" ? createSpeAction : updateSpeAction;
-  const [state, dispatch, pending] = useActionState(formAction, initialState);
-
-  useEffect(() => {
-    if (state.success) onClose();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.success]);
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={mode === "edit" ? `Editar SPE — ${spe!.name}` : "Nova SPE"}
-      width={480}
-      footer={
-        <>
-          <button type="button" className="secondary" onClick={onClose}>
-            Fechar
-          </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
-            {pending ? "Salvando..." : "Salvar"}
-          </button>
-        </>
-      }
-    >
-      <form ref={formRef} action={dispatch}>
-        {mode === "edit" && spe ? <input type="hidden" name="speId" value={spe.id} /> : null}
-
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="name">Nome *</label>
-              <input id="name" name="name" required defaultValue={spe?.name ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="document">CNPJ *</label>
-              <input id="document" name="document" required defaultValue={spe?.document ?? ""} />
-            </div>
-            <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="address">Endereço</label>
-              <input id="address" name="address" defaultValue={spe?.address ?? ""} />
-            </div>
-          </div>
-        </div>
-
-        {state.error ? <p className="error-text">{state.error}</p> : null}
-      </form>
-    </Modal>
   );
 }

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, SpeStatus } from "@/generated/prisma/client";
 
 export function listSpes(organizationId: string) {
   return prisma.specialPurposeEntity.findMany({
@@ -50,25 +50,80 @@ export async function listSpesPaged(
   return { items, total, page, pageSize };
 }
 
-export async function getSpe(organizationId: string, speId: string) {
+export function getSpe(organizationId: string, speId: string) {
   return prisma.specialPurposeEntity.findFirst({ where: { id: speId, organizationId } });
+}
+
+export async function getSpeDetail(organizationId: string, speId: string) {
+  const spe = await prisma.specialPurposeEntity.findFirst({ where: { id: speId, organizationId } });
+  if (!spe) return null;
+
+  const auditTrail = await prisma.auditEvent.findMany({
+    where: { organizationId, entityType: "SpecialPurposeEntity", entityId: speId },
+    orderBy: { createdAt: "asc" },
+    include: { actor: true },
+  });
+  const createdEvent = auditTrail[0] ?? null;
+  const updatedEvent = auditTrail[auditTrail.length - 1] ?? null;
+
+  return {
+    ...spe,
+    audit: {
+      createdByName: createdEvent?.actor?.fullName ?? null,
+      createdAt: createdEvent?.createdAt ?? spe.createdAt,
+      updatedByName: updatedEvent?.actor?.fullName ?? null,
+      updatedAt: updatedEvent?.createdAt ?? spe.updatedAt,
+    },
+  };
+}
+
+export class DuplicateSpeDocumentError extends Error {
+  constructor(
+    public speId: string,
+    public speName: string,
+  ) {
+    super(`Já existe uma SPE cadastrada com este CNPJ: ${speName}.`);
+  }
+}
+
+async function assertDocumentNotDuplicated(
+  organizationId: string,
+  document: string,
+  excludeSpeId?: string,
+) {
+  const existing = await prisma.specialPurposeEntity.findFirst({
+    where: { organizationId, document, ...(excludeSpeId ? { id: { not: excludeSpeId } } : {}) },
+  });
+  if (existing) throw new DuplicateSpeDocumentError(existing.id, existing.name);
 }
 
 export type CreateSpeInput = {
   name: string;
+  tradeName?: string;
   document: string;
-  address?: string;
+  nire?: string;
+  foundedAt?: Date;
+  legalNature?: string;
+  cnae?: string;
+  status: SpeStatus;
+  email?: string;
+  phone?: string;
+  website?: string;
+  zipCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 };
 
 export async function createSpe(context: AccessContext, input: CreateSpeInput) {
+  await assertDocumentNotDuplicated(context.organizationId, input.document);
+
   return prisma.$transaction(async (tx) => {
     const spe = await tx.specialPurposeEntity.create({
-      data: {
-        organizationId: context.organizationId,
-        name: input.name,
-        document: input.document,
-        address: input.address,
-      },
+      data: { organizationId: context.organizationId, ...input },
     });
 
     await recordAuditEvent(tx, {
@@ -94,15 +149,17 @@ export async function createSpe(context: AccessContext, input: CreateSpeInput) {
 }
 
 export async function updateSpe(context: AccessContext, speId: string, input: CreateSpeInput) {
-  return prisma.$transaction(async (tx) => {
-    const before = await tx.specialPurposeEntity.findFirst({
-      where: { id: speId, organizationId: context.organizationId },
-    });
-    if (!before) throw new Error("SPE não encontrada.");
+  const before = await prisma.specialPurposeEntity.findFirst({
+    where: { id: speId, organizationId: context.organizationId },
+  });
+  if (!before) throw new Error("SPE não encontrada.");
 
+  await assertDocumentNotDuplicated(context.organizationId, input.document, speId);
+
+  return prisma.$transaction(async (tx) => {
     const spe = await tx.specialPurposeEntity.update({
       where: { id: speId },
-      data: { name: input.name, document: input.document, address: input.address },
+      data: input,
     });
 
     await recordAuditEvent(tx, {

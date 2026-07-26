@@ -164,15 +164,37 @@ model AccessGrant {
 }
 
 /// SPE — Sociedade de Propósito Específico, dona jurídica do(s) empreendimento(s).
+enum SpeStatus {
+  ACTIVE // ativa
+  IN_FORMATION // em constituição
+  CLOSED // encerrada
+}
+
 model SpecialPurposeEntity {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  name           String
-  document       String // CNPJ
-  address        String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String // razão social
+  tradeName      String? // nome fantasia
+  document       String // CNPJ, validado por dígito verificador em novos cadastros/edições
+  nire           String? // registro na Junta Comercial
+  foundedAt      DateTime? // data de constituição
+  legalNature    String? // natureza jurídica (ex.: "206-2 Sociedade Empresária Limitada")
+  cnae           String? // CNAE principal
+  status         SpeStatus @default(ACTIVE)
+  email          String?
+  phone          String?
+  website        String?
+  address        String? // legado — cadastros anteriores ao endereço estruturado. Não é mais escrito por cadastros novos, mas nunca apagado.
+  zipCode        String?
+  street         String?
+  number         String?
+  complement     String?
+  neighborhood   String?
+  city           String?
+  state          String?   @db.VarChar(2)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   developments Development[]

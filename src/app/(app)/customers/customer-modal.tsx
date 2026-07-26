@@ -4,12 +4,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { Tabs, type TabDef } from "@/components/Tabs";
 import { TrashIcon, DownloadIcon } from "@/components/icons";
-import {
-  formatDocument,
-  formatPhone,
-  formatCep,
-  onlyDigits,
-} from "@/lib/br-validation";
+import { AddressFields } from "@/components/AddressFields";
+import { formatDocument, formatPhone } from "@/lib/br-validation";
 import {
   createCustomerAction,
   updateCustomerAction,
@@ -57,12 +53,6 @@ export function CustomerModal({
   const dadosFormRef = useRef<HTMLFormElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const phoneInputRef = useRef<HTMLInputElement>(null);
-  const cepInputRef = useRef<HTMLInputElement>(null);
-  const streetInputRef = useRef<HTMLInputElement>(null);
-  const neighborhoodInputRef = useRef<HTMLInputElement>(null);
-  const cityInputRef = useRef<HTMLInputElement>(null);
-  const stateInputRef = useRef<HTMLInputElement>(null);
-  const [cepStatus, setCepStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (!state.success || !state.customerId) return;
@@ -76,30 +66,6 @@ export function CustomerModal({
   const dependentTabsDisabled = !isEditing;
   const hasLegacyAddress =
     !!customer?.address && !customer.street && !customer.city && !customer.zipCode;
-
-  async function handleCepBlur() {
-    const cep = onlyDigits(cepInputRef.current?.value ?? "");
-    if (cepInputRef.current) cepInputRef.current.value = formatCep(cep);
-    if (cep.length !== 8) return;
-
-    setCepStatus("Buscando...");
-    try {
-      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      if (data.erro) {
-        setCepStatus("CEP não encontrado — preencha o endereço manualmente.");
-        return;
-      }
-      if (streetInputRef.current && !streetInputRef.current.value) streetInputRef.current.value = data.logradouro ?? "";
-      if (neighborhoodInputRef.current) neighborhoodInputRef.current.value = data.bairro ?? "";
-      if (cityInputRef.current) cityInputRef.current.value = data.localidade ?? "";
-      if (stateInputRef.current) stateInputRef.current.value = data.uf ?? "";
-      setCepStatus(null);
-    } catch {
-      setCepStatus("Não foi possível consultar o CEP agora — preencha o endereço manualmente.");
-    }
-  }
 
   const tabs: TabDef[] = [
     { id: "dados", label: "Dados" },
@@ -233,62 +199,10 @@ export function CustomerModal({
             </div>
           </div>
 
-          <div className="field-section">
-            <h3>Endereço</h3>
-            {hasLegacyAddress ? (
-              <p className="field-hint">Endereço legado (cadastro anterior): {customer!.address}</p>
-            ) : null}
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="zipCode">CEP</label>
-                <input
-                  id="zipCode"
-                  name="zipCode"
-                  ref={cepInputRef}
-                  placeholder="00000-000"
-                  defaultValue={customer?.zipCode ? formatCep(customer.zipCode) : ""}
-                  onBlur={handleCepBlur}
-                />
-                {cepStatus ? <span style={{ fontSize: "0.75rem", opacity: 0.75 }}>{cepStatus}</span> : null}
-              </div>
-              <div className="field" style={{ gridColumn: "span 2" }}>
-                <label htmlFor="street">Logradouro</label>
-                <input id="street" name="street" ref={streetInputRef} defaultValue={customer?.street ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="number">Número</label>
-                <input id="number" name="number" defaultValue={customer?.number ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="complement">Complemento</label>
-                <input id="complement" name="complement" defaultValue={customer?.complement ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="neighborhood">Bairro</label>
-                <input
-                  id="neighborhood"
-                  name="neighborhood"
-                  ref={neighborhoodInputRef}
-                  defaultValue={customer?.neighborhood ?? ""}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="city">Cidade</label>
-                <input id="city" name="city" ref={cityInputRef} defaultValue={customer?.city ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="state">UF</label>
-                <input
-                  id="state"
-                  name="state"
-                  ref={stateInputRef}
-                  maxLength={2}
-                  style={{ textTransform: "uppercase" }}
-                  defaultValue={customer?.state ?? ""}
-                />
-              </div>
-            </div>
-          </div>
+          <AddressFields
+            defaultValues={customer ?? undefined}
+            legacyNote={hasLegacyAddress ? `Endereço legado (cadastro anterior): ${customer!.address}` : null}
+          />
 
           <div className="field-section">
             <h3>Observações</h3>
