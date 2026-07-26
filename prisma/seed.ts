@@ -88,8 +88,8 @@ const SYSTEM_ROLES: Record<
     grants: {
       development: ["VIEW"],
       unit: ["VIEW", "CREATE", "EDIT", "APPROVE"],
-      document: ["VIEW", "CREATE"],
-      customer: ["VIEW", "CREATE", "EDIT"],
+      document: ["VIEW", "CREATE", "DELETE"],
+      customer: ["VIEW", "CREATE", "EDIT", "DELETE"],
       broker: ["VIEW", "CREATE", "EDIT"],
       agency: ["VIEW", "CREATE", "EDIT"],
       sales_table: ["VIEW", "CREATE", "EDIT"],

@@ -123,6 +123,7 @@ enum PermissionAction {
   VIEW
   CREATE
   EDIT
+  DELETE
   APPROVE
   CANCEL
   EXPORT
@@ -578,14 +579,33 @@ model Customer {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reservations Reservation[]
   proposals    Proposal[]
   sales        Sale[]
   contracts    Contract[]
+  contacts     CustomerContact[]
 
   @@unique([organizationId, document])
   @@map("customers")
+}
+
+/// Contato adicional de um cliente (além dos dados principais) — pensado
+/// para quem recebe documentos financeiros ou vai acessar o Portal do
+/// Cliente (Fase 2), que pode não ser a mesma pessoa do cadastro principal.
+model CustomerContact {
+  id         String   @id @default(uuid()) @db.Uuid
+  customerId String   @db.Uuid
+  name       String
+  role       String? // cargo/relação com o cliente, ex.: "Cônjuge", "Financeiro"
+  email      String?
+  phone      String?
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_contacts")
 }
 
 /// Imobiliária parceira.

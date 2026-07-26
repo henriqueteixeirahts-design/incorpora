@@ -197,3 +197,242 @@ th {
   background-size: 160px auto;
   opacity: 0.12;
 }
+
+/* Padrão de listagem: toolbar, tabela com linhas alternadas, paginação */
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 1.25rem 0;
+}
+
+.list-search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.list-search input {
+  width: 260px;
+}
+
+.data-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--tsh-blue) 4%, transparent);
+}
+
+.data-table th {
+  white-space: nowrap;
+}
+
+.sortable-th button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--tsh-blue);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sortable-th button {
+    color: var(--foreground);
+  }
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--tsh-blue);
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--tsh-blue) 10%, transparent);
+}
+
+.icon-btn.danger {
+  color: #d1453b;
+  border-color: color-mix(in srgb, #d1453b 40%, transparent);
+}
+
+.icon-btn.danger:hover {
+  background: color-mix(in srgb, #d1453b 10%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .icon-btn {
+    color: var(--foreground);
+  }
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.pagination a,
+.pagination span.disabled {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
+.pagination span.disabled {
+  opacity: 0.4;
+}
+
+/* Modal */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 28, 33, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 100;
+}
+
+.modal-panel {
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-close {
+  all: unset;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
+.modal-close:hover {
+  background: color-mix(in srgb, var(--tsh-blue) 10%, transparent);
+}
+
+.modal-body {
+  padding: 1.4rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 1rem 1.4rem;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Abas */
+
+.tabs-list {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.tab-button {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--foreground);
+  opacity: 0.6;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-button.active {
+  opacity: 1;
+  color: var(--tsh-blue);
+  border-bottom-color: var(--tsh-gold);
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tab-button.active {
+    color: var(--foreground);
+  }
+}
+
+.tab-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Formulário de cadastro: seções com sub-título */
+
+.field-section {
+  margin-bottom: 1.4rem;
+}
+
+.field-section h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--tsh-gold);
+  margin-bottom: 0.7rem;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field label {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.field-hint {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  padding: 1rem 0;
+}
