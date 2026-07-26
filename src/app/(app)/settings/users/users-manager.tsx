@@ -70,7 +70,7 @@ export function UsersManager({
     if (search) qs.set("q", search);
     qs.set("sort", field);
     qs.set("dir", nextDir);
-    return `/users?${qs.toString()}`;
+    return `/settings/users?${qs.toString()}`;
   }
 
   function pageLink(targetPage: number) {
@@ -79,7 +79,7 @@ export function UsersManager({
     qs.set("sort", sortBy);
     qs.set("dir", sortDir);
     qs.set("page", String(targetPage));
-    return `/users?${qs.toString()}`;
+    return `/settings/users?${qs.toString()}`;
   }
 
   function handleRevoke(grantId: string, name: string) {
@@ -94,7 +94,7 @@ export function UsersManager({
   return (
     <>
       <div className="list-toolbar">
-        <form className="list-search" action="/users" method="get">
+        <form className="list-search" action="/settings/users" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           <input type="search" name="q" placeholder="Buscar por nome ou e-mail" defaultValue={search} />

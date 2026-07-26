@@ -24,7 +24,7 @@ export async function createIndexRuleAction(
     return { error: error instanceof Error ? error.message : "Falha ao criar índice." };
   }
 
-  revalidatePath("/index-rules");
+  revalidatePath("/settings/index-rules");
   return {};
 }
 
@@ -52,6 +52,6 @@ export async function upsertIndexValueAction(
     return { error: error instanceof Error ? error.message : "Falha ao lançar valor do índice." };
   }
 
-  revalidatePath("/index-rules");
+  revalidatePath("/settings/index-rules");
   return {};
 }

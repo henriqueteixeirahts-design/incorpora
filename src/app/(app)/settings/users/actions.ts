@@ -30,7 +30,7 @@ export async function inviteUserAction(
     return { error: error instanceof Error ? error.message : "Falha ao convidar usuário." };
   }
 
-  revalidatePath("/users");
+  revalidatePath("/settings/users");
   return { success: true };
 }
 
@@ -53,7 +53,7 @@ export async function updateUserRoleAction(
     return { error: error instanceof Error ? error.message : "Falha ao atualizar papel." };
   }
 
-  revalidatePath("/users");
+  revalidatePath("/settings/users");
   return { success: true };
 }
 
@@ -71,6 +71,6 @@ export async function revokeUserAccessAction(
     return { error: error instanceof Error ? error.message : "Falha ao revogar acesso." };
   }
 
-  revalidatePath("/users");
+  revalidatePath("/settings/users");
   return { success: true };
 }

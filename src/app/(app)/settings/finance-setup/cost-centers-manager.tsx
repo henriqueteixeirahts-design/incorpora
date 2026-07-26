@@ -4,23 +4,25 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
-import { createSupplierAction, updateSupplierAction, deleteSupplierAction, type FormState } from "./actions";
-import type { SupplierSortField } from "@/server/finance-setup";
+import { createCostCenterAction, updateCostCenterAction, deleteCostCenterAction, type FormState } from "./actions";
+import type { CostCenterSortField } from "@/server/finance-setup";
 
-export type SupplierRow = {
+export type CostCenterRow = {
   id: string;
   name: string;
-  document: string | null;
-  email: string | null;
-  phone: string | null;
+  developmentId: string | null;
+  developmentName: string | null;
 };
 
-type ModalState = { mode: "create" } | { mode: "edit"; supplier: SupplierRow } | null;
+export type DevelopmentOption = { id: string; name: string };
+
+type ModalState = { mode: "create" } | { mode: "edit"; costCenter: CostCenterRow } | null;
 
 const initialState: FormState = {};
 
-export function SuppliersManager({
-  suppliers,
+export function CostCentersManager({
+  costCenters,
+  developments,
   total,
   page,
   totalPages,
@@ -31,12 +33,13 @@ export function SuppliersManager({
   canEdit,
   canDelete,
 }: {
-  suppliers: SupplierRow[];
+  costCenters: CostCenterRow[];
+  developments: DevelopmentOption[];
   total: number;
   page: number;
   totalPages: number;
   search: string;
-  sortBy: SupplierSortField;
+  sortBy: CostCenterSortField;
   sortDir: "asc" | "desc";
   canCreate: boolean;
   canEdit: boolean;
@@ -46,51 +49,51 @@ export function SuppliersManager({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function sortLink(field: SupplierSortField) {
+  function sortLink(field: CostCenterSortField) {
     const nextDir = sortBy === field && sortDir === "asc" ? "desc" : "asc";
     const qs = new URLSearchParams();
-    if (search) qs.set("sq", search);
-    qs.set("ssort", field);
-    qs.set("sdir", nextDir);
-    return `/finance-setup?${qs.toString()}#fornecedores`;
+    if (search) qs.set("cq", search);
+    qs.set("csort", field);
+    qs.set("cdir", nextDir);
+    return `/settings/finance-setup?${qs.toString()}#centros-de-custo`;
   }
 
   function pageLink(targetPage: number) {
     const qs = new URLSearchParams();
-    if (search) qs.set("sq", search);
-    qs.set("ssort", sortBy);
-    qs.set("sdir", sortDir);
-    qs.set("spage", String(targetPage));
-    return `/finance-setup?${qs.toString()}#fornecedores`;
+    if (search) qs.set("cq", search);
+    qs.set("csort", sortBy);
+    qs.set("cdir", sortDir);
+    qs.set("cpage", String(targetPage));
+    return `/settings/finance-setup?${qs.toString()}#centros-de-custo`;
   }
 
   function handleDelete(id: string, name: string) {
-    if (!confirm(`Excluir o fornecedor "${name}"?`)) return;
+    if (!confirm(`Excluir o centro de custo "${name}"?`)) return;
     setDeleteError(null);
     startTransition(async () => {
-      const result = await deleteSupplierAction(id);
+      const result = await deleteCostCenterAction(id);
       if (result.error) setDeleteError(result.error);
     });
   }
 
   return (
-    <div id="fornecedores">
+    <div id="centros-de-custo">
       <div className="list-toolbar">
-        <form className="list-search" action="/finance-setup" method="get">
-          <input type="hidden" name="ssort" value={sortBy} />
-          <input type="hidden" name="sdir" value={sortDir} />
-          <input type="search" name="sq" placeholder="Buscar por nome ou documento" defaultValue={search} />
+        <form className="list-search" action="/settings/finance-setup" method="get">
+          <input type="hidden" name="csort" value={sortBy} />
+          <input type="hidden" name="cdir" value={sortDir} />
+          <input type="search" name="cq" placeholder="Buscar por nome" defaultValue={search} />
           <button type="submit" className="secondary">
             Buscar
           </button>
         </form>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} fornecedor{total === 1 ? "" : "es"}
+            {total} centro{total === 1 ? "" : "s"} de custo
           </p>
           {canCreate ? (
             <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo fornecedor
+              + Novo centro de custo
             </button>
           ) : null}
         </div>
@@ -109,24 +112,22 @@ export function SuppliersManager({
                 </button>
               </Link>
             </th>
-            <th>Documento</th>
-            <th>Contato</th>
+            <th>Empreendimento</th>
             {canEdit || canDelete ? <th aria-label="Ações" /> : null}
           </tr>
         </thead>
         <tbody>
-          {suppliers.length === 0 ? (
+          {costCenters.length === 0 ? (
             <tr>
-              <td colSpan={4} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum fornecedor encontrado." : "Nenhum fornecedor cadastrado."}
+              <td colSpan={3} style={{ opacity: 0.7 }}>
+                {search ? "Nenhum centro de custo encontrado." : "Nenhum centro de custo cadastrado."}
               </td>
             </tr>
           ) : null}
-          {suppliers.map((supplier) => (
-            <tr key={supplier.id}>
-              <td>{supplier.name}</td>
-              <td>{supplier.document ?? "—"}</td>
-              <td>{[supplier.email, supplier.phone].filter(Boolean).join(" · ") || "—"}</td>
+          {costCenters.map((cc) => (
+            <tr key={cc.id}>
+              <td>{cc.name}</td>
+              <td>{cc.developmentName ?? "Organização"}</td>
               {canEdit || canDelete ? (
                 <td>
                   <div className="row-actions">
@@ -134,8 +135,8 @@ export function SuppliersManager({
                       <button
                         type="button"
                         className="icon-btn"
-                        aria-label={`Editar ${supplier.name}`}
-                        onClick={() => setModal({ mode: "edit", supplier })}
+                        aria-label={`Editar ${cc.name}`}
+                        onClick={() => setModal({ mode: "edit", costCenter: cc })}
                       >
                         <EditIcon />
                       </button>
@@ -144,9 +145,9 @@ export function SuppliersManager({
                       <button
                         type="button"
                         className="icon-btn danger"
-                        aria-label={`Excluir ${supplier.name}`}
+                        aria-label={`Excluir ${cc.name}`}
                         disabled={isPending}
-                        onClick={() => handleDelete(supplier.id, supplier.name)}
+                        onClick={() => handleDelete(cc.id, cc.name)}
                       >
                         <TrashIcon />
                       </button>
@@ -172,9 +173,10 @@ export function SuppliersManager({
       </div>
 
       {modal ? (
-        <SupplierModal
+        <CostCenterModal
           mode={modal.mode}
-          supplier={modal.mode === "edit" ? modal.supplier : null}
+          costCenter={modal.mode === "edit" ? modal.costCenter : null}
+          developments={developments}
           onClose={() => setModal(null)}
         />
       ) : null}
@@ -182,17 +184,19 @@ export function SuppliersManager({
   );
 }
 
-function SupplierModal({
+function CostCenterModal({
   mode,
-  supplier,
+  costCenter,
+  developments,
   onClose,
 }: {
   mode: "create" | "edit";
-  supplier: SupplierRow | null;
+  costCenter: CostCenterRow | null;
+  developments: DevelopmentOption[];
   onClose: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const formAction = mode === "create" ? createSupplierAction : updateSupplierAction;
+  const formAction = mode === "create" ? createCostCenterAction : updateCostCenterAction;
   const [state, dispatch, pending] = useActionState(formAction, initialState);
 
   useEffect(() => {
@@ -204,8 +208,8 @@ function SupplierModal({
     <Modal
       open
       onClose={onClose}
-      title={mode === "edit" ? `Editar fornecedor — ${supplier!.name}` : "Novo fornecedor"}
-      width={480}
+      title={mode === "edit" ? `Editar centro de custo — ${costCenter!.name}` : "Novo centro de custo"}
+      width={440}
       footer={
         <>
           <button type="button" className="secondary" onClick={onClose}>
@@ -218,26 +222,25 @@ function SupplierModal({
       }
     >
       <form ref={formRef} action={dispatch}>
-        {mode === "edit" && supplier ? (
-          <input type="hidden" name="supplierId" value={supplier.id} />
+        {mode === "edit" && costCenter ? (
+          <input type="hidden" name="costCenterId" value={costCenter.id} />
         ) : null}
         <div className="field-section">
           <div className="field-grid">
             <div className="field">
-              <label htmlFor="supplier-name">Nome *</label>
-              <input id="supplier-name" name="name" required defaultValue={supplier?.name ?? ""} />
+              <label htmlFor="cc-name">Nome *</label>
+              <input id="cc-name" name="name" required defaultValue={costCenter?.name ?? ""} />
             </div>
             <div className="field">
-              <label htmlFor="supplier-document">Documento</label>
-              <input id="supplier-document" name="document" defaultValue={supplier?.document ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-email">E-mail</label>
-              <input id="supplier-email" name="email" type="email" defaultValue={supplier?.email ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-phone">Telefone</label>
-              <input id="supplier-phone" name="phone" defaultValue={supplier?.phone ?? ""} />
+              <label htmlFor="cc-development">Empreendimento</label>
+              <select id="cc-development" name="developmentId" defaultValue={costCenter?.developmentId ?? ""}>
+                <option value="">Organização (sem empreendimento específico)</option>
+                {developments.map((dev) => (
+                  <option key={dev.id} value={dev.id}>
+                    {dev.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

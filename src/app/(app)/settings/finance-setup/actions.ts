@@ -44,7 +44,7 @@ export async function createSupplierAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao criar fornecedor." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
 
@@ -66,7 +66,7 @@ export async function updateSupplierAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao atualizar fornecedor." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
 
@@ -81,7 +81,7 @@ export async function deleteSupplierAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao excluir fornecedor." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
 
@@ -107,7 +107,7 @@ export async function createCostCenterAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao criar centro de custo." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
 
@@ -129,7 +129,7 @@ export async function updateCostCenterAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao atualizar centro de custo." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
 
@@ -144,6 +144,6 @@ export async function deleteCostCenterAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao excluir centro de custo." };
   }
-  revalidatePath("/finance-setup");
+  revalidatePath("/settings/finance-setup");
   return { success: true };
 }
