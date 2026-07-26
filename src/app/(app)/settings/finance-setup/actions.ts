@@ -12,6 +12,13 @@ import {
   type CreateSupplierInput,
   type CreateCostCenterInput,
 } from "@/server/finance-setup";
+import {
+  createBankAccount,
+  updateBankAccount,
+  deleteBankAccount,
+  type CreateBankAccountInput,
+} from "@/server/bank-accounts";
+import type { BankAccountType, BankAccountStatus } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -143,6 +150,91 @@ export async function deleteCostCenterAction(
     await deleteCostCenter(context, costCenterId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao excluir centro de custo." };
+  }
+  revalidatePath("/settings/finance-setup");
+  return { success: true };
+}
+
+function parseBankAccountInput(formData: FormData): CreateBankAccountInput | { error: string } {
+  const bankCode = String(formData.get("bankCode") ?? "").trim();
+  const bankName = String(formData.get("bankName") ?? "").trim();
+  const agency = String(formData.get("agency") ?? "").trim();
+  const account = String(formData.get("account") ?? "").trim();
+  const type = String(formData.get("type") ?? "") as BankAccountType;
+  const pixKeyType = String(formData.get("pixKeyType") ?? "").trim();
+  const pixKeyValue = String(formData.get("pixKeyValue") ?? "").trim();
+  const nickname = String(formData.get("nickname") ?? "").trim();
+  const status = String(formData.get("status") ?? "ACTIVE") as BankAccountStatus;
+
+  if (!bankName) return { error: "Informe o banco." };
+  if (!agency) return { error: "Informe a agência." };
+  if (!account) return { error: "Informe a conta." };
+  if (!["CHECKING", "SAVINGS", "PAYMENT"].includes(type)) return { error: "Informe o tipo de conta." };
+
+  return {
+    bankCode: bankCode || undefined,
+    bankName,
+    agency,
+    account,
+    type,
+    pixKeyType: pixKeyType || undefined,
+    pixKeyValue: pixKeyValue || undefined,
+    nickname: nickname || undefined,
+    status,
+  };
+}
+
+export async function createBankAccountAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "bank_account", "CREATE")) return { error: "Sem permissão." };
+
+  const input = parseBankAccountInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createBankAccount(context, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao criar conta bancária." };
+  }
+  revalidatePath("/settings/finance-setup");
+  return { success: true };
+}
+
+export async function updateBankAccountAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "bank_account", "EDIT")) return { error: "Sem permissão." };
+
+  const bankAccountId = String(formData.get("bankAccountId") ?? "");
+  if (!bankAccountId) return { error: "Conta bancária inválida." };
+
+  const input = parseBankAccountInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateBankAccount(context, bankAccountId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar conta bancária." };
+  }
+  revalidatePath("/settings/finance-setup");
+  return { success: true };
+}
+
+export async function deleteBankAccountAction(
+  bankAccountId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "bank_account", "DELETE")) return { error: "Sem permissão." };
+
+  try {
+    await deleteBankAccount(context, bankAccountId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao excluir conta bancária." };
   }
   revalidatePath("/settings/finance-setup");
   return { success: true };

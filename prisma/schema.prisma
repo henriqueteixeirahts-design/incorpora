@@ -62,6 +62,7 @@ model Organization {
   suppliers            Supplier[]
   costCenters          CostCenter[]
   payables             Payable[]
+  bankAccounts         BankAccount[]
 
   @@map("organizations")
 }
@@ -196,13 +197,67 @@ model SpecialPurposeEntity {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   developments Development[]
   accessGrants AccessGrant[]
   payables     Payable[]
+  bankAccounts SpeBankAccount[]
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
+}
+
+enum BankAccountType {
+  CHECKING // corrente
+  SAVINGS // poupança
+  PAYMENT // conta de pagamento
+}
+
+enum BankAccountStatus {
+  ACTIVE
+  CLOSED
+}
+
+/// Cadastro central de contas bancárias (Configurações → Financeiro). SPEs
+/// vinculam-se a contas já cadastradas aqui em vez de recadastrar — evita
+/// duplicação quando SPEs compartilham banco e prepara a conciliação
+/// bancária da Fase 2. Ver docs/ESPEC_CADASTRO_SPE.md, aba 3.
+model BankAccount {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  bankCode       String? // código FEBRABAN, quando identificável
+  bankName       String // nome do banco (ou "código - nome" quando digitado via sugestão)
+  agency         String // agência, com dígito
+  account        String // conta, com dígito
+  type           BankAccountType
+  pixKeyType     String?
+  pixKeyValue    String?
+  nickname       String?
+  status         BankAccountStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  speLinks     SpeBankAccount[]
+
+  @@map("bank_accounts")
+}
+
+/// Vínculo explícito e auditável entre SPE e conta bancária central — a lei
+/// exige conta específica quando há patrimônio de afetação, então esse
+/// relacionamento não pode ser um campo de texto livre.
+model SpeBankAccount {
+  id            String   @id @default(uuid()) @db.Uuid
+  speId         String   @db.Uuid
+  bankAccountId String   @db.Uuid
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  spe         SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount          @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([speId, bankAccountId])
+  @@map("spe_bank_accounts")
 }
 
 /// Trilha de auditoria genérica (before/after) para qualquer entidade do sistema.

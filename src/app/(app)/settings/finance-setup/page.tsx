@@ -1,8 +1,10 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listSuppliersPaged, listCostCentersPaged, type SupplierSortField, type CostCenterSortField } from "@/server/finance-setup";
+import { listBankAccountsPaged, type BankAccountSortField } from "@/server/bank-accounts";
 import { listDevelopments } from "@/server/developments";
 import { SuppliersManager } from "./suppliers-manager";
 import { CostCentersManager } from "./cost-centers-manager";
+import { BankAccountsManager } from "./bank-accounts-manager";
 
 const PAGE_SIZE = 20;
 
@@ -24,7 +26,12 @@ export default async function FinanceSetupPage({
   const ccSortDir = params.cdir === "desc" ? "desc" : "asc";
   const ccPage = Math.max(1, Number(params.cpage) || 1);
 
-  const [suppliersResult, costCentersResult, developments] = await Promise.all([
+  const bSearch = params.bq ?? "";
+  const bSortBy = (params.bsort as BankAccountSortField) ?? "bankName";
+  const bSortDir = params.bdir === "desc" ? "desc" : "asc";
+  const bPage = Math.max(1, Number(params.bpage) || 1);
+
+  const [suppliersResult, costCentersResult, bankAccountsResult, developments] = await Promise.all([
     listSuppliersPaged(context.organizationId, {
       search: spSearch,
       sortBy: spSortBy,
@@ -39,6 +46,13 @@ export default async function FinanceSetupPage({
       page: ccPage,
       pageSize: PAGE_SIZE,
     }),
+    listBankAccountsPaged(context.organizationId, {
+      search: bSearch,
+      sortBy: bSortBy,
+      sortDir: bSortDir,
+      page: bPage,
+      pageSize: PAGE_SIZE,
+    }),
     listDevelopments(context.organizationId),
   ]);
 
@@ -48,10 +62,13 @@ export default async function FinanceSetupPage({
   const canCreateCostCenter = hasPermission(context, "cost_center", "CREATE");
   const canEditCostCenter = hasPermission(context, "cost_center", "EDIT");
   const canDeleteCostCenter = hasPermission(context, "cost_center", "DELETE");
+  const canCreateBankAccount = hasPermission(context, "bank_account", "CREATE");
+  const canEditBankAccount = hasPermission(context, "bank_account", "EDIT");
+  const canDeleteBankAccount = hasPermission(context, "bank_account", "DELETE");
 
   return (
     <>
-      <h1>Fornecedores e centros de custo</h1>
+      <h1>Fornecedores, centros de custo e contas bancárias</h1>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Fornecedores</h2>
@@ -88,6 +105,22 @@ export default async function FinanceSetupPage({
           canCreate={canCreateCostCenter}
           canEdit={canEditCostCenter}
           canDelete={canDeleteCostCenter}
+        />
+      </section>
+
+      <section style={{ marginTop: "2.5rem" }}>
+        <h2 style={{ fontSize: "1.1rem" }}>Contas bancárias</h2>
+        <BankAccountsManager
+          bankAccounts={bankAccountsResult.items}
+          total={bankAccountsResult.total}
+          page={bPage}
+          totalPages={Math.max(1, Math.ceil(bankAccountsResult.total / PAGE_SIZE))}
+          search={bSearch}
+          sortBy={bSortBy}
+          sortDir={bSortDir}
+          canCreate={canCreateBankAccount}
+          canEdit={canEditBankAccount}
+          canDelete={canDeleteBankAccount}
         />
       </section>
     </>

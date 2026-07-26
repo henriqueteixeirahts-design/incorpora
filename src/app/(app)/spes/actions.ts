@@ -12,6 +12,12 @@ import {
 } from "@/server/spes";
 import { onlyDigits, isValidCnpj, isValidEmail, isValidBrazilianPhone } from "@/lib/br-validation";
 import type { SpeStatus } from "@/generated/prisma/client";
+import {
+  listActiveBankAccounts,
+  linkSpeBankAccount,
+  unlinkSpeBankAccount,
+  setPrimarySpeBankAccount,
+} from "@/server/bank-accounts";
 
 export type CreateSpeState = {
   error?: string;
@@ -141,4 +147,59 @@ export async function getSpeDetailAction(speId: string) {
   const context = await requireAccessContext();
   if (!hasPermission(context, "spe", "VIEW")) return null;
   return getSpeDetail(context.organizationId, speId);
+}
+
+export async function getActiveBankAccountsAction() {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "bank_account", "VIEW")) return [];
+  return listActiveBankAccounts(context.organizationId);
+}
+
+export async function linkSpeBankAccountAction(
+  speId: string,
+  bankAccountId: string,
+  isPrimary: boolean,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await linkSpeBankAccount(context, speId, bankAccountId, isPrimary);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao vincular conta." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function unlinkSpeBankAccountAction(
+  speId: string,
+  bankAccountId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await unlinkSpeBankAccount(context, speId, bankAccountId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao desvincular conta." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function setPrimarySpeBankAccountAction(
+  speId: string,
+  bankAccountId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await setPrimarySpeBankAccount(context, speId, bankAccountId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao definir conta principal." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
 }

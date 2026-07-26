@@ -66,6 +66,12 @@ export async function getSpeDetail(organizationId: string, speId: string) {
   const createdEvent = auditTrail[0] ?? null;
   const updatedEvent = auditTrail[auditTrail.length - 1] ?? null;
 
+  const bankAccountLinks = await prisma.speBankAccount.findMany({
+    where: { speId },
+    include: { bankAccount: true },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  });
+
   return {
     ...spe,
     audit: {
@@ -74,6 +80,7 @@ export async function getSpeDetail(organizationId: string, speId: string) {
       updatedByName: updatedEvent?.actor?.fullName ?? null,
       updatedAt: updatedEvent?.createdAt ?? spe.updatedAt,
     },
+    bankAccountLinks,
   };
 }
 

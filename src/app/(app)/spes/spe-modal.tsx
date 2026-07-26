@@ -9,6 +9,10 @@ import {
   createSpeAction,
   updateSpeAction,
   getSpeDetailAction,
+  getActiveBankAccountsAction,
+  linkSpeBankAccountAction,
+  unlinkSpeBankAccountAction,
+  setPrimarySpeBankAccountAction,
   type CreateSpeState,
 } from "./actions";
 
@@ -26,12 +30,173 @@ const initialState: CreateSpeState = {};
 
 const PLACEHOLDER_TABS: { id: string; label: string; note: string }[] = [
   { id: "socios", label: "Sócios", note: "Quadro societário — etapa 3 do plano de implementação." },
-  { id: "contas", label: "Contas bancárias", note: "Vínculo com contas bancárias centrais — etapa 2 do plano." },
   { id: "investidores", label: "Investidores", note: "Cadastro estruturado de investidores da SPE — etapa 3 do plano." },
   { id: "documentacao", label: "Documentação", note: "Anexos categorizados (contrato social, certidões...) — etapa 4 do plano." },
   { id: "terrenos", label: "Terrenos", note: "Terrenos vinculados à SPE, com situação legal e afetação — etapa 5 do plano." },
   { id: "contabil", label: "Contábil", note: "Regime tributário (inclusive RET) e dados para integração contábil — etapa 6 do plano." },
 ];
+
+const BANK_ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  CHECKING: "Corrente",
+  SAVINGS: "Poupança",
+  PAYMENT: "Pagamento",
+};
+
+type ActiveBankAccount = Awaited<ReturnType<typeof getActiveBankAccountsAction>>[number];
+
+function SpeBankAccountsTab({
+  spe,
+  onRefresh,
+}: {
+  spe: SpeDetail;
+  onRefresh: () => void;
+}) {
+  const [availableAccounts, setAvailableAccounts] = useState<ActiveBankAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [markPrimary, setMarkPrimary] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    getActiveBankAccountsAction().then(setAvailableAccounts);
+  }, []);
+
+  const linkedIds = new Set(spe.bankAccountLinks.map((link) => link.bankAccountId));
+  const linkableAccounts = availableAccounts.filter((account) => !linkedIds.has(account.id));
+
+  async function handleLink() {
+    if (!selectedAccountId) {
+      setError("Selecione uma conta.");
+      return;
+    }
+    setError(null);
+    setPending(true);
+    const result = await linkSpeBankAccountAction(spe.id, selectedAccountId, markPrimary);
+    setPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setSelectedAccountId("");
+    setMarkPrimary(false);
+    onRefresh();
+  }
+
+  async function handleUnlink(bankAccountId: string, label: string) {
+    if (!confirm(`Desvincular a conta "${label}" desta SPE?`)) return;
+    setError(null);
+    const result = await unlinkSpeBankAccountAction(spe.id, bankAccountId);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    onRefresh();
+  }
+
+  async function handleSetPrimary(bankAccountId: string) {
+    setError(null);
+    const result = await setPrimarySpeBankAccountAction(spe.id, bankAccountId);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    onRefresh();
+  }
+
+  return (
+    <div>
+      {spe.bankAccountLinks.length === 0 ? (
+        <p className="field-hint">Nenhuma conta vinculada a esta SPE.</p>
+      ) : (
+        <table className="data-table" style={{ marginBottom: "1rem" }}>
+          <thead>
+            <tr>
+              <th>Banco</th>
+              <th>Agência/Conta</th>
+              <th>Tipo</th>
+              <th>Principal</th>
+              <th aria-label="Ações" />
+            </tr>
+          </thead>
+          <tbody>
+            {spe.bankAccountLinks.map((link) => (
+              <tr key={link.id}>
+                <td>{link.bankAccount.bankName}</td>
+                <td>
+                  {link.bankAccount.agency} / {link.bankAccount.account}
+                </td>
+                <td>{BANK_ACCOUNT_TYPE_LABELS[link.bankAccount.type] ?? link.bankAccount.type}</td>
+                <td>
+                  {link.isPrimary ? (
+                    "Principal"
+                  ) : (
+                    <button type="button" className="secondary" onClick={() => handleSetPrimary(link.bankAccountId)}>
+                      Tornar principal
+                    </button>
+                  )}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleUnlink(link.bankAccountId, link.bankAccount.bankName)}
+                  >
+                    Desvincular
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="field-section">
+        <h3>Vincular conta</h3>
+        <div className="field-grid">
+          <div className="field">
+            <label htmlFor="bank-account-select">Conta cadastrada</label>
+            <select
+              id="bank-account-select"
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+            >
+              <option value="">Selecione...</option>
+              {linkableAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.bankName} — {account.agency}/{account.account}
+                  {account.nickname ? ` (${account.nickname})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field" style={{ justifyContent: "flex-end" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <input
+                type="checkbox"
+                checked={markPrimary}
+                onChange={(e) => setMarkPrimary(e.target.checked)}
+              />
+              Definir como principal
+            </label>
+          </div>
+        </div>
+        {linkableAccounts.length === 0 && availableAccounts.length > 0 ? (
+          <p className="field-hint">Todas as contas cadastradas já estão vinculadas a esta SPE.</p>
+        ) : null}
+        {availableAccounts.length === 0 ? (
+          <p className="field-hint">
+            Nenhuma conta bancária ativa cadastrada. Cadastre em Configurações → Financeiro → Contas
+            bancárias.
+          </p>
+        ) : null}
+        <button type="button" disabled={pending || !selectedAccountId} onClick={handleLink} style={{ marginTop: "0.75rem" }}>
+          {pending ? "Vinculando..." : "Vincular conta"}
+        </button>
+        {error ? <p className="error-text">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
 
 export function SpeModal({
   mode,
@@ -64,8 +229,15 @@ export function SpeModal({
   const isEditing = mode === "edit" && !!spe;
   const hasLegacyAddress = !!spe?.address && !spe.street && !spe.city && !spe.zipCode;
 
+  async function refreshSpe() {
+    if (!spe) return;
+    const detail = await getSpeDetailAction(spe.id);
+    if (detail) onCreated(detail);
+  }
+
   const tabs: TabDef[] = [
     { id: "dados", label: "Dados" },
+    { id: "contas", label: "Contas bancárias" },
     ...PLACEHOLDER_TABS.map((tab) => ({ id: tab.id, label: tab.label })),
   ];
 
@@ -230,6 +402,14 @@ export function SpeModal({
             </p>
           ) : null}
         </form>
+      </div>
+
+      <div hidden={activeTab !== "contas"}>
+        {isEditing ? (
+          <SpeBankAccountsTab spe={spe!} onRefresh={refreshSpe} />
+        ) : (
+          <p className="field-hint">Salve os dados da SPE primeiro para vincular contas bancárias.</p>
+        )}
       </div>
 
       {PLACEHOLDER_TABS.map((tab) => (

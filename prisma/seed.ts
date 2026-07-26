@@ -28,6 +28,7 @@ const RESOURCES = [
   "index_rule",
   "supplier",
   "cost_center",
+  "bank_account",
   "payable",
   "report",
 ] as const;
@@ -61,6 +62,7 @@ const SYSTEM_ROLES: Record<
       index_rule: ["VIEW", "CREATE", "EDIT"],
       supplier: ["VIEW", "CREATE", "EDIT"],
       cost_center: ["VIEW", "CREATE", "EDIT"],
+      bank_account: ["VIEW", "CREATE", "EDIT", "DELETE"],
       payable: ["VIEW", "CREATE", "EDIT", "APPROVE", "CANCEL", "EXPORT"],
       report: ["VIEW", "EXPORT"],
     },

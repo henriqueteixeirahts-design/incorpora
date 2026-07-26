@@ -10,8 +10,11 @@ export default async function SettingsPage() {
       items: [
         {
           href: "/settings/finance-setup",
-          label: "Fornecedores e centros de custo",
-          visible: hasPermission(context, "supplier", "VIEW") || hasPermission(context, "cost_center", "VIEW"),
+          label: "Fornecedores, centros de custo e contas bancárias",
+          visible:
+            hasPermission(context, "supplier", "VIEW") ||
+            hasPermission(context, "cost_center", "VIEW") ||
+            hasPermission(context, "bank_account", "VIEW"),
         },
         {
           href: "/settings/index-rules",
