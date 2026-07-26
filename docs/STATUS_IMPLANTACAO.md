@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Pós-Sprint 10 — pendências técnicas priorizadas pela TSH resolvidas e testadas (upload real de contrato, cron de correção mensal, teste de agregação de inadimplência). Motor de template de minuta segue fora de escopo por decisão consciente. Próximo passo: cadastro dos dois empreendimentos-piloto reais.
+**Última atualização:** Pós-Sprint 10 — comunicação visual da TSH aplicada (cores, tipografia, logo) e redesign completo do padrão de UI concluído (lista com filtro/ordenação/paginação + cadastro em modal, replicado nos 8 módulos de listagem, mais a área de Configurações centralizada). Motor de template de minuta segue fora de escopo por decisão consciente. Os dois empreendimentos-piloto reais da TSH (TSH Laguna e Condomínio Lake House) já foram cadastrados em produção.
 
 ---
 
@@ -61,6 +61,26 @@
 
 **Importante — ação pendente do lado da TSH:** o segredo `CRON_SECRET` usado pela rota do cron ainda não foi cadastrado nas variáveis de ambiente do projeto na Vercel. Enquanto isso não for feito, o endpoint sempre responde 401 e o job agendado não executa em produção (só localmente, onde já foi testado). Precisa ser adicionado manualmente no painel da Vercel (Project Settings → Environment Variables).
 
+### Pós-Sprint 10 — Cadastro dos empreendimentos-piloto reais
+✅ Concluído. **TSH Laguna** (vertical, SPE TSH Parque Amazônia LTDA, 141 unidades — 46 Tipo01, 92 Tipo02, 3 Penthouses — mais 8 vagas extras, VGV R$ 84.462.400) e **Condomínio Lake House** (loteamento, SPE Lake House LTDA, 575 lotes em 31 quadras, VGV R$ 168.348.885) cadastrados diretamente em produção via script de seed que reutiliza as mesmas funções de servidor da aplicação (não é inserção SQL bruta), com a mesma trilha de auditoria/histórico de qualquer cadastro feito pela UI. Ambos 100% disponíveis, prontos para o início da operação comercial real.
+
+### Pós-Sprint 10 — Comunicação visual e redesign do padrão de UI
+✅ Concluído, em duas frentes:
+
+1. **Identidade visual da TSH** aplicada em todo o sistema: paleta oficial (Azul, Azul Claro, Marrom, Dourado, Bege) como tokens CSS globais, fonte Inter (oficial da marca) via `next/font/local`, logo vetorial real no login e na sidebar, favicon com o símbolo da marca, grafismo (padrão de barras) usado com moderação só no painel de login. Como a maior parte do sistema já herdava cor/fonte de variáveis CSS globais em vez de estilo por tela, a troca de tema se propagou às ~44 telas do sistema sem precisar editar cada uma.
+2. **Redesign estrutural da UI**, baseado em `docs/BRIEFING_UI_REDESIGN.md` (referência: sistema Obra Prima) — separação entre lista (com busca, ordenação por coluna, paginação) e cadastro (em modal, com abas quando o cadastro tem sub-informações). Replicado nos 8 módulos de listagem do sistema:
+   - **Clientes** — módulo-prova de conceito, com abas Dados/Contatos/Atendimento/Anexos/Acessos. Contatos (múltiplos e-mails/telefones por cliente) e Anexos (upload real via Storage) são funcionalidade nova; Atendimento e Acessos ficam como placeholder "em breve" até haver dado real pra mostrar.
+   - **SPEs, Imobiliárias/Corretores, Fornecedores/Centros de custo** — cadastros simples de entidade única, modal sem abas.
+   - **Usuários** — adaptado ao fluxo próprio do módulo: criar continua sendo convite por e-mail (Supabase Auth), editar troca só o papel, excluir vira revogação de acesso (não apaga o usuário), com proteção contra auto-revogação e contra revogar o último Administrador da plataforma.
+   - **Empreendimentos** — só a lista principal entrou no padrão; as telas internas (torres, unidades, mapa) não fizeram parte deste redesign.
+   - **Vendas** — não tem cadastro manual (venda nasce da conversão de proposta), então ganhou só lista com filtro/ordenação/paginação; o lançamento de comissão virou modal.
+   - **Contas a pagar** — modal com abas Dados/Pagamento/Faturamento/Anexos (sem aba "Itens", que o modelo de dados atual não tem). Edição de dados bloqueada depois que a conta sai do status "Lançada", preservando a integridade do fluxo auditável de aprovação.
+   - **Área de Configurações** (`/settings`) criada, agrupando Usuários, Índices e Fornecedores/Centros de custo — que saíram do menu operacional principal — por seção (Financeiro, Acesso ao sistema). O motor de template de minuta, citado no briefing como candidato a entrar em Configurações, **continua fora de escopo** por decisão consciente já tomada.
+
+**Bug real do React 19 encontrado e corrigido durante o redesign:** um botão fora da tag `<form>`, associado via atributo HTML `form="..."`, não aciona corretamente uma Server Action no novo mecanismo de formulários do React 19 (cai num fallback que só lança erro). Corrigido em todos os modais usando `form.requestSubmit()` via `ref`, que é a alternativa que a própria mensagem de erro do React recomenda.
+
+Testado localmente em cada módulo (criar, editar, excluir, buscar, ordenar, paginar, e as regras específicas de cada um) antes do commit; todos os `tsc`/`eslint`/`npm run build` limpos.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original
@@ -92,12 +112,12 @@ A Sprint 10 é a última do plano original. A regressão técnica (seção 1) n�
 
 | Item em aberto | Por quê importa | Próximo passo |
 |---|---|---|
-| Sistema nunca foi testado com os dados reais dos empreendimentos-piloto | Toda a regressão (inclusive a da Sprint 10) usou dados sintéticos. A estrutura real da TSH pode ter um caso que os testes não cobriram. | Cadastrar os dois empreendimentos reais é o próximo passo — e é o teste que realmente valida o sistema, não mais testes automatizados. |
+| ~~Sistema nunca foi testado com os dados reais dos empreendimentos-piloto~~ | TSH Laguna e Condomínio Lake House já estão cadastrados em produção (ver seção 1). | Resolvido — próximo teste real é o uso comercial de fato (primeira reserva/proposta/venda real). |
 | ~~Pendências técnicas acumuladas (seção 3) ainda em aberto~~ | Upload real de contrato, worker assíncrono — resolvidos e testados pós-Sprint 10 (ver seção 1). Motor de template segue fora de escopo por decisão consciente. | Resolvido — nenhuma ação pendente aqui. |
 | `CRON_SECRET` ainda não cadastrado na Vercel | Sem essa variável de ambiente em produção, o job agendado de correção mensal sempre responde 401 e nunca executa de fato, mesmo já implementado e testado localmente. | TSH precisa adicionar `CRON_SECRET` nas variáveis de ambiente do projeto na Vercel (Project Settings → Environment Variables). |
 | Ambiente de preview da Vercel aponta para o mesmo banco de produção | Sem banco de staging separado — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; separar um projeto Supabase de staging se for abrir acesso a mais gente. |
-| Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Usuários. |
-| UX mínima (HTML simples, sem design system) | Foi suficiente para validar o fluxo de dados em todas as sprints, mas pode gerar atrito quando a equipe operacional usar no dia a dia. | Coletar feedback específico durante o cadastro dos empreendimentos reais e decidir se algum ajuste é prioridade. |
+| Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Configurações → Usuários. |
+| ~~UX mínima (HTML simples, sem design system)~~ | Identidade visual da TSH aplicada e padrão de UI profissional (lista+filtro+modal) replicado em todos os módulos de cadastro (ver seção 1). | Resolvido para a estrutura geral. Ajustes finos de UX ficam para feedback específico durante o uso comercial real. |
 
 ---
 
