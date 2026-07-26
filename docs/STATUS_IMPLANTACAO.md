@@ -2,7 +2,7 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização:** Pós-Sprint 10 — comunicação visual da TSH aplicada (cores, tipografia, logo) e redesign completo do padrão de UI concluído (lista com filtro/ordenação/paginação + cadastro em modal, replicado nos 8 módulos de listagem, mais a área de Configurações centralizada). Motor de template de minuta segue fora de escopo por decisão consciente. Os dois empreendimentos-piloto reais da TSH (TSH Laguna e Condomínio Lake House) já foram cadastrados em produção.
+**Última atualização:** Pós-Sprint 10 — comunicação visual da TSH aplicada (cores, tipografia, logo), redesign completo do padrão de UI concluído (lista com filtro/ordenação/paginação + cadastro em modal, replicado nos 8 módulos de listagem, mais a área de Configurações centralizada), e integração automática de índices (INCC/IPCA/IGP-M) com o Banco Central. Motor de template de minuta segue fora de escopo por decisão consciente. Os dois empreendimentos-piloto reais da TSH (TSH Laguna e Condomínio Lake House) já foram cadastrados em produção.
 
 ---
 
@@ -81,6 +81,9 @@
 
 Testado localmente em cada módulo (criar, editar, excluir, buscar, ordenar, paginar, e as regras específicas de cada um) antes do commit; todos os `tsc`/`eslint`/`npm run build` limpos.
 
+### Pós-Sprint 10 — Integração automática de índices com o Banco Central (item de Fase 2)
+✅ Concluído. INCC, IPCA e IGP-M agora podem ser buscados automaticamente na API pública do SGS (Sistema Gerenciador de Séries Temporais) do Banco Central, que republica as séries oficiais do IBGE/FGV — sem precisar de chave de API. Um cron semanal (`/api/cron/sync-index-values`, toda segunda 04:00 UTC) preenche os meses em aberto de todos os índices com fonte oficial de todas as organizações; também há um botão "Buscar do Banco Central" na tela de Índices para rodar sob demanda. Um lançamento manual nunca é sobrescrito por uma busca automática — o sync só preenche meses sem nenhum valor lançado, e cada valor mostra sua origem (Manual/Banco Central). Testado com dados reais da API (não mockado): valores de janeiro/2026 conferidos contra os números oficiais conhecidos, mês futuro tratado corretamente como "ainda não publicado", e sincronização de 24 meses confirmada como idempotente e sem sobrescrever lançamento manual.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original
@@ -102,7 +105,7 @@ Testado localmente em cada módulo (criar, editar, excluir, buscar, ordenar, pag
 | ~~Upload real de arquivo do contrato assinado~~ | Contratos | ✅ Resolvido pós-Sprint 10 — ver seção 1 |
 | Minuta sem motor de template (dados corretos, mas sem geração de documento formatado) | Contratos | Fora de escopo por decisão consciente da TSH — mantido como está |
 | ~~Ausência de worker assíncrono~~ para recálculo de carteira/inadimplência | Recálculo de parcelas vencidas | ✅ Resolvido pós-Sprint 10 (cron mensal via Vercel) — ver seção 1. A varredura sob demanda continua como rede de segurança complementar. Reservas expiradas continuam sendo tratadas sob demanda (não fazia parte do pedido da TSH neste round) |
-| Índices sem integração automática com fonte oficial (Banco Central/IBGE) | Correção de carteira | Fase 2 (fora do escopo da V1 original) — cadastro manual mensal é suficiente por ora, mas depende de disciplina do Financeiro |
+| ~~Índices sem integração automática com fonte oficial (Banco Central/IBGE)~~ | Correção de carteira | ✅ Resolvido — ver seção 1 (Pós-Sprint 10 — Integração automática de índices). Cadastro manual continua disponível como alternativa/correção. |
 
 ---
 
