@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { inviteUser } from "@/server/users";
+import { inviteUser, updateUserRole, revokeUserAccess } from "@/server/users";
 
-export type InviteUserState = { error?: string };
+export type InviteUserState = { error?: string; success?: boolean };
 
 export async function inviteUserAction(
   _prevState: InviteUserState,
@@ -27,11 +27,50 @@ export async function inviteUserAction(
   try {
     await inviteUser(context, { email, fullName, roleId });
   } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Falha ao convidar usuário.",
-    };
+    return { error: error instanceof Error ? error.message : "Falha ao convidar usuário." };
   }
 
   revalidatePath("/users");
-  return {};
+  return { success: true };
+}
+
+export async function updateUserRoleAction(
+  _prevState: InviteUserState,
+  formData: FormData,
+): Promise<InviteUserState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "user", "EDIT")) {
+    return { error: "Você não tem permissão para editar usuários." };
+  }
+
+  const grantId = String(formData.get("grantId") ?? "");
+  const roleId = String(formData.get("roleId") ?? "").trim();
+  if (!grantId || !roleId) return { error: "Selecione um papel." };
+
+  try {
+    await updateUserRole(context, grantId, roleId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar papel." };
+  }
+
+  revalidatePath("/users");
+  return { success: true };
+}
+
+export async function revokeUserAccessAction(
+  grantId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "user", "DELETE")) {
+    return { error: "Você não tem permissão para revogar acesso." };
+  }
+
+  try {
+    await revokeUserAccess(context, grantId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao revogar acesso." };
+  }
+
+  revalidatePath("/users");
+  return { success: true };
 }
