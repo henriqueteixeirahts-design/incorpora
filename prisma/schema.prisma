@@ -204,6 +204,7 @@ model SpecialPurposeEntity {
   bankAccounts SpeBankAccount[]
   partners     SpePartner[]
   investors    SpeInvestor[]
+  lands        SpeLand[]
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
@@ -273,6 +274,50 @@ model SpeInvestor {
   spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
 
   @@map("spe_investors")
+}
+
+enum LandAcquisitionMethod {
+  PURCHASE // compra
+  PHYSICAL_EXCHANGE // permuta física
+  FINANCIAL_EXCHANGE // permuta financeira
+  CAPITAL_CONTRIBUTION // integralização
+  OTHER
+}
+
+/// Terreno vinculado à SPE. affectationEstablished/affectationRegisteredAt
+/// conversam com a aba Contábil (RET, etapa 6) e com a categoria de
+/// documento AFFECTATION_DEED (aba Documentação) — o patrimônio de
+/// afetação por terreno é o que habilita o RET.
+model SpeLand {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  speId                   String                 @db.Uuid
+  // Identificação do imóvel
+  registrationNumber      String // matrícula nº
+  registryOffice          String // cartório de registro (nome/comarca)
+  zipCode                 String?
+  street                  String?
+  number                  String?
+  complement              String?
+  neighborhood            String?
+  city                    String?
+  state                   String?                @db.VarChar(2)
+  totalArea               Decimal                @db.Decimal(12, 2) // área total (m²)
+  municipalRegistration   String? // inscrição municipal / IPTU
+  // Aquisição
+  acquisitionMethod       LandAcquisitionMethod?
+  previousOwner           String? // vendedor/permutante anterior
+  acquisitionValue        Decimal?               @db.Decimal(14, 2)
+  acquisitionDate         DateTime?
+  // Situação legal
+  affectationEstablished  Boolean                @default(false) // patrimônio de afetação constituído?
+  affectationRegisteredAt DateTime? // data da averbação da afetação
+  encumbrances            String? // ônus/gravames (hipoteca, alienação fiduciária)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+
+  @@map("spe_lands")
 }
 
 enum BankAccountType {

@@ -22,6 +22,9 @@ import {
   deleteSpeInvestorAction,
   uploadSpeDocumentAction,
   deleteSpeDocumentAction,
+  createSpeLandAction,
+  updateSpeLandAction,
+  deleteSpeLandAction,
   type CreateSpeState,
   type FormState,
 } from "./actions";
@@ -39,9 +42,16 @@ const LEGAL_NATURE_SUGGESTIONS = [
 const initialState: CreateSpeState = {};
 
 const PLACEHOLDER_TABS: { id: string; label: string; note: string }[] = [
-  { id: "terrenos", label: "Terrenos", note: "Terrenos vinculados à SPE, com situação legal e afetação — etapa 5 do plano." },
   { id: "contabil", label: "Contábil", note: "Regime tributário (inclusive RET) e dados para integração contábil — etapa 6 do plano." },
 ];
+
+const LAND_ACQUISITION_METHOD_LABELS: Record<string, string> = {
+  PURCHASE: "Compra",
+  PHYSICAL_EXCHANGE: "Permuta física",
+  FINANCIAL_EXCHANGE: "Permuta financeira",
+  CAPITAL_CONTRIBUTION: "Integralização",
+  OTHER: "Outro",
+};
 
 const SPE_DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   ARTICLES_OF_ASSOCIATION: "Contrato social / alterações contratuais",
@@ -654,6 +664,246 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
   );
 }
 
+const landFormInitialState: FormState = {};
+
+type SpeLandRow = SpeDetail["lands"][number];
+
+function SpeLandForm({
+  speId,
+  land,
+  onSaved,
+  onCancel,
+}: {
+  speId: string;
+  land: SpeLandRow | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const formAction = land ? updateSpeLandAction : createSpeLandAction;
+  const [state, dispatch, pending] = useActionState(formAction, landFormInitialState);
+  const [affectationEstablished, setAffectationEstablished] = useState(land?.affectationEstablished ?? false);
+
+  useEffect(() => {
+    if (state.success) onSaved();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form ref={formRef} action={dispatch} className="field-section">
+      <h3>{land ? "Editar terreno" : "Adicionar terreno"}</h3>
+      <input type="hidden" name="speId" value={speId} />
+      {land ? <input type="hidden" name="landId" value={land.id} /> : null}
+
+      <h4>Identificação do imóvel</h4>
+      <div className="field-grid">
+        <div className="field">
+          <label htmlFor="land-registration">Matrícula nº *</label>
+          <input id="land-registration" name="registrationNumber" required defaultValue={land?.registrationNumber ?? ""} />
+        </div>
+        <div className="field">
+          <label htmlFor="land-registry-office">Cartório de registro *</label>
+          <input
+            id="land-registry-office"
+            name="registryOffice"
+            required
+            placeholder="Nome / comarca"
+            defaultValue={land?.registryOffice ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="land-total-area">Área total (m²) *</label>
+          <input
+            id="land-total-area"
+            name="totalArea"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            defaultValue={land?.totalArea ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="land-municipal-registration">Inscrição municipal / IPTU</label>
+          <input
+            id="land-municipal-registration"
+            name="municipalRegistration"
+            defaultValue={land?.municipalRegistration ?? ""}
+          />
+        </div>
+      </div>
+
+      <AddressFields defaultValues={land ?? undefined} idPrefix="land-" />
+
+      <div className="field-section">
+        <h4>Aquisição</h4>
+        <div className="field-grid">
+          <div className="field">
+            <label htmlFor="land-acquisition-method">Forma de aquisição</label>
+            <select id="land-acquisition-method" name="acquisitionMethod" defaultValue={land?.acquisitionMethod ?? ""}>
+              <option value="">—</option>
+              <option value="PURCHASE">Compra</option>
+              <option value="PHYSICAL_EXCHANGE">Permuta física</option>
+              <option value="FINANCIAL_EXCHANGE">Permuta financeira</option>
+              <option value="CAPITAL_CONTRIBUTION">Integralização</option>
+              <option value="OTHER">Outro</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="land-previous-owner">Vendedor/permutante anterior</label>
+            <input id="land-previous-owner" name="previousOwner" defaultValue={land?.previousOwner ?? ""} />
+          </div>
+          <div className="field">
+            <label htmlFor="land-acquisition-value">Valor de aquisição (R$)</label>
+            <input
+              id="land-acquisition-value"
+              name="acquisitionValue"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={land?.acquisitionValue ?? ""}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="land-acquisition-date">Data de aquisição</label>
+            <input
+              id="land-acquisition-date"
+              name="acquisitionDate"
+              type="date"
+              defaultValue={land?.acquisitionDate ? new Date(land.acquisitionDate).toISOString().slice(0, 10) : ""}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="field-section">
+        <h4>Situação legal</h4>
+        <div className="field-grid">
+          <div className="field">
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <input
+                type="checkbox"
+                name="affectationEstablished"
+                checked={affectationEstablished}
+                onChange={(e) => setAffectationEstablished(e.target.checked)}
+              />
+              Patrimônio de afetação constituído?
+            </label>
+          </div>
+          <div className="field">
+            <label htmlFor="land-affectation-date">Data da averbação da afetação</label>
+            <input
+              id="land-affectation-date"
+              name="affectationRegisteredAt"
+              type="date"
+              disabled={!affectationEstablished}
+              defaultValue={
+                land?.affectationRegisteredAt ? new Date(land.affectationRegisteredAt).toISOString().slice(0, 10) : ""
+              }
+            />
+          </div>
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <label htmlFor="land-encumbrances">Ônus/gravames</label>
+            <input
+              id="land-encumbrances"
+              name="encumbrances"
+              placeholder="Hipoteca, alienação fiduciária..."
+              defaultValue={land?.encumbrances ?? ""}
+            />
+          </div>
+        </div>
+      </div>
+
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+        <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          {pending ? "Salvando..." : "Salvar terreno"}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function SpeLandsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void }) {
+  const [editing, setEditing] = useState<SpeLandRow | null | "new">(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete(land: SpeLandRow) {
+    if (!confirm(`Remover o terreno matrícula "${land.registrationNumber}"?`)) return;
+    setDeleteError(null);
+    const result = await deleteSpeLandAction(spe.id, land.id);
+    if (result.error) {
+      setDeleteError(result.error);
+      return;
+    }
+    onRefresh();
+  }
+
+  return (
+    <div>
+      {deleteError ? <p className="error-text">{deleteError}</p> : null}
+
+      {spe.lands.length === 0 ? (
+        <p className="field-hint">Nenhum terreno cadastrado.</p>
+      ) : (
+        <table className="data-table" style={{ marginBottom: "1rem" }}>
+          <thead>
+            <tr>
+              <th>Matrícula</th>
+              <th>Endereço</th>
+              <th>Área (m²)</th>
+              <th>Aquisição</th>
+              <th>Afetação</th>
+              <th aria-label="Ações" />
+            </tr>
+          </thead>
+          <tbody>
+            {spe.lands.map((land) => (
+              <tr key={land.id}>
+                <td>{land.registrationNumber}</td>
+                <td>{[land.city, land.state].filter(Boolean).join("/") || "—"}</td>
+                <td>{land.totalArea.toLocaleString("pt-BR")}</td>
+                <td>{land.acquisitionMethod ? LAND_ACQUISITION_METHOD_LABELS[land.acquisitionMethod] : "—"}</td>
+                <td>{land.affectationEstablished ? "Constituída" : "—"}</td>
+                <td>
+                  <div className="row-actions">
+                    <button type="button" className="secondary" onClick={() => setEditing(land)}>
+                      Editar
+                    </button>
+                    <button type="button" className="secondary" onClick={() => handleDelete(land)}>
+                      Remover
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {editing ? (
+        <SpeLandForm
+          key={editing === "new" ? "new" : editing.id}
+          speId={spe.id}
+          land={editing === "new" ? null : editing}
+          onSaved={() => {
+            setEditing(null);
+            onRefresh();
+          }}
+          onCancel={() => setEditing(null)}
+        />
+      ) : (
+        <button type="button" onClick={() => setEditing("new")}>
+          + Adicionar terreno
+        </button>
+      )}
+    </div>
+  );
+}
+
 const BANK_ACCOUNT_TYPE_LABELS: Record<string, string> = {
   CHECKING: "Corrente",
   SAVINGS: "Poupança",
@@ -859,6 +1109,7 @@ export function SpeModal({
     { id: "contas", label: "Contas bancárias" },
     { id: "investidores", label: "Investidores" },
     { id: "documentacao", label: "Documentação" },
+    { id: "terrenos", label: "Terrenos" },
     ...PLACEHOLDER_TABS.map((tab) => ({ id: tab.id, label: tab.label })),
   ];
 
@@ -1054,6 +1305,14 @@ export function SpeModal({
           <SpeDocumentsTab spe={spe!} onRefresh={refreshSpe} />
         ) : (
           <p className="field-hint">Salve os dados da SPE primeiro para enviar anexos.</p>
+        )}
+      </div>
+
+      <div hidden={activeTab !== "terrenos"}>
+        {isEditing ? (
+          <SpeLandsTab spe={spe!} onRefresh={refreshSpe} />
+        ) : (
+          <p className="field-hint">Salve os dados da SPE primeiro para cadastrar terrenos.</p>
         )}
       </div>
 

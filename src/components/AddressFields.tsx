@@ -24,9 +24,12 @@ export type AddressDefaultValues = {
 export function AddressFields({
   defaultValues,
   legacyNote,
+  idPrefix = "",
 }: {
   defaultValues?: AddressDefaultValues;
   legacyNote?: string | null;
+  /** Prefixo para os ids/htmlFor dos campos — necessário quando mais de um AddressFields pode estar montado ao mesmo tempo na página (ids duplicados quebram getElementById e a associação label/input). O name= dos campos no FormData continua fixo (zipCode, street...). */
+  idPrefix?: string;
 }) {
   const cepInputRef = useRef<HTMLInputElement>(null);
   const streetInputRef = useRef<HTMLInputElement>(null);
@@ -65,9 +68,9 @@ export function AddressFields({
       {legacyNote ? <p className="field-hint">{legacyNote}</p> : null}
       <div className="field-grid">
         <div className="field">
-          <label htmlFor="zipCode">CEP</label>
+          <label htmlFor={`${idPrefix}zipCode`}>CEP</label>
           <input
-            id="zipCode"
+            id={`${idPrefix}zipCode`}
             name="zipCode"
             ref={cepInputRef}
             placeholder="00000-000"
@@ -77,34 +80,34 @@ export function AddressFields({
           {cepStatus ? <span style={{ fontSize: "0.75rem", opacity: 0.75 }}>{cepStatus}</span> : null}
         </div>
         <div className="field" style={{ gridColumn: "span 2" }}>
-          <label htmlFor="street">Logradouro</label>
-          <input id="street" name="street" ref={streetInputRef} defaultValue={defaultValues?.street ?? ""} />
+          <label htmlFor={`${idPrefix}street`}>Logradouro</label>
+          <input id={`${idPrefix}street`} name="street" ref={streetInputRef} defaultValue={defaultValues?.street ?? ""} />
         </div>
         <div className="field">
-          <label htmlFor="number">Número</label>
-          <input id="number" name="number" defaultValue={defaultValues?.number ?? ""} />
+          <label htmlFor={`${idPrefix}number`}>Número</label>
+          <input id={`${idPrefix}number`} name="number" defaultValue={defaultValues?.number ?? ""} />
         </div>
         <div className="field">
-          <label htmlFor="complement">Complemento</label>
-          <input id="complement" name="complement" defaultValue={defaultValues?.complement ?? ""} />
+          <label htmlFor={`${idPrefix}complement`}>Complemento</label>
+          <input id={`${idPrefix}complement`} name="complement" defaultValue={defaultValues?.complement ?? ""} />
         </div>
         <div className="field">
-          <label htmlFor="neighborhood">Bairro</label>
+          <label htmlFor={`${idPrefix}neighborhood`}>Bairro</label>
           <input
-            id="neighborhood"
+            id={`${idPrefix}neighborhood`}
             name="neighborhood"
             ref={neighborhoodInputRef}
             defaultValue={defaultValues?.neighborhood ?? ""}
           />
         </div>
         <div className="field">
-          <label htmlFor="city">Cidade</label>
-          <input id="city" name="city" ref={cityInputRef} defaultValue={defaultValues?.city ?? ""} />
+          <label htmlFor={`${idPrefix}city`}>Cidade</label>
+          <input id={`${idPrefix}city`} name="city" ref={cityInputRef} defaultValue={defaultValues?.city ?? ""} />
         </div>
         <div className="field">
-          <label htmlFor="state">UF</label>
+          <label htmlFor={`${idPrefix}state`}>UF</label>
           <input
-            id="state"
+            id={`${idPrefix}state`}
             name="state"
             ref={stateInputRef}
             maxLength={2}

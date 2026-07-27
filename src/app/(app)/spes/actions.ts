@@ -19,6 +19,7 @@ import type {
   SpePartnerRole,
   SpeInvestorModality,
   DocumentCategory,
+  LandAcquisitionMethod,
 } from "@/generated/prisma/client";
 import {
   listActiveBankAccounts,
@@ -36,6 +37,12 @@ import {
   type CreateSpePartnerInput,
   type CreateSpeInvestorInput,
 } from "@/server/spe-people";
+import {
+  createSpeLand,
+  updateSpeLand,
+  deleteSpeLand,
+  type CreateSpeLandInput,
+} from "@/server/spe-lands";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -465,6 +472,123 @@ export async function deleteSpeDocumentAction(
     await deleteSpeDocument(context, speId, documentId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao remover anexo." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+function parseSpeLandInput(formData: FormData): CreateSpeLandInput | { error: string } {
+  const registrationNumber = String(formData.get("registrationNumber") ?? "").trim();
+  const registryOffice = String(formData.get("registryOffice") ?? "").trim();
+  const zipCode = onlyDigits(String(formData.get("zipCode") ?? ""));
+  const street = String(formData.get("street") ?? "").trim();
+  const number = String(formData.get("number") ?? "").trim();
+  const complement = String(formData.get("complement") ?? "").trim();
+  const neighborhood = String(formData.get("neighborhood") ?? "").trim();
+  const city = String(formData.get("city") ?? "").trim();
+  const state = String(formData.get("state") ?? "").trim().toUpperCase();
+  const totalAreaRaw = String(formData.get("totalArea") ?? "").replace(",", ".");
+  const municipalRegistration = String(formData.get("municipalRegistration") ?? "").trim();
+  const acquisitionMethod = String(formData.get("acquisitionMethod") ?? "") as LandAcquisitionMethod | "";
+  const previousOwner = String(formData.get("previousOwner") ?? "").trim();
+  const acquisitionValueRaw = String(formData.get("acquisitionValue") ?? "").replace(",", ".");
+  const acquisitionDateRaw = String(formData.get("acquisitionDate") ?? "");
+  const affectationEstablished = formData.get("affectationEstablished") === "on";
+  const affectationRegisteredAtRaw = String(formData.get("affectationRegisteredAt") ?? "");
+  const encumbrances = String(formData.get("encumbrances") ?? "").trim();
+
+  if (!registrationNumber) return { error: "Informe o número da matrícula." };
+  if (!registryOffice) return { error: "Informe o cartório de registro." };
+  if (!street || !city || !state || !zipCode) return { error: "Endereço completo é obrigatório." };
+
+  const totalArea = Number(totalAreaRaw);
+  if (!totalAreaRaw || Number.isNaN(totalArea) || totalArea <= 0) {
+    return { error: "Informe a área total (m²)." };
+  }
+
+  const acquisitionValue = acquisitionValueRaw ? Number(acquisitionValueRaw) : undefined;
+  if (acquisitionValue !== undefined && (Number.isNaN(acquisitionValue) || acquisitionValue < 0)) {
+    return { error: "Valor de aquisição inválido." };
+  }
+
+  return {
+    registrationNumber,
+    registryOffice,
+    zipCode: zipCode || undefined,
+    street: street || undefined,
+    number: number || undefined,
+    complement: complement || undefined,
+    neighborhood: neighborhood || undefined,
+    city: city || undefined,
+    state: state || undefined,
+    totalArea,
+    municipalRegistration: municipalRegistration || undefined,
+    acquisitionMethod: acquisitionMethod || undefined,
+    previousOwner: previousOwner || undefined,
+    acquisitionValue,
+    acquisitionDate: acquisitionDateRaw ? new Date(acquisitionDateRaw) : undefined,
+    affectationEstablished,
+    affectationRegisteredAt: affectationRegisteredAtRaw ? new Date(affectationRegisteredAtRaw) : undefined,
+    encumbrances: encumbrances || undefined,
+  };
+}
+
+export async function createSpeLandAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  if (!speId) return { error: "SPE inválida." };
+
+  const input = parseSpeLandInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createSpeLand(context, speId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao adicionar terreno." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function updateSpeLandAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  const landId = String(formData.get("landId") ?? "");
+  if (!speId || !landId) return { error: "Terreno inválido." };
+
+  const input = parseSpeLandInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateSpeLand(context, speId, landId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar terreno." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function deleteSpeLandAction(
+  speId: string,
+  landId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteSpeLand(context, speId, landId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover terreno." };
   }
   revalidatePath("/spes");
   return { success: true };
