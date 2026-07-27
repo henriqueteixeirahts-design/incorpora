@@ -72,6 +72,11 @@ export async function getSpeDetail(organizationId: string, speId: string) {
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
   });
 
+  const [partners, investors] = await Promise.all([
+    prisma.spePartner.findMany({ where: { speId }, orderBy: [{ endDate: "asc" }, { createdAt: "asc" }] }),
+    prisma.speInvestor.findMany({ where: { speId }, orderBy: { createdAt: "asc" } }),
+  ]);
+
   return {
     ...spe,
     audit: {
@@ -81,6 +86,18 @@ export async function getSpeDetail(organizationId: string, speId: string) {
       updatedAt: updatedEvent?.createdAt ?? spe.updatedAt,
     },
     bankAccountLinks,
+    partners: partners.map((p) => ({
+      ...p,
+      participationPct: Number(p.participationPct),
+    })),
+    investors: investors.map((i) => ({
+      ...i,
+      contributedCapital: i.contributedCapital === null ? null : Number(i.contributedCapital),
+      resultParticipationPct: i.resultParticipationPct === null ? null : Number(i.resultParticipationPct),
+    })),
+    activePartnersParticipationTotal: partners
+      .filter((p) => !p.endDate)
+      .reduce((sum, p) => sum + Number(p.participationPct), 0),
   };
 }
 

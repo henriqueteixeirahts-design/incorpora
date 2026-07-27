@@ -197,14 +197,82 @@ model SpecialPurposeEntity {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   developments Development[]
   accessGrants AccessGrant[]
   payables     Payable[]
   bankAccounts SpeBankAccount[]
+  partners     SpePartner[]
+  investors    SpeInvestor[]
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
+}
+
+enum SpeDocumentHolderType {
+  INDIVIDUAL // pessoa física — documento é CPF
+  COMPANY // pessoa jurídica — documento é CNPJ
+}
+
+enum SpePartnerRole {
+  ADMINISTRATOR // sócio administrador
+  QUOTAHOLDER // sócio quotista
+  OTHER
+}
+
+/// Sócio do quadro societário da SPE. Permite histórico (endDate) para
+/// alterações societárias ao longo do tempo — não é sobrescrito, é encerrado
+/// e um novo registro é criado quando a composição muda.
+model SpePartner {
+  id               String                @id @default(uuid()) @db.Uuid
+  speId            String                @db.Uuid
+  type             SpeDocumentHolderType
+  name             String
+  document         String // CPF ou CNPJ, validado por dígito verificador conforme type
+  participationPct Decimal               @db.Decimal(6, 3) // percentual de participação
+  role             SpePartnerRole?
+  startDate        DateTime?
+  endDate          DateTime? // preenchido quando o sócio sai — mantém histórico
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+
+  @@map("spe_partners")
+}
+
+enum SpeInvestorModality {
+  EQUITY // participação
+  LOAN // mútuo
+  PHYSICAL_EXCHANGE // permuta física
+  FINANCIAL_EXCHANGE // permuta financeira
+  OTHER
+}
+
+/// Investidor da SPE — distinto de sócio: pode ser mutuante, permutante ou
+/// aportador sem participação societária formal. Estrutura básica desta
+/// etapa (SPE); docs/ESPEC_APORTES_INVESTIDORES.md estende este vínculo
+/// depois com capital comprometido, condições de mútuo e conta de devolução
+/// — campos aditivos, sem necessidade de remodelar o que já existe aqui.
+model SpeInvestor {
+  id                     String                @id @default(uuid()) @db.Uuid
+  speId                  String                @db.Uuid
+  type                   SpeDocumentHolderType
+  name                   String
+  document               String // CPF ou CNPJ, validado por dígito verificador conforme type
+  email                  String
+  phone                  String
+  modality               SpeInvestorModality
+  contributedCapital     Decimal?              @db.Decimal(14, 2) // capital aportado (R$)
+  resultParticipationPct Decimal?              @db.Decimal(6, 3) // percentual de participação no resultado
+  contributionDate       DateTime?
+  notes                  String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+
+  @@map("spe_investors")
 }
 
 enum BankAccountType {
@@ -658,12 +726,12 @@ model Customer {
   complement     String?
   neighborhood   String?
   city           String?
-  state          String? @db.VarChar(2)
+  state          String?      @db.VarChar(2)
   notes          String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reservations Reservation[]
   proposals    Proposal[]
   sales        Sale[]

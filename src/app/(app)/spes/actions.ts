@@ -10,14 +10,26 @@ import {
   DuplicateSpeDocumentError,
   type CreateSpeInput,
 } from "@/server/spes";
-import { onlyDigits, isValidCnpj, isValidEmail, isValidBrazilianPhone } from "@/lib/br-validation";
-import type { SpeStatus } from "@/generated/prisma/client";
+import { onlyDigits, isValidCnpj, isValidEmail, isValidBrazilianPhone, isValidDocument } from "@/lib/br-validation";
+import type { SpeStatus, SpeDocumentHolderType, SpePartnerRole, SpeInvestorModality } from "@/generated/prisma/client";
 import {
   listActiveBankAccounts,
   linkSpeBankAccount,
   unlinkSpeBankAccount,
   setPrimarySpeBankAccount,
 } from "@/server/bank-accounts";
+import {
+  createSpePartner,
+  updateSpePartner,
+  deleteSpePartner,
+  createSpeInvestor,
+  updateSpeInvestor,
+  deleteSpeInvestor,
+  type CreateSpePartnerInput,
+  type CreateSpeInvestorInput,
+} from "@/server/spe-people";
+
+export type FormState = { error?: string; success?: boolean };
 
 export type CreateSpeState = {
   error?: string;
@@ -199,6 +211,207 @@ export async function setPrimarySpeBankAccountAction(
     await setPrimarySpeBankAccount(context, speId, bankAccountId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao definir conta principal." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+function parseSpePartnerInput(formData: FormData): CreateSpePartnerInput | { error: string } {
+  const type = String(formData.get("type") ?? "") as SpeDocumentHolderType;
+  const name = String(formData.get("name") ?? "").trim();
+  const document = onlyDigits(String(formData.get("document") ?? ""));
+  const participationPctRaw = String(formData.get("participationPct") ?? "").replace(",", ".");
+  const role = String(formData.get("role") ?? "") as SpePartnerRole | "";
+  const startDateRaw = String(formData.get("startDate") ?? "");
+  const endDateRaw = String(formData.get("endDate") ?? "");
+
+  if (!["INDIVIDUAL", "COMPANY"].includes(type)) return { error: "Informe o tipo (PF/PJ)." };
+  if (!name) return { error: "Informe o nome ou razão social." };
+  if (!document || !isValidDocument(document, type)) {
+    return { error: type === "COMPANY" ? "CNPJ inválido." : "CPF inválido." };
+  }
+  const participationPct = Number(participationPctRaw);
+  if (!participationPctRaw || Number.isNaN(participationPct) || participationPct <= 0 || participationPct > 100) {
+    return { error: "Percentual de participação deve ser maior que 0 e no máximo 100." };
+  }
+
+  return {
+    type,
+    name,
+    document,
+    participationPct,
+    role: role || undefined,
+    startDate: startDateRaw ? new Date(startDateRaw) : undefined,
+    endDate: endDateRaw ? new Date(endDateRaw) : undefined,
+  };
+}
+
+export async function createSpePartnerAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  if (!speId) return { error: "SPE inválida." };
+
+  const input = parseSpePartnerInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createSpePartner(context, speId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao adicionar sócio." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function updateSpePartnerAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  const partnerId = String(formData.get("partnerId") ?? "");
+  if (!speId || !partnerId) return { error: "Sócio inválido." };
+
+  const input = parseSpePartnerInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateSpePartner(context, speId, partnerId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar sócio." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function deleteSpePartnerAction(
+  speId: string,
+  partnerId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteSpePartner(context, speId, partnerId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover sócio." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { error: string } {
+  const type = String(formData.get("type") ?? "") as SpeDocumentHolderType;
+  const name = String(formData.get("name") ?? "").trim();
+  const document = onlyDigits(String(formData.get("document") ?? ""));
+  const email = String(formData.get("email") ?? "").trim();
+  const phone = onlyDigits(String(formData.get("phone") ?? ""));
+  const modality = String(formData.get("modality") ?? "") as SpeInvestorModality;
+  const contributedCapitalRaw = String(formData.get("contributedCapital") ?? "").replace(",", ".");
+  const resultParticipationPctRaw = String(formData.get("resultParticipationPct") ?? "").replace(",", ".");
+  const contributionDateRaw = String(formData.get("contributionDate") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!["INDIVIDUAL", "COMPANY"].includes(type)) return { error: "Informe o tipo (PF/PJ)." };
+  if (!name) return { error: "Informe o nome ou razão social." };
+  if (!document || !isValidDocument(document, type)) {
+    return { error: type === "COMPANY" ? "CNPJ inválido." : "CPF inválido." };
+  }
+  if (!email || !isValidEmail(email)) return { error: "Informe um e-mail válido." };
+  if (!phone || !isValidBrazilianPhone(phone)) return { error: "Informe um telefone válido, com DDD." };
+  if (!["EQUITY", "LOAN", "PHYSICAL_EXCHANGE", "FINANCIAL_EXCHANGE", "OTHER"].includes(modality)) {
+    return { error: "Informe a modalidade." };
+  }
+
+  const contributedCapital = contributedCapitalRaw ? Number(contributedCapitalRaw) : undefined;
+  if (contributedCapital !== undefined && (Number.isNaN(contributedCapital) || contributedCapital < 0)) {
+    return { error: "Capital aportado inválido." };
+  }
+  const resultParticipationPct = resultParticipationPctRaw ? Number(resultParticipationPctRaw) : undefined;
+  if (
+    resultParticipationPct !== undefined &&
+    (Number.isNaN(resultParticipationPct) || resultParticipationPct < 0 || resultParticipationPct > 100)
+  ) {
+    return { error: "Percentual de participação no resultado inválido." };
+  }
+
+  return {
+    type,
+    name,
+    document,
+    email,
+    phone,
+    modality,
+    contributedCapital,
+    resultParticipationPct,
+    contributionDate: contributionDateRaw ? new Date(contributionDateRaw) : undefined,
+    notes: notes || undefined,
+  };
+}
+
+export async function createSpeInvestorAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  if (!speId) return { error: "SPE inválida." };
+
+  const input = parseSpeInvestorInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createSpeInvestor(context, speId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao adicionar investidor." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function updateSpeInvestorAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  const investorId = String(formData.get("investorId") ?? "");
+  if (!speId || !investorId) return { error: "Investidor inválido." };
+
+  const input = parseSpeInvestorInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateSpeInvestor(context, speId, investorId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar investidor." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function deleteSpeInvestorAction(
+  speId: string,
+  investorId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteSpeInvestor(context, speId, investorId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover investidor." };
   }
   revalidatePath("/spes");
   return { success: true };
