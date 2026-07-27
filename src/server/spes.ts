@@ -3,8 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
+import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma, SpeStatus } from "@/generated/prisma/client";
+import type { Prisma, SpeStatus, DocumentCategory } from "@/generated/prisma/client";
+
+const ENTITY_TYPE = "SpecialPurposeEntity";
 
 export function listSpes(organizationId: string) {
   return prisma.specialPurposeEntity.findMany({
@@ -72,10 +75,20 @@ export async function getSpeDetail(organizationId: string, speId: string) {
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
   });
 
-  const [partners, investors] = await Promise.all([
+  const [partners, investors, documents] = await Promise.all([
     prisma.spePartner.findMany({ where: { speId }, orderBy: [{ endDate: "asc" }, { createdAt: "asc" }] }),
     prisma.speInvestor.findMany({ where: { speId }, orderBy: { createdAt: "asc" } }),
+    prisma.document.findMany({
+      where: { organizationId, entityType: ENTITY_TYPE, entityId: speId },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
+  const documentsWithUrl = await Promise.all(
+    documents.map(async (doc) => ({
+      ...doc,
+      signedUrl: await getSignedDocumentUrl(doc.fileUrl).catch(() => null),
+    })),
+  );
 
   return {
     ...spe,
@@ -86,6 +99,7 @@ export async function getSpeDetail(organizationId: string, speId: string) {
       updatedAt: updatedEvent?.createdAt ?? spe.updatedAt,
     },
     bankAccountLinks,
+    documents: documentsWithUrl,
     partners: partners.map((p) => ({
       ...p,
       participationPct: Number(p.participationPct),
@@ -224,5 +238,67 @@ export async function deleteSpe(context: AccessContext, speId: string) {
       entityId: speId,
       beforeData: spe,
     });
+  });
+}
+
+export async function uploadSpeDocument(
+  context: AccessContext,
+  speId: string,
+  file: File,
+  category: DocumentCategory,
+  description?: string,
+  expiresAt?: Date,
+) {
+  const spe = await prisma.specialPurposeEntity.findFirst({
+    where: { id: speId, organizationId: context.organizationId },
+  });
+  if (!spe) throw new Error("SPE não encontrada.");
+
+  const path = await uploadEntityDocument(file, ENTITY_TYPE, speId);
+
+  const document = await prisma.document.create({
+    data: {
+      organizationId: context.organizationId,
+      entityType: ENTITY_TYPE,
+      entityId: speId,
+      category,
+      description: description || undefined,
+      fileName: file.name,
+      fileUrl: path,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      expiresAt: expiresAt ?? undefined,
+      uploadedById: context.userId,
+    },
+  });
+
+  await recordAuditEvent(prisma, {
+    organizationId: context.organizationId,
+    actorUserId: context.userId,
+    action: "create",
+    entityType: "SpecialPurposeEntity",
+    entityId: speId,
+    afterData: { documentId: document.id, fileName: document.fileName, category: document.category },
+  });
+
+  return document;
+}
+
+export async function deleteSpeDocument(context: AccessContext, speId: string, documentId: string) {
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, organizationId: context.organizationId, entityType: ENTITY_TYPE, entityId: speId },
+  });
+  if (!document) throw new Error("Anexo não encontrado.");
+
+  await prisma.document.delete({ where: { id: documentId } });
+  await deleteEntityDocumentFile(document.fileUrl);
+
+  await recordAuditEvent(prisma, {
+    organizationId: context.organizationId,
+    actorUserId: context.userId,
+    action: "delete",
+    entityType: "SpecialPurposeEntity",
+    entityId: speId,
+    beforeData: { documentId, fileName: document.fileName, category: document.category },
   });
 }

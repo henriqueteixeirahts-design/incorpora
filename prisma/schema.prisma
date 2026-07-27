@@ -381,6 +381,13 @@ enum DocumentCategory {
   PROOF // comprovante
   REPORT
   OTHER
+  ARTICLES_OF_ASSOCIATION // contrato social / alterações contratuais
+  CNPJ_CARD // cartão CNPJ
+  CLEARANCE_CERTIFICATE // certidões negativas fiscais, FGTS, trabalhista
+  POWER_OF_ATTORNEY // procurações
+  AFFECTATION_DEED // termo de afetação / averbação na matrícula
+  RET_OPTION_TERM // termo de opção pelo RET (protocolo Receita Federal)
+  PERMIT_LICENSE // alvarás e licenças
 }
 
 /// Documento genérico, anexável a qualquer entidade via (entityType, entityId).
@@ -391,10 +398,12 @@ model Document {
   entityType     String // ex.: "Development", "Unit"
   entityId       String
   category       DocumentCategory @default(OTHER)
+  description    String? // observação livre sobre o anexo
   fileName       String
   fileUrl        String // caminho no Supabase Storage
   mimeType       String?
   sizeBytes      Int?
+  expiresAt      DateTime? // data de validade — usado por certidões; alerta automático de vencimento fica para depois
   uploadedById   String?          @db.Uuid
   createdAt      DateTime         @default(now())
 

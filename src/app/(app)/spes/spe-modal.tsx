@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { Tabs, type TabDef } from "@/components/Tabs";
 import { AddressFields } from "@/components/AddressFields";
+import { TrashIcon, DownloadIcon } from "@/components/icons";
 import { formatCnpj, formatPhone, formatDocument } from "@/lib/br-validation";
 import {
   createSpeAction,
@@ -19,6 +20,8 @@ import {
   createSpeInvestorAction,
   updateSpeInvestorAction,
   deleteSpeInvestorAction,
+  uploadSpeDocumentAction,
+  deleteSpeDocumentAction,
   type CreateSpeState,
   type FormState,
 } from "./actions";
@@ -36,10 +39,173 @@ const LEGAL_NATURE_SUGGESTIONS = [
 const initialState: CreateSpeState = {};
 
 const PLACEHOLDER_TABS: { id: string; label: string; note: string }[] = [
-  { id: "documentacao", label: "Documentação", note: "Anexos categorizados (contrato social, certidões...) — etapa 4 do plano." },
   { id: "terrenos", label: "Terrenos", note: "Terrenos vinculados à SPE, com situação legal e afetação — etapa 5 do plano." },
   { id: "contabil", label: "Contábil", note: "Regime tributário (inclusive RET) e dados para integração contábil — etapa 6 do plano." },
 ];
+
+const SPE_DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
+  ARTICLES_OF_ASSOCIATION: "Contrato social / alterações contratuais",
+  CNPJ_CARD: "Cartão CNPJ",
+  CLEARANCE_CERTIFICATE: "Certidões (negativas fiscais, FGTS, trabalhista)",
+  POWER_OF_ATTORNEY: "Procurações",
+  AFFECTATION_DEED: "Termo de afetação / averbação na matrícula",
+  RET_OPTION_TERM: "Termo de opção pelo RET",
+  PERMIT_LICENSE: "Alvarás e licenças",
+  OTHER: "Outros",
+};
+
+function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [category, setCategory] = useState("ARTICLES_OF_ASSOCIATION");
+  const [description, setDescription] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleUpload() {
+    setError(null);
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setError("Selecione um arquivo.");
+      return;
+    }
+    const formData = new FormData();
+    formData.set("file", file);
+    formData.set("category", category);
+    if (description) formData.set("description", description);
+    if (expiresAt) formData.set("expiresAt", expiresAt);
+
+    setBusy(true);
+    const result = await uploadSpeDocumentAction(spe.id, formData);
+    setBusy(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setDescription("");
+    setExpiresAt("");
+    onRefresh();
+  }
+
+  async function handleDelete(documentId: string) {
+    if (!confirm("Remover este anexo?")) return;
+    setBusy(true);
+    await deleteSpeDocumentAction(spe.id, documentId);
+    setBusy(false);
+    onRefresh();
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div>
+      {spe.documents.length === 0 ? (
+        <p className="field-hint">Nenhum anexo enviado.</p>
+      ) : (
+        <table className="data-table" style={{ marginBottom: "1rem" }}>
+          <thead>
+            <tr>
+              <th>Arquivo</th>
+              <th>Categoria</th>
+              <th>Descrição</th>
+              <th>Validade</th>
+              <th aria-label="Ações" />
+            </tr>
+          </thead>
+          <tbody>
+            {spe.documents.map((doc) => {
+              const expired = doc.expiresAt ? new Date(doc.expiresAt).toISOString().slice(0, 10) < today : false;
+              return (
+                <tr key={doc.id}>
+                  <td>{doc.fileName}</td>
+                  <td>{SPE_DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
+                  <td>{doc.description ?? "—"}</td>
+                  <td style={expired ? { color: "var(--danger-color, #b91c1c)" } : undefined}>
+                    {doc.expiresAt
+                      ? new Date(doc.expiresAt).toLocaleDateString("pt-BR") + (expired ? " (vencida)" : "")
+                      : "—"}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      {doc.signedUrl ? (
+                        <a
+                          className="icon-btn"
+                          href={doc.signedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Baixar ${doc.fileName}`}
+                        >
+                          <DownloadIcon />
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        aria-label={`Remover ${doc.fileName}`}
+                        disabled={busy}
+                        onClick={() => handleDelete(doc.id)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      <div className="field-section">
+        <h3>Enviar anexo</h3>
+        <div className="field-grid">
+          <div className="field">
+            <label htmlFor="spe-doc-category">Categoria</label>
+            <select id="spe-doc-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {Object.entries(SPE_DOCUMENT_CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="spe-doc-description">Descrição</label>
+            <input
+              id="spe-doc-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="spe-doc-expires">Data de validade</label>
+            <input
+              id="spe-doc-expires"
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="spe-doc-file">Arquivo</label>
+            <input id="spe-doc-file" ref={fileInputRef} type="file" />
+          </div>
+        </div>
+        {error ? <p className="error-text">{error}</p> : null}
+        <button
+          type="button"
+          className="secondary"
+          style={{ marginTop: "0.75rem" }}
+          disabled={busy}
+          onClick={handleUpload}
+        >
+          Enviar
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const PARTNER_ROLE_LABELS: Record<string, string> = {
   ADMINISTRATOR: "Sócio administrador",
@@ -692,6 +858,7 @@ export function SpeModal({
     { id: "socios", label: "Sócios" },
     { id: "contas", label: "Contas bancárias" },
     { id: "investidores", label: "Investidores" },
+    { id: "documentacao", label: "Documentação" },
     ...PLACEHOLDER_TABS.map((tab) => ({ id: tab.id, label: tab.label })),
   ];
 
@@ -879,6 +1046,14 @@ export function SpeModal({
           <SpeInvestorsTab spe={spe!} onRefresh={refreshSpe} />
         ) : (
           <p className="field-hint">Salve os dados da SPE primeiro para cadastrar investidores.</p>
+        )}
+      </div>
+
+      <div hidden={activeTab !== "documentacao"}>
+        {isEditing ? (
+          <SpeDocumentsTab spe={spe!} onRefresh={refreshSpe} />
+        ) : (
+          <p className="field-hint">Salve os dados da SPE primeiro para enviar anexos.</p>
         )}
       </div>
 

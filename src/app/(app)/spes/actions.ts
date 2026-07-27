@@ -7,11 +7,19 @@ import {
   updateSpe,
   deleteSpe,
   getSpeDetail,
+  uploadSpeDocument,
+  deleteSpeDocument,
   DuplicateSpeDocumentError,
   type CreateSpeInput,
 } from "@/server/spes";
 import { onlyDigits, isValidCnpj, isValidEmail, isValidBrazilianPhone, isValidDocument } from "@/lib/br-validation";
-import type { SpeStatus, SpeDocumentHolderType, SpePartnerRole, SpeInvestorModality } from "@/generated/prisma/client";
+import type {
+  SpeStatus,
+  SpeDocumentHolderType,
+  SpePartnerRole,
+  SpeInvestorModality,
+  DocumentCategory,
+} from "@/generated/prisma/client";
 import {
   listActiveBankAccounts,
   linkSpeBankAccount,
@@ -412,6 +420,51 @@ export async function deleteSpeInvestorAction(
     await deleteSpeInvestor(context, speId, investorId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao remover investidor." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function uploadSpeDocumentAction(
+  speId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document", "CREATE")) return { error: "Sem permissão." };
+
+  const file = formData.get("file");
+  const category = String(formData.get("category") ?? "OTHER") as DocumentCategory;
+  const description = String(formData.get("description") ?? "").trim();
+  const expiresAtRaw = String(formData.get("expiresAt") ?? "");
+  if (!(file instanceof File) || file.size === 0) return { error: "Selecione um arquivo." };
+
+  try {
+    await uploadSpeDocument(
+      context,
+      speId,
+      file,
+      category,
+      description || undefined,
+      expiresAtRaw ? new Date(expiresAtRaw) : undefined,
+    );
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao enviar anexo." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function deleteSpeDocumentAction(
+  speId: string,
+  documentId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document", "DELETE")) return { error: "Sem permissão." };
+
+  try {
+    await deleteSpeDocument(context, speId, documentId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover anexo." };
   }
   revalidatePath("/spes");
   return { success: true };
