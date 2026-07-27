@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders suficientes pra build/typecheck/testes de unidade —
+      # nenhum destes precisa de credenciais reais (testes de integração,
+      # que exigem banco de verdade, entram numa etapa futura da suíte).
+      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+      NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+      SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Testes de unidade
+        run: npm test
+
+      - name: Build
+        run: npm run build
