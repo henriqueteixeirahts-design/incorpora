@@ -9,8 +9,10 @@ import {
   getSpeDetail,
   uploadSpeDocument,
   deleteSpeDocument,
+  updateSpeAccounting,
   DuplicateSpeDocumentError,
   type CreateSpeInput,
+  type UpdateSpeAccountingInput,
 } from "@/server/spes";
 import { onlyDigits, isValidCnpj, isValidEmail, isValidBrazilianPhone, isValidDocument } from "@/lib/br-validation";
 import type {
@@ -20,6 +22,7 @@ import type {
   SpeInvestorModality,
   DocumentCategory,
   LandAcquisitionMethod,
+  TaxRegime,
 } from "@/generated/prisma/client";
 import {
   listActiveBankAccounts,
@@ -589,6 +592,64 @@ export async function deleteSpeLandAction(
     await deleteSpeLand(context, speId, landId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao remover terreno." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+function parseSpeAccountingInput(formData: FormData): UpdateSpeAccountingInput | { error: string } {
+  const taxRegime = String(formData.get("taxRegime") ?? "") as TaxRegime | "";
+  const retOptionSinceRaw = String(formData.get("retOptionSince") ?? "");
+  const event109Cnpj = onlyDigits(String(formData.get("event109Cnpj") ?? ""));
+  const accountantName = String(formData.get("accountantName") ?? "").trim();
+  const accountantCrc = String(formData.get("accountantCrc") ?? "").trim();
+  const accountantEmail = String(formData.get("accountantEmail") ?? "").trim();
+  const accountantPhone = onlyDigits(String(formData.get("accountantPhone") ?? ""));
+  const accountingFirm = String(formData.get("accountingFirm") ?? "").trim();
+  const externalAccountingCode = String(formData.get("externalAccountingCode") ?? "").trim();
+  const chartOfAccountsRef = String(formData.get("chartOfAccountsRef") ?? "").trim();
+  const dimobRequired = formData.get("dimobRequired") === "on";
+  const efdContributionsRequired = formData.get("efdContributionsRequired") === "on";
+  const accountingNotes = String(formData.get("accountingNotes") ?? "").trim();
+
+  if (accountantEmail && !isValidEmail(accountantEmail)) {
+    return { error: "E-mail do contador inválido." };
+  }
+
+  return {
+    taxRegime: taxRegime || undefined,
+    retOptionSince: retOptionSinceRaw ? new Date(retOptionSinceRaw) : undefined,
+    event109Cnpj: event109Cnpj || undefined,
+    accountantName: accountantName || undefined,
+    accountantCrc: accountantCrc || undefined,
+    accountantEmail: accountantEmail || undefined,
+    accountantPhone: accountantPhone || undefined,
+    accountingFirm: accountingFirm || undefined,
+    externalAccountingCode: externalAccountingCode || undefined,
+    chartOfAccountsRef: chartOfAccountsRef || undefined,
+    dimobRequired,
+    efdContributionsRequired,
+    accountingNotes: accountingNotes || undefined,
+  };
+}
+
+export async function updateSpeAccountingAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const speId = String(formData.get("speId") ?? "");
+  if (!speId) return { error: "SPE inválida." };
+
+  const input = parseSpeAccountingInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateSpeAccounting(context, speId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar dados contábeis." };
   }
   revalidatePath("/spes");
   return { success: true };

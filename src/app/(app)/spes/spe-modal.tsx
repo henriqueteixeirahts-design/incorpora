@@ -25,6 +25,7 @@ import {
   createSpeLandAction,
   updateSpeLandAction,
   deleteSpeLandAction,
+  updateSpeAccountingAction,
   type CreateSpeState,
   type FormState,
 } from "./actions";
@@ -41,9 +42,148 @@ const LEGAL_NATURE_SUGGESTIONS = [
 
 const initialState: CreateSpeState = {};
 
-const PLACEHOLDER_TABS: { id: string; label: string; note: string }[] = [
-  { id: "contabil", label: "Contábil", note: "Regime tributário (inclusive RET) e dados para integração contábil — etapa 6 do plano." },
-];
+const accountingFormInitialState: FormState = {};
+
+function SpeAccountingTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, dispatch, pending] = useActionState(updateSpeAccountingAction, accountingFormInitialState);
+  const [taxRegime, setTaxRegime] = useState(spe.taxRegime ?? "");
+
+  useEffect(() => {
+    if (state.success) onRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  const isRet = taxRegime === "RET";
+
+  return (
+    <form ref={formRef} action={dispatch}>
+      <input type="hidden" name="speId" value={spe.id} />
+
+      <div className="field-section">
+        <h3>Regime tributário</h3>
+        <div className="field-grid">
+          <div className="field">
+            <label htmlFor="taxRegime">Regime</label>
+            <select
+              id="taxRegime"
+              name="taxRegime"
+              value={taxRegime}
+              onChange={(e) => setTaxRegime(e.target.value)}
+            >
+              <option value="">—</option>
+              <option value="ACTUAL_PROFIT">Lucro Real</option>
+              <option value="PRESUMED_PROFIT">Lucro Presumido</option>
+              <option value="SIMPLES_NACIONAL">Simples Nacional</option>
+              <option value="RET">RET (Regime Especial de Tributação)</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="retOptionSince">Optante pelo RET desde</label>
+            <input
+              id="retOptionSince"
+              name="retOptionSince"
+              type="date"
+              disabled={!isRet}
+              defaultValue={spe.retOptionSince ? new Date(spe.retOptionSince).toISOString().slice(0, 10) : ""}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="event109Cnpj">CNPJ do evento 109</label>
+            <input
+              id="event109Cnpj"
+              name="event109Cnpj"
+              disabled={!isRet}
+              placeholder="Inscrição da incorporação afetada"
+              defaultValue={spe.event109Cnpj ? formatCnpj(spe.event109Cnpj) : ""}
+              onBlur={(e) => {
+                if (e.target.value) e.target.value = formatCnpj(e.target.value);
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="field-section">
+        <h3>Escrituração e responsáveis</h3>
+        <div className="field-grid">
+          <div className="field">
+            <label htmlFor="accountantName">Contador responsável</label>
+            <input id="accountantName" name="accountantName" defaultValue={spe.accountantName ?? ""} />
+          </div>
+          <div className="field">
+            <label htmlFor="accountantCrc">CRC</label>
+            <input id="accountantCrc" name="accountantCrc" defaultValue={spe.accountantCrc ?? ""} />
+          </div>
+          <div className="field">
+            <label htmlFor="accountantEmail">E-mail do contador</label>
+            <input id="accountantEmail" name="accountantEmail" type="email" defaultValue={spe.accountantEmail ?? ""} />
+          </div>
+          <div className="field">
+            <label htmlFor="accountantPhone">Telefone do contador</label>
+            <input
+              id="accountantPhone"
+              name="accountantPhone"
+              defaultValue={spe.accountantPhone ? formatPhone(spe.accountantPhone) : ""}
+              onBlur={(e) => {
+                if (e.target.value) e.target.value = formatPhone(e.target.value);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="accountingFirm">Escritório de contabilidade</label>
+            <input id="accountingFirm" name="accountingFirm" defaultValue={spe.accountingFirm ?? ""} />
+          </div>
+          <div className="field">
+            <label htmlFor="externalAccountingCode">Código no sistema contábil externo</label>
+            <input
+              id="externalAccountingCode"
+              name="externalAccountingCode"
+              placeholder="Chave do De-Para (Fase 2)"
+              defaultValue={spe.externalAccountingCode ?? ""}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="chartOfAccountsRef">Plano de contas — código de referência</label>
+            <input
+              id="chartOfAccountsRef"
+              name="chartOfAccountsRef"
+              placeholder="Outra chave do De-Para (Fase 2)"
+              defaultValue={spe.chartOfAccountsRef ?? ""}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="field-section">
+        <h3>Obrigações</h3>
+        <div className="field-grid">
+          <div className="field">
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <input type="checkbox" name="dimobRequired" defaultChecked={spe.dimobRequired} />
+              Entrega DIMOB
+            </label>
+          </div>
+          <div className="field">
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <input type="checkbox" name="efdContributionsRequired" defaultChecked={spe.efdContributionsRequired} />
+              EFD-Contribuições
+            </label>
+          </div>
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <label htmlFor="accountingNotes">Observações contábeis</label>
+            <input id="accountingNotes" name="accountingNotes" defaultValue={spe.accountingNotes ?? ""} />
+          </div>
+        </div>
+      </div>
+
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()} style={{ marginTop: "0.75rem" }}>
+        {pending ? "Salvando..." : "Salvar dados contábeis"}
+      </button>
+    </form>
+  );
+}
 
 const LAND_ACQUISITION_METHOD_LABELS: Record<string, string> = {
   PURCHASE: "Compra",
@@ -1110,7 +1250,7 @@ export function SpeModal({
     { id: "investidores", label: "Investidores" },
     { id: "documentacao", label: "Documentação" },
     { id: "terrenos", label: "Terrenos" },
-    ...PLACEHOLDER_TABS.map((tab) => ({ id: tab.id, label: tab.label })),
+    { id: "contabil", label: "Contábil" },
   ];
 
   return (
@@ -1316,11 +1456,13 @@ export function SpeModal({
         )}
       </div>
 
-      {PLACEHOLDER_TABS.map((tab) => (
-        <div key={tab.id} hidden={activeTab !== tab.id}>
-          <p className="field-hint">Em breve: {tab.note}</p>
-        </div>
-      ))}
+      <div hidden={activeTab !== "contabil"}>
+        {isEditing ? (
+          <SpeAccountingTab spe={spe!} onRefresh={refreshSpe} />
+        ) : (
+          <p className="field-hint">Salve os dados da SPE primeiro para preencher os dados contábeis.</p>
+        )}
+      </div>
     </Modal>
   );
 }

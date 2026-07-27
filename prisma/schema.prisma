@@ -172,30 +172,46 @@ enum SpeStatus {
 }
 
 model SpecialPurposeEntity {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  name           String // razão social
-  tradeName      String? // nome fantasia
-  document       String // CNPJ, validado por dígito verificador em novos cadastros/edições
-  nire           String? // registro na Junta Comercial
-  foundedAt      DateTime? // data de constituição
-  legalNature    String? // natureza jurídica (ex.: "206-2 Sociedade Empresária Limitada")
-  cnae           String? // CNAE principal
-  status         SpeStatus @default(ACTIVE)
-  email          String?
-  phone          String?
-  website        String?
-  address        String? // legado — cadastros anteriores ao endereço estruturado. Não é mais escrito por cadastros novos, mas nunca apagado.
-  zipCode        String?
-  street         String?
-  number         String?
-  complement     String?
-  neighborhood   String?
-  city           String?
-  state          String?   @db.VarChar(2)
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                       String     @id @default(uuid()) @db.Uuid
+  organizationId           String     @db.Uuid
+  name                     String // razão social
+  tradeName                String? // nome fantasia
+  document                 String // CNPJ, validado por dígito verificador em novos cadastros/edições
+  nire                     String? // registro na Junta Comercial
+  foundedAt                DateTime? // data de constituição
+  legalNature              String? // natureza jurídica (ex.: "206-2 Sociedade Empresária Limitada")
+  cnae                     String? // CNAE principal
+  status                   SpeStatus  @default(ACTIVE)
+  email                    String?
+  phone                    String?
+  website                  String?
+  address                  String? // legado — cadastros anteriores ao endereço estruturado. Não é mais escrito por cadastros novos, mas nunca apagado.
+  zipCode                  String?
+  street                   String?
+  number                   String?
+  complement               String?
+  neighborhood             String?
+  city                     String?
+  state                    String?    @db.VarChar(2)
+  isActive                 Boolean    @default(true)
+  // Contábil (aba 7) — regime tributário
+  taxRegime                TaxRegime?
+  retOptionSince           DateTime? // optante pelo RET desde
+  event109Cnpj             String? // inscrição do evento 109 — Patrimônio de Afetação, exigida pra RET
+  // Contábil — escrituração e responsáveis
+  accountantName           String?
+  accountantCrc            String?
+  accountantEmail          String?
+  accountantPhone          String?
+  accountingFirm           String? // escritório de contabilidade
+  externalAccountingCode   String? // código da empresa no sistema contábil externo — chave do De-Para da Fase 2
+  chartOfAccountsRef       String? // plano de contas: código de referência — outra chave do De-Para
+  // Contábil — obrigações
+  dimobRequired            Boolean    @default(false)
+  efdContributionsRequired Boolean    @default(false)
+  accountingNotes          String?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   developments Development[]
@@ -208,6 +224,13 @@ model SpecialPurposeEntity {
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
+}
+
+enum TaxRegime {
+  ACTUAL_PROFIT // Lucro Real
+  PRESUMED_PROFIT // Lucro Presumido
+  SIMPLES_NACIONAL
+  RET // Regime Especial de Tributação
 }
 
 enum SpeDocumentHolderType {

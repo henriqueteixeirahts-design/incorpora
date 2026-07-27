@@ -5,7 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma, SpeStatus, DocumentCategory } from "@/generated/prisma/client";
+import type { Prisma, SpeStatus, DocumentCategory, TaxRegime } from "@/generated/prisma/client";
 
 const ENTITY_TYPE = "SpecialPurposeEntity";
 
@@ -199,6 +199,52 @@ export async function updateSpe(context: AccessContext, speId: string, input: Cr
   if (!before) throw new Error("SPE não encontrada.");
 
   await assertDocumentNotDuplicated(context.organizationId, input.document, speId);
+
+  return prisma.$transaction(async (tx) => {
+    const spe = await tx.specialPurposeEntity.update({
+      where: { id: speId },
+      data: input,
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "SpecialPurposeEntity",
+      entityId: spe.id,
+      beforeData: before,
+      afterData: spe,
+    });
+
+    return spe;
+  });
+}
+
+export type UpdateSpeAccountingInput = {
+  taxRegime?: TaxRegime;
+  retOptionSince?: Date;
+  event109Cnpj?: string;
+  accountantName?: string;
+  accountantCrc?: string;
+  accountantEmail?: string;
+  accountantPhone?: string;
+  accountingFirm?: string;
+  externalAccountingCode?: string;
+  chartOfAccountsRef?: string;
+  dimobRequired: boolean;
+  efdContributionsRequired: boolean;
+  accountingNotes?: string;
+};
+
+export async function updateSpeAccounting(
+  context: AccessContext,
+  speId: string,
+  input: UpdateSpeAccountingInput,
+) {
+  const before = await prisma.specialPurposeEntity.findFirst({
+    where: { id: speId, organizationId: context.organizationId },
+  });
+  if (!before) throw new Error("SPE não encontrada.");
 
   return prisma.$transaction(async (tx) => {
     const spe = await tx.specialPurposeEntity.update({
