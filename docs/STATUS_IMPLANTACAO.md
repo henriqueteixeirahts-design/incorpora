@@ -84,6 +84,23 @@ Testado localmente em cada módulo (criar, editar, excluir, buscar, ordenar, pag
 ### Pós-Sprint 10 — Integração automática de índices com o Banco Central (item de Fase 2)
 ✅ Concluído. INCC, IPCA e IGP-M agora podem ser buscados automaticamente na API pública do SGS (Sistema Gerenciador de Séries Temporais) do Banco Central, que republica as séries oficiais do IBGE/FGV — sem precisar de chave de API. Um cron semanal (`/api/cron/sync-index-values`, toda segunda 04:00 UTC) preenche os meses em aberto de todos os índices com fonte oficial de todas as organizações; também há um botão "Buscar do Banco Central" na tela de Índices para rodar sob demanda. Um lançamento manual nunca é sobrescrito por uma busca automática — o sync só preenche meses sem nenhum valor lançado, e cada valor mostra sua origem (Manual/Banco Central). Testado com dados reais da API (não mockado): valores de janeiro/2026 conferidos contra os números oficiais conhecidos, mês futuro tratado corretamente como "ainda não publicado", e sincronização de 24 meses confirmada como idempotente e sem sobrescrever lançamento manual.
 
+### Pós-Sprint 10 — Refinamentos de Clientes e cadastro completo de SPE
+✅ Concluído, conforme `docs/ESPEC_CADASTRO_CLIENTES.md` e `docs/ESPEC_CADASTRO_SPE.md`.
+
+1. **Refinamentos de Clientes**: validação de CPF/CNPJ por dígito verificador com bloqueio de duplicidade (oferece "abrir cadastro existente"), e-mail/telefone obrigatórios só em criação/edição (nunca bloqueiam a exibição de registro legado incompleto), endereço estruturado com autocompletar via ViaCEP (fallback manual se o CEP não for encontrado), auditoria de criação/última alteração exibida na tela. Extraído `src/components/AddressFields.tsx` como componente de endereço reutilizável.
+2. **Cadastro de SPE completo**, 7 abas:
+   - **Dados** — mesmos padrões de validação/endereço/auditoria de Clientes, mais NIRE, natureza jurídica, CNAE, situação (Ativa/Em constituição/Encerrada).
+   - **Sócios** — quadro societário com histórico (sócio que sai fica registrado com data de saída, não é apagado); alerta (nunca bloqueio) quando a soma dos sócios ativos difere de 100%, por ser um estado transitório legítimo durante alteração societária.
+   - **Contas bancárias** — cadastro central em Configurações → Financeiro (evita duplicar conta quando SPEs compartilham banco); a aba da SPE só vincula/desvincula e marca uma como principal, com auditoria em cada vínculo.
+   - **Investidores** — cadastro com modalidade estruturada (equity/mútuo/permuta física/permuta financeira/outro), pensado para a extensão futura de `docs/ESPEC_APORTES_INVESTIDORES.md` sem precisar remodelar a tabela.
+   - **Documentação** — reaproveita a mesma infraestrutura de anexos (Supabase Storage) de Clientes/Contratos; `Document` ganhou `description` e `expiresAt` (opcionais, usados por certidões — sem alerta automático de vencimento ainda) e 7 categorias novas do domínio de SPE.
+   - **Terrenos** — matrícula/cartório/endereço/área, dados de aquisição, e situação legal (patrimônio de afetação constituído + data de averbação + ônus/gravames) — ponto de conexão com a categoria de documento "Termo de afetação" e com o regime RET da aba Contábil.
+   - **Contábil** — regime tributário (inclusive RET, com "optante desde" e CNPJ do evento 109), escrituração (contador, escritório, e as duas chaves do futuro De-Para contábil da Fase 2: código no sistema externo e código do plano de contas), obrigações (DIMOB, EFD-Contribuições).
+
+**Bug real encontrado e corrigido durante os testes:** `AddressFields` usava ids DOM fixos (`zipCode`, `street`...); como a aba Dados da SPE mantém seu próprio `AddressFields` sempre montado, abrir o formulário de terreno (segundo `AddressFields` na mesma página) causava ids duplicados — o autocompletar de CEP do terreno escrevia nos campos escondidos da aba Dados em vez do próprio formulário. Corrigido com um `idPrefix` opcional no componente.
+
+Todas as migrations foram aditivas (colunas nullable/com default seguro, tabelas novas) — nenhuma alterou ou removeu campo existente. Cada etapa foi testada com script de regressão direto contra as funções de servidor e depois end-to-end pela UI real antes do commit; regressão final confirmou que criar Empreendimento vinculado a SPE, e os fluxos de Vendas/Contratos/Carteira (que não leem campo nenhum da SPE além de nome/documento), continuam funcionando sem alteração.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original
