@@ -101,6 +101,30 @@ Testado localmente em cada módulo (criar, editar, excluir, buscar, ordenar, pag
 
 Todas as migrations foram aditivas (colunas nullable/com default seguro, tabelas novas) — nenhuma alterou ou removeu campo existente. Cada etapa foi testada com script de regressão direto contra as funções de servidor e depois end-to-end pela UI real antes do commit; regressão final confirmou que criar Empreendimento vinculado a SPE, e os fluxos de Vendas/Contratos/Carteira (que não leem campo nenhum da SPE além de nome/documento), continuam funcionando sem alteração.
 
+### Pós-Sprint 10 — Fundações multi-tenant, etapa 2: auditoria de escopo por organização + helper central
+✅ Concluído, conforme Pilar 1 (seções 1.2 e 1.3) de `docs/ESPEC_MULTITENANT_FUNDACOES.md`.
+
+**Auditoria de escopo (1.2):** varredura completa do schema (todo model com dado de organização tem caminho até `organizationId`, direto ou via relação obrigatória — nenhum gap de schema encontrado) e de toda função de servidor em `src/server/*.ts` checando se cada query Prisma que toca entidade com escopo de organização filtra por ela. Encontradas e corrigidas **6 violações reais** (IDOR entre organizações — um usuário autenticado conseguiria editar/excluir registro de outra organização sabendo o id):
+
+| Função | Vulnerabilidade | Correção |
+|---|---|---|
+| `spe-people.ts: updateSpePartner/deleteSpePartner` | `findFirst({where:{id, speId}})` sem checar a organização da SPE pai | Adicionado `spe: { organizationId }` ao `where` |
+| `spe-people.ts: updateSpeInvestor/deleteSpeInvestor` | Mesmo padrão | Mesma correção |
+| `spe-lands.ts: updateSpeLand/deleteSpeLand` | Mesmo padrão | Mesma correção |
+| `proposals.ts: createProposal` | Unidade, tabela de vendas, cliente, corretor e imobiliária aceitos sem checar organização — proposta podia referenciar registro de outra organização | Adicionado filtro de organização (via `development.organizationId` ou `organizationId` direto) em cada lookup |
+| `developments/[id]/sales-tables/[tableId]/page.tsx` | `listUnits(id)` usava o `id` (developmentId) da URL direto, sem checar contra `salesTable.developmentId` — usuário podia trocar o id na URL e ver/vincular unidade de outro empreendimento (potencialmente de outra organização) | Usa `salesTable.developmentId` (já validado por organização) em vez do param da URL; `notFound()` se não baterem |
+
+Mais 6 funções de leitura (`listUnits`, `listSalesTables`, `listSpePartners`, `getActivePartnersParticipationTotal`, `listSpeInvestors`, `listSpeLands`, `listSpeBankAccounts`, `recalculateInstallment`) identificadas como **seguras hoje só porque todo chamador atual já pré-valida o id pai por organização antes de chamá-las** — não por garantia estrutural própria. As de SPE (`listSpePartners` etc.) já foram fechadas com o helper central, por serem baixo custo. As demais (`listUnits`, `listSalesTables`, `recalculateInstallment`) ficam registradas como candidatas a fechar quando o módulo for tocado de novo — consistente com a "migração gradual" que a especificação pede, não força-tarefa.
+
+**Helper central de escopo (1.3):** `src/server/scope.ts` — funções puras que devolvem a cláusula `where` de organização certa pra cada padrão de relação (`orgScope`, `speOwnedScope`, `developmentOwnedScope`, `salesTableOwnedScope`, `bankAccountOwnedScope`, `buildingOwnedScope`, `portfolioOwnedScope`, `installmentOwnedScope`), sempre a partir de `AccessContext` (nunca de parâmetro do cliente). Aplicado em todas as correções acima; código novo deve importar daqui em vez de escrever a cláusula de organização à mão.
+
+**Teste de fronteira (1.4, adiantado):** `tests/integration/org-scope.test.ts` — primeiro teste de integração permanente do repositório (`tests/` ainda não existia). Cria Org A e Org B de verdade, e confirma que a Org B recebe "não encontrado" (nunca revela existência) ao tentar editar/excluir sócio, investidor e terreno da Org A, e ao tentar criar proposta referenciando unidade/cliente da Org A. Exigiu duas peças de infraestrutura de teste novas: um stub do pacote `server-only` (que só funciona dentro do bundler do Next.js) via `resolve.alias` em `vitest.integration.config.ts`, e um `setupFiles` carregando `.env` via `dotenv/config` — nenhuma delas existia porque nenhum teste de integração tinha sido escrito ainda desde que a suíte permanente (Pilar 3, etapa 1) foi criada.
+
+**Pendências desta etapa, registradas para as próximas:**
+- O teste de fronteira completo (Pilar 1.4 pleno — todo módulo, não só os pontos corrigidos) e a suíte de regressão de fluxo completo (Pilar 3.2) são a etapa 3, ainda não feita.
+- `npm run test:integration` não está no CI ainda (precisa de serviço Postgres no workflow) — rodar localmente por enquanto.
+- RLS (Pilar 2) e o checklist "da TSH → da organização" (Pilar 4) seguem como itens futuros já registrados na especificação.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original

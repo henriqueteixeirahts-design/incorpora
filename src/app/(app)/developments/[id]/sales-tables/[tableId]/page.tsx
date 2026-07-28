@@ -14,9 +14,9 @@ export default async function SalesTableDetailPage({
   const context = await requireAccessContext();
 
   const salesTable = await getSalesTable(context.organizationId, tableId);
-  if (!salesTable) notFound();
+  if (!salesTable || salesTable.developmentId !== id) notFound();
 
-  const units = await listUnits(id);
+  const units = await listUnits(salesTable.developmentId);
   const principalUnits = units.filter((unit) => !unit.isAccessory);
   const canEdit = hasPermission(context, "sales_table", "EDIT");
 

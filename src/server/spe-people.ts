@@ -2,20 +2,21 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { speOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { SpeDocumentHolderType, SpePartnerRole, SpeInvestorModality } from "@/generated/prisma/client";
 
-export function listSpePartners(speId: string) {
+export function listSpePartners(context: AccessContext, speId: string) {
   return prisma.spePartner.findMany({
-    where: { speId },
+    where: { speId, ...speOwnedScope(context) },
     orderBy: [{ endDate: "asc" }, { createdAt: "asc" }],
   });
 }
 
 /** Soma de participação dos sócios ATIVOS (sem data de saída) — usada pro alerta de 100%, nunca bloqueio. */
-export async function getActivePartnersParticipationTotal(speId: string) {
+export async function getActivePartnersParticipationTotal(context: AccessContext, speId: string) {
   const active = await prisma.spePartner.findMany({
-    where: { speId, endDate: null },
+    where: { speId, endDate: null, ...speOwnedScope(context) },
     select: { participationPct: true },
   });
   return active.reduce((sum, p) => sum + Number(p.participationPct), 0);
@@ -57,7 +58,7 @@ export async function updateSpePartner(
   partnerId: string,
   input: CreateSpePartnerInput,
 ) {
-  const before = await prisma.spePartner.findFirst({ where: { id: partnerId, speId } });
+  const before = await prisma.spePartner.findFirst({ where: { id: partnerId, speId, ...speOwnedScope(context) } });
   if (!before) throw new Error("Sócio não encontrado.");
 
   return prisma.$transaction(async (tx) => {
@@ -76,7 +77,7 @@ export async function updateSpePartner(
 }
 
 export async function deleteSpePartner(context: AccessContext, speId: string, partnerId: string) {
-  const partner = await prisma.spePartner.findFirst({ where: { id: partnerId, speId } });
+  const partner = await prisma.spePartner.findFirst({ where: { id: partnerId, speId, ...speOwnedScope(context) } });
   if (!partner) throw new Error("Sócio não encontrado.");
 
   return prisma.$transaction(async (tx) => {
@@ -92,8 +93,8 @@ export async function deleteSpePartner(context: AccessContext, speId: string, pa
   });
 }
 
-export function listSpeInvestors(speId: string) {
-  return prisma.speInvestor.findMany({ where: { speId }, orderBy: { createdAt: "asc" } });
+export function listSpeInvestors(context: AccessContext, speId: string) {
+  return prisma.speInvestor.findMany({ where: { speId, ...speOwnedScope(context) }, orderBy: { createdAt: "asc" } });
 }
 
 export type CreateSpeInvestorInput = {
@@ -135,7 +136,7 @@ export async function updateSpeInvestor(
   investorId: string,
   input: CreateSpeInvestorInput,
 ) {
-  const before = await prisma.speInvestor.findFirst({ where: { id: investorId, speId } });
+  const before = await prisma.speInvestor.findFirst({ where: { id: investorId, speId, ...speOwnedScope(context) } });
   if (!before) throw new Error("Investidor não encontrado.");
 
   return prisma.$transaction(async (tx) => {
@@ -154,7 +155,7 @@ export async function updateSpeInvestor(
 }
 
 export async function deleteSpeInvestor(context: AccessContext, speId: string, investorId: string) {
-  const investor = await prisma.speInvestor.findFirst({ where: { id: investorId, speId } });
+  const investor = await prisma.speInvestor.findFirst({ where: { id: investorId, speId, ...speOwnedScope(context) } });
   if (!investor) throw new Error("Investidor não encontrado.");
 
   return prisma.$transaction(async (tx) => {

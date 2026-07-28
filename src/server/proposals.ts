@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { simulatePaymentFlow } from "@/lib/payment-flow";
+import { developmentOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { ApprovalDecision, ApprovalLevel } from "@/generated/prisma/client";
 
@@ -58,7 +59,7 @@ export type CreateProposalInput = {
 export async function createProposal(context: AccessContext, input: CreateProposalInput) {
   return prisma.$transaction(async (tx) => {
     const unit = await tx.unit.findFirst({
-      where: { id: input.unitId, developmentId: input.developmentId },
+      where: { id: input.unitId, developmentId: input.developmentId, ...developmentOwnedScope(context) },
     });
     if (!unit) throw new Error("Unidade inválida.");
     if (unit.status !== "AVAILABLE" && unit.status !== "RESERVED") {
@@ -66,8 +67,23 @@ export async function createProposal(context: AccessContext, input: CreatePropos
     }
 
     const salesTable = input.salesTableId
-      ? await tx.salesTable.findFirst({ where: { id: input.salesTableId } })
+      ? await tx.salesTable.findFirst({ where: { id: input.salesTableId, ...developmentOwnedScope(context) } })
       : null;
+
+    const customer = await tx.customer.findFirst({
+      where: { id: input.customerId, organizationId: context.organizationId },
+    });
+    if (!customer) throw new Error("Cliente inválido.");
+    if (input.brokerId) {
+      const broker = await tx.broker.findFirst({ where: { id: input.brokerId, organizationId: context.organizationId } });
+      if (!broker) throw new Error("Corretor inválido.");
+    }
+    if (input.agencyId) {
+      const agency = await tx.realEstateAgency.findFirst({
+        where: { id: input.agencyId, organizationId: context.organizationId },
+      });
+      if (!agency) throw new Error("Imobiliária inválida.");
+    }
 
     let listPrice = input.listPriceOverride;
     if (!listPrice && salesTable) {

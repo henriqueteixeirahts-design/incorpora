@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { speOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { Prisma, BankAccountType, BankAccountStatus } from "@/generated/prisma/client";
 
@@ -136,9 +137,9 @@ export async function deleteBankAccount(context: AccessContext, bankAccountId: s
   });
 }
 
-export function listSpeBankAccounts(speId: string) {
+export function listSpeBankAccounts(context: AccessContext, speId: string) {
   return prisma.speBankAccount.findMany({
-    where: { speId },
+    where: { speId, ...speOwnedScope(context) },
     include: { bankAccount: true },
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
   });

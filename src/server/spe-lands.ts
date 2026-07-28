@@ -2,11 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { speOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { LandAcquisitionMethod } from "@/generated/prisma/client";
 
-export function listSpeLands(speId: string) {
-  return prisma.speLand.findMany({ where: { speId }, orderBy: { createdAt: "asc" } });
+export function listSpeLands(context: AccessContext, speId: string) {
+  return prisma.speLand.findMany({ where: { speId, ...speOwnedScope(context) }, orderBy: { createdAt: "asc" } });
 }
 
 export type CreateSpeLandInput = {
@@ -56,7 +57,7 @@ export async function updateSpeLand(
   landId: string,
   input: CreateSpeLandInput,
 ) {
-  const before = await prisma.speLand.findFirst({ where: { id: landId, speId } });
+  const before = await prisma.speLand.findFirst({ where: { id: landId, speId, ...speOwnedScope(context) } });
   if (!before) throw new Error("Terreno não encontrado.");
 
   return prisma.$transaction(async (tx) => {
@@ -75,7 +76,7 @@ export async function updateSpeLand(
 }
 
 export async function deleteSpeLand(context: AccessContext, speId: string, landId: string) {
-  const land = await prisma.speLand.findFirst({ where: { id: landId, speId } });
+  const land = await prisma.speLand.findFirst({ where: { id: landId, speId, ...speOwnedScope(context) } });
   if (!land) throw new Error("Terreno não encontrado.");
 
   return prisma.$transaction(async (tx) => {
