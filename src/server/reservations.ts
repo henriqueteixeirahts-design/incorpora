@@ -78,6 +78,27 @@ export async function createReservation(
       throw new Error("Unidade não está disponível para reserva.");
     }
 
+    const customer = await tx.customer.findFirst({
+      where: { id: input.customerId, organizationId: context.organizationId },
+    });
+    if (!customer) throw new Error("Cliente inválido.");
+    if (input.brokerId) {
+      const broker = await tx.broker.findFirst({ where: { id: input.brokerId, organizationId: context.organizationId } });
+      if (!broker) throw new Error("Corretor inválido.");
+    }
+    if (input.agencyId) {
+      const agency = await tx.realEstateAgency.findFirst({
+        where: { id: input.agencyId, organizationId: context.organizationId },
+      });
+      if (!agency) throw new Error("Imobiliária inválida.");
+    }
+    if (input.salesTableId) {
+      const salesTable = await tx.salesTable.findFirst({
+        where: { id: input.salesTableId, development: { organizationId: context.organizationId } },
+      });
+      if (!salesTable) throw new Error("Tabela de vendas inválida.");
+    }
+
     const reservation = await tx.reservation.create({
       data: {
         organizationId: context.organizationId,

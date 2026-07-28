@@ -120,10 +120,26 @@ Mais 6 funções de leitura (`listUnits`, `listSalesTables`, `listSpePartners`, 
 
 **Teste de fronteira (1.4, adiantado):** `tests/integration/org-scope.test.ts` — primeiro teste de integração permanente do repositório (`tests/` ainda não existia). Cria Org A e Org B de verdade, e confirma que a Org B recebe "não encontrado" (nunca revela existência) ao tentar editar/excluir sócio, investidor e terreno da Org A, e ao tentar criar proposta referenciando unidade/cliente da Org A. Exigiu duas peças de infraestrutura de teste novas: um stub do pacote `server-only` (que só funciona dentro do bundler do Next.js) via `resolve.alias` em `vitest.integration.config.ts`, e um `setupFiles` carregando `.env` via `dotenv/config` — nenhuma delas existia porque nenhum teste de integração tinha sido escrito ainda desde que a suíte permanente (Pilar 3, etapa 1) foi criada.
 
-**Pendências desta etapa, registradas para as próximas:**
-- O teste de fronteira completo (Pilar 1.4 pleno — todo módulo, não só os pontos corrigidos) e a suíte de regressão de fluxo completo (Pilar 3.2) são a etapa 3, ainda não feita.
-- `npm run test:integration` não está no CI ainda (precisa de serviço Postgres no workflow) — rodar localmente por enquanto.
-- RLS (Pilar 2) e o checklist "da TSH → da organização" (Pilar 4) seguem como itens futuros já registrados na especificação.
+### Pós-Sprint 10 — Fundações multi-tenant, etapa 3: teste de fronteira pleno, regressão de fluxo completo e CI
+✅ Concluído, conforme Pilar 1.4, Pilar 3.2 e a exigência de rodar automático a cada push de `docs/ESPEC_MULTITENANT_FUNDACOES.md`.
+
+**Segunda auditoria, mais ampla:** ao mapear os 12 módulos restantes (Customer, Broker, RealEstateAgency, Development/Unit/Building, Reservation, Proposal/Sale/Contract/Carteira, IndexRule, Supplier, CostCenter, Payable, BankAccount) pra escrever os testes, apareceram **mais 3 violações reais** do mesmo formato "FK opcional aceita sem checar organização" que a etapa 2 já tinha fechado em outros pontos — só que na direção de *criação* (Org B cria um registro seu que aponta pra recurso da Org A), não leitura/edição:
+
+| Função | Vulnerabilidade | Correção |
+|---|---|---|
+| `reservations.ts: createReservation` | `customerId`/`brokerId`/`agencyId`/`salesTableId` aceitos sem checar organização | Adicionado `findFirst` scoped por organização pra cada um antes de criar a reserva |
+| `finance-setup.ts: createCostCenter/updateCostCenter` | `developmentId` aceito sem checar organização | Helper `assertDevelopmentOwned` aplicado nas duas funções |
+| `payables.ts: createPayable/updatePayable` | `developmentId`/`speId`/`supplierId`/`costCenterId` aceitos sem checar organização | Helper `assertPayableRelationsOwned` aplicado nas duas funções |
+
+**Teste de fronteira pleno** (`tests/integration/org-scope-full.test.ts`, 12 casos): cobre os 12 módulos acima — get/update/delete cross-organização pra tudo que tem essas funções, e os 3 novos casos de criação com FK cruzada. Documenta também, na própria auditoria, quais módulos **não têm** função de leitura/edição/exclusão exposta (Broker, RealEstateAgency, Unit, Building, Reservation, Sale, Contract, ReceivablePortfolio/Installment, IndexRule, Supplier, CostCenter, BankAccount não têm todas as operações — várias são só create + transição de estado) — não é lacuna de segurança, é o desenho do domínio (ex.: venda não se edita, só se cria via conversão de proposta), mas fica registrado pra quem for mexer nesses módulos depois saber o que existe.
+
+**Suíte de regressão de fluxo completo** (`tests/integration/full-flow.test.ts`): converte em teste permanente o ciclo que a Sprint 10 rodou manualmente uma vez — reserva → proposta → aprovação → conversão em venda → contrato → assinatura → carteira de recebíveis → recebimento (total e parcial) — verificando a transição de status da unidade em cada etapa (`AVAILABLE → RESERVED → PROPOSAL_UNDER_REVIEW → PROPOSAL_APPROVED → CONTRACT_IN_PROGRESS → AWAITING_SIGNATURE → SOLD`) e os valores calculados da carteira (11 parcelas — entrada de 20% + 10 mensais — batendo com o preço de venda).
+
+**CI com Postgres real** (`.github/workflows/ci.yml`): o job de testes ganhou um `services: postgres` (imagem `postgres:17`, com health check), roda `prisma migrate deploy` contra ele antes de `npm run test:integration` — os testes de integração (isolamento entre organizações + regressão de fluxo) agora rodam a cada push/PR, não só localmente. Validado três vezes contra um Postgres completamente vazio (fora do container de desenvolvimento, que já tem dado) simulando exatamente a sequência do workflow (`generate` → `lint` → `typecheck` → testes de unidade → `migrate deploy` → testes de integração → `build`) antes de confiar no CI de verdade.
+
+**Decisão explícita, não esquecimento:** o *deploy* continua automático pela integração Git nativa da Vercel — só o CI de testes foi reforçado. Mover o deploy de produção pra dentro do GitHub Actions (gated no CI passar) foi desenhado numa conversa à parte e adiado a pedido da TSH pra mais perto da operação real; não faz parte desta etapa.
+
+**Pendências registradas para depois:** RLS (Pilar 2, bloqueador formal do Portal do Cliente) e o checklist "da TSH → da organização" (Pilar 4) seguem como itens futuros já descritos na especificação — não fazem parte da fila atual.
 
 ---
 

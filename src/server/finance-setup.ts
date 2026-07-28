@@ -164,8 +164,18 @@ export type CreateCostCenterInput = {
   developmentId?: string;
 };
 
+async function assertDevelopmentOwned(tx: Prisma.TransactionClient, context: AccessContext, developmentId?: string) {
+  if (!developmentId) return;
+  const development = await tx.development.findFirst({
+    where: { id: developmentId, organizationId: context.organizationId },
+  });
+  if (!development) throw new Error("Empreendimento inválido.");
+}
+
 export async function createCostCenter(context: AccessContext, input: CreateCostCenterInput) {
   return prisma.$transaction(async (tx) => {
+    await assertDevelopmentOwned(tx, context, input.developmentId);
+
     const costCenter = await tx.costCenter.create({
       data: { organizationId: context.organizationId, ...input },
     });
@@ -191,6 +201,8 @@ export async function updateCostCenter(
       where: { id: costCenterId, organizationId: context.organizationId },
     });
     if (!before) throw new Error("Centro de custo não encontrado.");
+
+    await assertDevelopmentOwned(tx, context, input.developmentId);
 
     const costCenter = await tx.costCenter.update({ where: { id: costCenterId }, data: input });
 

@@ -89,8 +89,41 @@ export type CreatePayableInput = {
   notes?: string;
 };
 
+async function assertPayableRelationsOwned(
+  tx: Prisma.TransactionClient,
+  context: AccessContext,
+  input: CreatePayableInput,
+) {
+  if (input.developmentId) {
+    const development = await tx.development.findFirst({
+      where: { id: input.developmentId, organizationId: context.organizationId },
+    });
+    if (!development) throw new Error("Empreendimento inválido.");
+  }
+  if (input.speId) {
+    const spe = await tx.specialPurposeEntity.findFirst({
+      where: { id: input.speId, organizationId: context.organizationId },
+    });
+    if (!spe) throw new Error("SPE inválida.");
+  }
+  if (input.supplierId) {
+    const supplier = await tx.supplier.findFirst({
+      where: { id: input.supplierId, organizationId: context.organizationId },
+    });
+    if (!supplier) throw new Error("Fornecedor inválido.");
+  }
+  if (input.costCenterId) {
+    const costCenter = await tx.costCenter.findFirst({
+      where: { id: input.costCenterId, organizationId: context.organizationId },
+    });
+    if (!costCenter) throw new Error("Centro de custo inválido.");
+  }
+}
+
 export async function createPayable(context: AccessContext, input: CreatePayableInput) {
   return prisma.$transaction(async (tx) => {
+    await assertPayableRelationsOwned(tx, context, input);
+
     const payable = await tx.payable.create({
       data: {
         organizationId: context.organizationId,
@@ -145,6 +178,8 @@ export async function updatePayable(
     if (before.status !== "ENTERED") {
       throw new Error("Só é possível editar contas com status Lançada.");
     }
+
+    await assertPayableRelationsOwned(tx, context, input);
 
     const payable = await tx.payable.update({ where: { id: payableId }, data: input });
 

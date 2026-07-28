@@ -9,11 +9,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: incorpora
+          POSTGRES_PASSWORD: incorpora
+          POSTGRES_DB: incorpora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U incorpora"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      # Placeholders suficientes pra build/typecheck/testes de unidade —
-      # nenhum destes precisa de credenciais reais (testes de integração,
-      # que exigem banco de verdade, entram numa etapa futura da suíte).
-      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+      # Testes de unidade/build não tocam banco de verdade. Testes de
+      # integração usam o serviço Postgres acima (schema aplicado via
+      # `prisma migrate deploy` antes de rodar).
+      DATABASE_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
+      DIRECT_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
       SUPABASE_SERVICE_ROLE_KEY: "placeholder"
@@ -37,6 +52,12 @@ jobs:
 
       - name: Testes de unidade
         run: npm test
+
+      - name: Aplicar migrations no Postgres de teste
+        run: npx prisma migrate deploy
+
+      - name: Testes de integração (isolamento entre organizações, CRUD, regras)
+        run: npm run test:integration
 
       - name: Build
         run: npm run build
