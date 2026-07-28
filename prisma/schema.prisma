@@ -63,6 +63,7 @@ model Organization {
   costCenters          CostCenter[]
   payables             Payable[]
   bankAccounts         BankAccount[]
+  jobRuns              JobRun[]
 
   @@map("organizations")
 }
@@ -520,6 +521,42 @@ model Setting {
 
   @@unique([organizationId, key])
   @@map("settings")
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILURE
+}
+
+enum JobTrigger {
+  CRON
+  MANUAL
+  EVENT
+}
+
+/// Registro de execução de job (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
+/// Parte 1). Matéria-prima da tela de Jobs (histórico + executar agora) e da
+/// verificação V4 da auditoria de atualização (Parte 2) — "todo job agendado
+/// do período tem JobRun de sucesso?". Um job que itera organizações grava
+/// um JobRun por organização, nunca um agregado — histórico e auditoria
+/// ficam corretos por organização desde o início (preparação multi-tenant).
+model JobRun {
+  id             String       @id @default(uuid()) @db.Uuid
+  jobName        String
+  organizationId String?      @db.Uuid // nulo só pra job que não itera por organização (nenhum hoje, mas o contrato permite)
+  status         JobRunStatus @default(RUNNING)
+  triggeredBy    JobTrigger
+  startedAt      DateTime     @default(now())
+  finishedAt     DateTime?
+  summary        Json?
+  error          String?
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([jobName, startedAt])
+  @@index([organizationId, startedAt])
+  @@map("job_runs")
 }
 
 // ============================================================================

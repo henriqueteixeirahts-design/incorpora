@@ -141,6 +141,19 @@ Mais 6 funções de leitura (`listUnits`, `listSalesTables`, `listSpePartners`, 
 
 **Pendências registradas para depois:** RLS (Pilar 2, bloqueador formal do Portal do Cliente) e o checklist "da TSH → da organização" (Pilar 4) seguem como itens futuros já descritos na especificação — não fazem parte da fila atual.
 
+### Pós-Sprint 10 — Confiabilidade, etapa 1: contrato de Job + tabela JobRun + migração dos crons existentes
+✅ Concluído, conforme Parte 1 de `docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md`.
+
+Todo trabalho em segundo plano passa a ser escrito como um **job nomeado e autônomo** (`src/server/jobs.ts`): `{ name, label, description, idempotent: true, runForOrganization(organizationId) }`. Um runner central (`runJobForOrganization`/`runJobForAllOrganizations`/`runJobForSingleOrganization`) grava um `JobRun` (tabela nova) por execução — início, fim, status, resumo, erro — **sempre**, mesmo quando o job lança exceção (o runner captura e grava `FAILURE` em vez de deixar a exceção escapar). `runJobForAllOrganizations` itera só organizações com `isActive: true`, preparação multi-tenant já com o padrão certo desde o nascimento do job.
+
+Os dois crons existentes foram migrados pro padrão novo sem mudar o comportamento (mesma lógica de negócio, só a casca): `recalculate-installments` (correção mensal) e `sync-index-values` (busca de índices no Banco Central) — as rotas em `src/app/api/cron/*` viraram só "chamadores" do job, sem lógica própria, exatamente como a especificação pede. `syncAllIndexRules()` (varria todas as organizações numa função só) virou `syncIndexRulesForOrganization(organizationId)`, pra bater com o padrão "um `JobRun` por organização".
+
+**Disparador continua sendo o Vercel Cron** — decisão explícita do dono do produto (Parte 1.2/1.3 da especificação): a arquitetura já nasce pronta pra trocar de disparador por configuração quando a fila for contratada (gatilho: início da operação real), mas isso não faz parte desta etapa.
+
+**Testado** em `tests/integration/jobs.test.ts` (8 casos, permanente — não script descartável): o runner grava `SUCCESS`/`FAILURE` corretamente em cada cenário (sucesso, falha controlada, exceção não tratada), `runJobForAllOrganizations` ignora organização inativa, e os dois jobs reais migrados foram exercitados de ponta a ponta — `recalculate-installments` contra uma parcela vencida de verdade (recalcula e grava `JobRun` de sucesso), `sync-index-values` sem tocar a API real do Banco Central (organização sem índice oficial ativo — evita depender do BC estar no ar durante o CI; a integração com a API real já tinha sido validada manualmente quando a busca automática de índices foi construída). Migration aditiva (tabela `job_runs` nova) aplicada em produção.
+
+**Próximas etapas do plano** (não iniciadas): 2) tela de Jobs (Configurações → Sistema → histórico + "Executar agora"); 3) auditoria de atualização V1-V5 + selo de saúde no dashboard.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original

@@ -146,16 +146,16 @@ export function syncIndexRuleValues(context: AccessContext, indexRuleId: string)
   return syncIndexRuleValuesInternal(context.organizationId, indexRuleId, context.userId);
 }
 
-/** Roda a sincronização para todos os índices com fonte oficial de todas as organizações (uso do cron). */
-export async function syncAllIndexRules() {
+/** Roda a sincronização para todos os índices com fonte oficial de uma organização (uso do job/cron). */
+export async function syncIndexRulesForOrganization(organizationId: string) {
   const rules = await prisma.indexRule.findMany({
-    where: { code: { in: ["INCC", "IPCA", "IGPM"] }, isActive: true },
-    select: { id: true, organizationId: true, name: true, code: true },
+    where: { organizationId, code: { in: ["INCC", "IPCA", "IGPM"] }, isActive: true },
+    select: { id: true, name: true, code: true },
   });
 
   const results: { indexRuleId: string; name: string; filled: number }[] = [];
   for (const rule of rules) {
-    const result = await syncIndexRuleValuesInternal(rule.organizationId, rule.id, null);
+    const result = await syncIndexRuleValuesInternal(organizationId, rule.id, null);
     results.push({ indexRuleId: rule.id, name: rule.name, filled: result.filled });
   }
 

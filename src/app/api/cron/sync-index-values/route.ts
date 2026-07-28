@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { syncAllIndexRules } from "@/server/index-rules";
+import { runJobForAllOrganizations, syncIndexValuesJob } from "@/server/jobs";
 
 export const maxDuration = 60;
 
@@ -10,7 +10,9 @@ export const maxDuration = 60;
  * do próprio mês, IPCA e INCC só no mês seguinte); rodar toda semana garante
  * que a lacuna é preenchida pouco depois da publicação oficial, sem
  * depender de acertar o dia exato. Nunca sobrescreve um valor já lançado
- * (manual ou oficial) — só preenche meses sem nenhum valor.
+ * (manual ou oficial) — só preenche meses sem nenhum valor. Rota é só o
+ * "chamador" do job (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 1);
+ * cada execução por organização fica registrada em JobRun.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  const results = await syncAllIndexRules();
+  const results = await runJobForAllOrganizations(syncIndexValuesJob, "CRON");
 
   return NextResponse.json({ success: true, ranAt: new Date().toISOString(), results });
 }
