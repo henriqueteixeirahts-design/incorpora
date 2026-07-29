@@ -152,7 +152,22 @@ Os dois crons existentes foram migrados pro padrão novo sem mudar o comportamen
 
 **Testado** em `tests/integration/jobs.test.ts` (8 casos, permanente — não script descartável): o runner grava `SUCCESS`/`FAILURE` corretamente em cada cenário (sucesso, falha controlada, exceção não tratada), `runJobForAllOrganizations` ignora organização inativa, e os dois jobs reais migrados foram exercitados de ponta a ponta — `recalculate-installments` contra uma parcela vencida de verdade (recalcula e grava `JobRun` de sucesso), `sync-index-values` sem tocar a API real do Banco Central (organização sem índice oficial ativo — evita depender do BC estar no ar durante o CI; a integração com a API real já tinha sido validada manualmente quando a busca automática de índices foi construída). Migration aditiva (tabela `job_runs` nova) aplicada em produção.
 
-**Próximas etapas do plano** (não iniciadas): 2) tela de Jobs (Configurações → Sistema → histórico + "Executar agora"); 3) auditoria de atualização V1-V5 + selo de saúde no dashboard.
+**Próximas etapas do plano:** 2) tela de Jobs — ver logo abaixo; 3) auditoria de atualização V1-V5 + selo de saúde no dashboard.
+
+### Pós-Sprint 10 — Confiabilidade, etapa 2: tela de Jobs (histórico + executar agora)
+✅ Concluído, conforme Parte 1.2 de `docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md` — a "válvula de escape operacional": se um cron falhar, roda o job na mão em 1 clique.
+
+Nova tela em `Configurações → Sistema → Jobs` (`/settings/jobs`), nova seção "Sistema" no índice de Configurações. Dois blocos:
+- **Catálogo de jobs** — os dois jobs registrados (`recalculate-installments`, `sync-index-values`), com nome, descrição e botão "Executar agora" por job.
+- **Histórico de execuções** — tabela paginada de `JobRun` (status colorido, disparo, início, duração, resumo ou erro), com filtro por job.
+
+"Executar agora" chama `runJobManually(context, jobName)` (`src/server/jobs.ts`), que sempre roda escopado pela organização da sessão (nunca por parâmetro do cliente) e grava `triggeredBy: "MANUAL"` — mesma trilha de `JobRun` do cron, só a origem muda. A tela atualiza sozinha depois da execução (via `revalidatePath`, sem precisar de recarregar a página), mostrando o resultado inline no botão e a nova linha no histórico.
+
+Novo recurso de permissão `job` (catálogo + seed): `VIEW`/`CREATE` para Administrador e Diretor (acesso irrestrito de sempre), `VIEW` para Financeiro (quem mais acompanha a correção mensal). O botão "Executar agora" só aparece pra quem tem `job.CREATE`; a action revalida a permissão no servidor de qualquer forma, então esconder o botão é conveniência de UI, não a única trava.
+
+Testado localmente: os dois jobs executados manualmente pela tela de verdade, histórico atualizando em tempo real com o resumo certo (`totalOpen`/`recalculated` pro recálculo, `rules` pro sync de índices), filtro por job funcionando, e confirmado que rodar o mesmo job duas vezes seguidas (idempotência) não causa problema.
+
+**Próxima etapa do plano** (não iniciada): 3) auditoria de atualização V1-V5 + selo de saúde no dashboard.
 
 ---
 

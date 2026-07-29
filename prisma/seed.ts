@@ -31,6 +31,7 @@ const RESOURCES = [
   "bank_account",
   "payable",
   "report",
+  "job",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -65,6 +66,7 @@ const SYSTEM_ROLES: Record<
       bank_account: ["VIEW", "CREATE", "EDIT", "DELETE"],
       payable: ["VIEW", "CREATE", "EDIT", "APPROVE", "CANCEL", "EXPORT"],
       report: ["VIEW", "EXPORT"],
+      job: ["VIEW"],
     },
   },
   Comercial: {

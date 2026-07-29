@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recalculateAllOpenInstallments } from "@/server/receivables";
 import { syncIndexRulesForOrganization } from "@/server/index-rules";
+import type { AccessContext } from "@/server/auth-context";
 import type { JobTrigger, Prisma } from "@/generated/prisma/client";
 
 /**
@@ -108,4 +109,43 @@ export const JOB_REGISTRY: JobDefinition[] = [recalculateInstallmentsJob, syncIn
 
 export function getJobByName(name: string) {
   return JOB_REGISTRY.find((job) => job.name === name);
+}
+
+/**
+ * Dispara um job do catálogo pra organização da sessão — a "válvula de
+ * escape operacional" da tela de Jobs (Configurações → Sistema → Jobs):
+ * se o cron falhar, roda na mão em 1 clique, sempre escopado pela
+ * organização de quem está logado (nunca por parâmetro do cliente).
+ */
+export async function runJobManually(context: AccessContext, jobName: string) {
+  const job = getJobByName(jobName);
+  if (!job) throw new Error("Job não encontrado.");
+  return runJobForSingleOrganization(job, context.organizationId, "MANUAL");
+}
+
+export type JobRunSortField = "startedAt";
+
+export async function listJobRuns(
+  organizationId: string,
+  params: { jobName?: string; page?: number; pageSize?: number } = {},
+) {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = params.pageSize ?? 20;
+
+  const where: Prisma.JobRunWhereInput = {
+    organizationId,
+    ...(params.jobName ? { jobName: params.jobName } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.jobRun.findMany({
+      where,
+      orderBy: { startedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.jobRun.count({ where }),
+  ]);
+
+  return { items, total, page, pageSize };
 }

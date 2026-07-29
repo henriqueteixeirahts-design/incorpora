@@ -33,6 +33,16 @@ export default async function SettingsPage() {
         },
       ],
     },
+    {
+      title: "Sistema",
+      items: [
+        {
+          href: "/settings/jobs",
+          label: "Jobs — histórico e execução manual",
+          visible: hasPermission(context, "job", "VIEW"),
+        },
+      ],
+    },
   ];
 
   return (
