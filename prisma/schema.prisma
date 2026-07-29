@@ -64,6 +64,7 @@ model Organization {
   payables             Payable[]
   bankAccounts         BankAccount[]
   jobRuns              JobRun[]
+  auditRuns            AuditRun[]
 
   @@map("organizations")
 }
@@ -557,6 +558,59 @@ model JobRun {
   @@index([jobName, startedAt])
   @@index([organizationId, startedAt])
   @@map("job_runs")
+}
+
+enum AuditStatus {
+  OK
+  ALERT
+}
+
+enum AuditCheckCode {
+  V1_INDEX_FRESHNESS // frescor dos índices
+  V2_CORRECTION_COVERAGE // cobertura da correção
+  V3_MEMORY_CONSISTENCY // consistência da memória (centavo a centavo)
+  V4_JOB_EXECUTION // execução dos jobs agendados
+  V5_SOURCE_DIVERGENCE // divergência contra a fonte oficial (BC)
+}
+
+/// Uma rodada da auditoria de atualização (docs/
+/// ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2) — o "double-check"
+/// independente do motor de correção. `status` é ALERT se qualquer uma das
+/// 5 verificações (AuditCheckResult) vier ALERT. `fullCheck` diferencia a
+/// rodada diária (V3 por amostragem) da mensal (V3 completa — todas as
+/// parcelas, não só uma amostra).
+model AuditRun {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  status         AuditStatus @default(OK)
+  triggeredBy    JobTrigger
+  fullCheck      Boolean     @default(false)
+  startedAt      DateTime    @default(now())
+  finishedAt     DateTime?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  checks       AuditCheckResult[]
+
+  @@index([organizationId, startedAt])
+  @@map("audit_runs")
+}
+
+/// Resultado de UMA das 5 verificações dentro de uma AuditRun. `summary` é o
+/// resumo agregado (contadores); `issues` é o detalhe de cada problema
+/// encontrado (ex.: qual parcela, qual índice, valor esperado × encontrado)
+/// — a matéria-prima da tela de detalhe de falha.
+model AuditCheckResult {
+  id         String         @id @default(uuid()) @db.Uuid
+  auditRunId String         @db.Uuid
+  code       AuditCheckCode
+  status     AuditStatus
+  summary    Json
+  issues     Json?
+
+  auditRun AuditRun @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+
+  @@index([auditRunId])
+  @@map("audit_check_results")
 }
 
 // ============================================================================
@@ -1276,12 +1330,18 @@ enum IndexCode {
 /// (IndexValue) são cadastrados uma vez e reaproveitados por todos os
 /// contratos que usam aquele índice.
 model IndexRule {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  code           IndexCode
-  name           String
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
+  id                     String    @id @default(uuid()) @db.Uuid
+  organizationId         String    @db.Uuid
+  code                   IndexCode
+  name                   String
+  isActive               Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  // Dia do mês seguinte ao de competência até quando o valor deveria estar
+  // publicado (ex.: IPCA costuma sair só no mês seguinte, perto do dia 10;
+  // IGP-M sai perto do fim do próprio mês de competência). Nulo = usa o
+  // padrão por código (V1 da auditoria de atualização, docs/
+  // ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md).
+  publicationDeadlineDay Int?
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   values       IndexValue[]

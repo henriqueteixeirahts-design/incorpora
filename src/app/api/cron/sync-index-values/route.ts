@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { runJobForAllOrganizations, syncIndexValuesJob } from "@/server/jobs";
+import { runJobForAllOrganizations, syncIndexValuesJob, auditUpdateJob } from "@/server/jobs";
 
 export const maxDuration = 60;
 
@@ -13,6 +13,14 @@ export const maxDuration = 60;
  * (manual ou oficial) — só preenche meses sem nenhum valor. Rota é só o
  * "chamador" do job (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 1);
  * cada execução por organização fica registrada em JobRun.
+ *
+ * Também dispara, na sequência, a auditoria de atualização por AMOSTRAGEM
+ * (Parte 2) — a especificação pede rodar diariamente, mas o plano Hobby da
+ * Vercel limita o número de cron jobs do projeto (só há 2 slots livres,
+ * já ocupados por este cron e pelo de recálculo mensal), então fica
+ * encadeada aqui: roda semanalmente em vez de diariamente. A verificação
+ * completa (V3 em toda parcela, não amostra) fica encadeada no cron mensal
+ * de recálculo. Ver docs/STATUS_IMPLANTACAO.md pra esse registro.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -23,6 +31,12 @@ export async function GET(request: NextRequest) {
   }
 
   const results = await runJobForAllOrganizations(syncIndexValuesJob, "CRON");
+  const auditResults = await runJobForAllOrganizations(auditUpdateJob, "CRON");
 
-  return NextResponse.json({ success: true, ranAt: new Date().toISOString(), results });
+  return NextResponse.json({
+    success: true,
+    ranAt: new Date().toISOString(),
+    results,
+    auditResults,
+  });
 }

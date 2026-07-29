@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAccessContext } from "@/server/auth-context";
 import { listOverdueInstallments } from "@/server/receivables";
+import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
 
 export default async function OverdueInstallmentsPage() {
   const context = await requireAccessContext();
@@ -12,6 +13,8 @@ export default async function OverdueInstallmentsPage() {
       <p style={{ opacity: 0.7 }}>
         Parcelas vencidas e não quitadas, já com multa e juros de mora aplicados no recálculo.
       </p>
+
+      <IndexFreshnessBanner organizationId={context.organizationId} />
 
       <table style={{ marginTop: "1.5rem", maxWidth: 1000 }}>
         <thead>

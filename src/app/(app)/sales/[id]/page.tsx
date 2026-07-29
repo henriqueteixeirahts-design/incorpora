@@ -10,6 +10,7 @@ import { CreateContractForm, MarkAwaitingSignatureForm, ConfirmSignatureForm } f
 import { CorrectionRuleForm } from "./correction-rule-form";
 import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form";
 import { AnticipationForm } from "./anticipation-form";
+import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -191,6 +192,8 @@ export default async function SaleDetailPage({
           <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
             Total nominal: {formatCurrency(Number(contract.portfolio.totalValue))}
           </p>
+
+          <IndexFreshnessBanner organizationId={context.organizationId} />
 
           {canRecalculate ? (
             <div style={{ marginTop: "0.5rem" }}>

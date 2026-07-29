@@ -169,6 +169,32 @@ Testado localmente: os dois jobs executados manualmente pela tela de verdade, hi
 
 **Próxima etapa do plano** (não iniciada): 3) auditoria de atualização V1-V5 + selo de saúde no dashboard.
 
+### Pós-Sprint 10 — Confiabilidade, etapa 3: auditoria de atualização (V1-V5) + selo de saúde + tela de detalhe
+✅ Concluído, conforme Parte 2 de `docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md` — a parte mais importante do documento.
+
+Cinco verificações independentes do motor de correção, registradas por execução em `AuditRun`/`AuditCheckResult` (`src/server/audit.ts`):
+- **V1 — Frescor dos índices**: cada regra oficial ativa (INCC/IPCA/IGP-M) tem o mês fechado mais recente lançado até o prazo de publicação (por padrão dia 5/12/20 do mês seguinte, ajustável por regra em `IndexRule.publicationDeadlineDay`)?
+- **V2 — Cobertura da correção**: toda parcela em aberto de contrato com correção ativa foi recalculada no ciclo vigente (desde o último dia 2, quando o cron mensal roda)? Varre as parcelas de verdade, não o log do cron.
+- **V3 — Consistência da memória**: recalcula por caminho de código **independente** (`src/lib/audit-correction-recompute.ts`, nunca importa nada do motor real) e compara contra o `correctedValue` já gravado, usando como referência temporal o `lastCalculatedAt` da própria parcela — compara "o que o motor calculou" contra "o que uma implementação separada calcularia com os mesmos dados", não contra um valor mais novo (isso é trabalho do V2).
+- **V4 — Execução dos jobs**: os dois crons agendados têm `JobRun` de sucesso dentro da cadência esperada (35 dias pro recálculo mensal, 8 dias pra busca de índices)?
+- **V5 — Divergência de fonte**: o valor gravado bate com uma nova consulta direta à API do Banco Central pros últimos 3 meses fechados (não confia no que o próprio sync já gravou)?
+
+**Redundância real, não decorativa** (exigência explícita da TSH, repetida duas vezes): V2/V3/V5 nunca reutilizam a função que calcula/sincroniza pra conferir a si mesma. A prova mais forte é o V3 — a reimplementação independente foi validada contra os **mesmos vetores de teste** do motor real (`src/lib/index-correction.test.ts`) pra confirmar concordância numérica exata em dados corretos, e depois provada capaz de pegar uma divergência real simulada (`tests/integration/audit.test.ts`, valor gravado deliberadamente errado).
+
+**Regra de bloqueio prudente do V1** (Parte 2.4 da especificação): se o índice do mês estiver ausente após o prazo, toda tela que exibe valor corrigido mostra um aviso ("valores com índice de [mês] pendente") em vez do número desatualizado silencioso — componente `src/components/IndexFreshnessBanner.tsx`, usado em `/receivables/overdue` e `/sales/[id]`.
+
+**Selo de saúde no dashboard**: badge verde/vermelho/cinza (sem verificação ainda) em `/dashboard`, linkando pra tela de auditoria, lendo só a última `AuditRun` (não recalcula na hora).
+
+**Tela de detalhe das falhas**: `/settings/audit` (Configurações → Sistema → Auditoria de atualização) — selo do estado atual, botão "Re-verificar agora" (roda a auditoria completa manualmente), histórico paginado de `AuditRun`, e detalhe expansível por execução mostrando as 5 verificações com resumo e tabela de problemas encontrados.
+
+**Disparo automático sem cron novo**: o plano Hobby da Vercel limita o número de cron jobs do projeto, e os 2 slots já estavam ocupados (recálculo mensal, busca de índices). Em vez de contratar mais slots ou um serviço de fila, a auditoria por amostragem foi **encadeada** depois do cron semanal de índices (`sync-index-values`) e a auditoria completa depois do cron mensal de recálculo (`recalculate-installments`) — cadência real é semanal (amostragem) e mensal (completa), não diária como o ideal seria. Rotas standalone (`/api/cron/audit-update` e `/api/cron/audit-update-full`, autenticadas por `CRON_SECRET`) continuam existindo pra disparo manual ou pra quando o plano for atualizado. **Trade-off que vale revisar com a TSH** se a cadência semanal/mensal se mostrar lenta demais na prática.
+
+Novo recurso de permissão `audit` (catálogo + seed, sincronizado em produção): `VIEW`/`CREATE` para Financeiro, acesso irrestrito de sempre para Administrador e Diretor.
+
+**Testado**: 11 testes unitários da reimplementação independente (`src/lib/audit-correction-recompute.test.ts`), 7 testes de integração cobrindo as 5 verificações e o orquestrador (`tests/integration/audit.test.ts`, com `vi.useFakeTimers()` pra V1 ser determinístico), e smoke test manual no navegador local: os 2 novos jobs aparecendo no catálogo de Jobs, execução manual gerando `JobRun`/`AuditRun` de verdade, tela de Auditoria mostrando o detalhe das 5 verificações (inclusive a tabela de problemas do V4 quando faltava `JobRun` recente), selo do dashboard alternando entre os 3 estados, e o aviso de bloqueio do V1 aparecendo em `/receivables/overdue` quando um índice foi deliberadamente deixado sem valor pra simular o cenário. Migration aditiva (`audit_runs`, `audit_check_results`, `IndexRule.publicationDeadlineDay`) aplicada em produção.
+
+**Fora desta etapa, por decisão da própria sequência da especificação:** o relatório mensal de integridade (Parte 2.3 do documento) fica adiado pra Fase A (motor de templates), já que depende da mesma infraestrutura de geração de documento que a minuta de contrato também está esperando.
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original

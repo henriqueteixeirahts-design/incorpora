@@ -41,6 +41,11 @@ export default async function SettingsPage() {
           label: "Jobs — histórico e execução manual",
           visible: hasPermission(context, "job", "VIEW"),
         },
+        {
+          href: "/settings/audit",
+          label: "Auditoria de atualização — verificações V1-V5",
+          visible: hasPermission(context, "audit", "VIEW"),
+        },
       ],
     },
   ];

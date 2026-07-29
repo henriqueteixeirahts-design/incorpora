@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recalculateAllOpenInstallments } from "@/server/receivables";
 import { syncIndexRulesForOrganization } from "@/server/index-rules";
+import { runAuditForOrganization } from "@/server/audit";
 import type { AccessContext } from "@/server/auth-context";
 import type { JobTrigger, Prisma } from "@/generated/prisma/client";
 
@@ -27,7 +28,7 @@ export type JobDefinition = {
   label: string; // nome amigável pra tela de Jobs
   description: string;
   idempotent: true;
-  runForOrganization: (organizationId: string) => Promise<JobResult>;
+  runForOrganization: (organizationId: string, triggeredBy: JobTrigger) => Promise<JobResult>;
 };
 
 async function runJobForOrganization(
@@ -40,7 +41,7 @@ async function runJobForOrganization(
   });
 
   try {
-    const result = await job.runForOrganization(organizationId);
+    const result = await job.runForOrganization(organizationId, triggeredBy);
     await prisma.jobRun.update({
       where: { id: jobRun.id },
       data: {
@@ -105,7 +106,42 @@ export const syncIndexValuesJob: JobDefinition = {
   },
 };
 
-export const JOB_REGISTRY: JobDefinition[] = [recalculateInstallmentsJob, syncIndexValuesJob];
+async function runAuditJob(organizationId: string, triggeredBy: JobTrigger, full: boolean): Promise<JobResult> {
+  const result = await runAuditForOrganization(organizationId, { full, triggeredBy });
+  return {
+    success: result.status === "OK",
+    summary: {
+      status: result.status,
+      checks: result.checks.map((c) => ({ code: c.code, status: c.status })),
+    },
+    error: result.status === "ALERT" ? "Uma ou mais verificações da auditoria de atualização falharam — veja o detalhe na tela de Auditoria." : undefined,
+  };
+}
+
+export const auditUpdateJob: JobDefinition = {
+  name: "audit-update",
+  label: "Auditoria de atualização (diária, por amostragem)",
+  description:
+    "Roda as 5 verificações de integridade (frescor de índices, cobertura da correção, consistência da memória por amostragem, execução dos jobs, divergência contra o Banco Central) e atualiza o selo de saúde do dashboard.",
+  idempotent: true,
+  runForOrganization: (organizationId, triggeredBy) => runAuditJob(organizationId, triggeredBy, false),
+};
+
+export const auditUpdateFullJob: JobDefinition = {
+  name: "audit-update-full",
+  label: "Auditoria de atualização completa (mensal / re-verificação manual)",
+  description:
+    "Mesmas 5 verificações da auditoria diária, mas a V3 (consistência da memória) confere TODA parcela em aberto, não uma amostra — mais lenta, roda mensalmente e sob demanda (botão \"Re-verificar agora\" na tela de Auditoria).",
+  idempotent: true,
+  runForOrganization: (organizationId, triggeredBy) => runAuditJob(organizationId, triggeredBy, true),
+};
+
+export const JOB_REGISTRY: JobDefinition[] = [
+  recalculateInstallmentsJob,
+  syncIndexValuesJob,
+  auditUpdateJob,
+  auditUpdateFullJob,
+];
 
 export function getJobByName(name: string) {
   return JOB_REGISTRY.find((job) => job.name === name);
