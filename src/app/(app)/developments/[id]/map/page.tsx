@@ -56,6 +56,7 @@ export default async function DevelopmentMapPage({
     buildingId: unit.buildingId,
     floorId: unit.floorId,
     position: unit.position,
+    block: unit.block,
     referenceValue: unit.referenceValue === null ? null : Number(unit.referenceValue),
     exchangeContractId: unit.exchangeContractId,
   });

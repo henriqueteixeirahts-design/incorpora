@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { UNIT_STATUS_META, UNIT_STATUS_VALUES } from "@/lib/unit-status";
-import { getUnitColumnKey } from "@/lib/unit-grid";
+import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
 import {
   createReservationFromMapAction,
   destacarUnidadeFromMapAction,
@@ -18,6 +18,7 @@ export type EspelhoUnit = {
   buildingId: string | null;
   floorId: string | null;
   position: string | null;
+  block: string | null;
   referenceValue: number | null;
   exchangeContractId: string | null;
 };
@@ -192,6 +193,8 @@ export function EspelhoGrid({
   const [exchangeBusy, setExchangeBusy] = useState(false);
 
   const allUnits = useMemo(() => [...units, ...unassignedUnits], [units, unassignedUnits]);
+
+  const lotsByBlock = useMemo(() => groupLotsByBlock(unassignedUnits), [unassignedUnits]);
 
   const passesFilter = (unit: EspelhoUnit) => {
     if (typeFilter && unit.unitType !== typeFilter) return false;
@@ -433,12 +436,17 @@ export function EspelhoGrid({
         );
       })}
 
-      {unassignedUnits.length > 0 ? (
+      {lotsByBlock.length > 0 ? (
         <section style={{ marginTop: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.05rem" }}>Lotes / unidades sem torre</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.5rem" }}>
-            {[...unassignedUnits].sort((a, b) => a.number.localeCompare(b.number)).map((unit) => renderCell(unit))}
-          </div>
+          <h2 style={{ fontSize: "1.05rem" }}>Loteamento</h2>
+          {lotsByBlock.map(([block, lots]) => (
+            <div key={block} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+              <span style={{ width: 110, fontSize: "0.78rem", opacity: 0.7, flexShrink: 0 }}>
+                {block === UNASSIGNED_BLOCK ? "Sem quadra" : `Quadra ${block}`}
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>{lots.map((unit) => renderCell(unit))}</div>
+            </div>
+          ))}
         </section>
       ) : null}
 
