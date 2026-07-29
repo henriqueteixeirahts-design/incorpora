@@ -65,6 +65,7 @@ model Organization {
   bankAccounts         BankAccount[]
   jobRuns              JobRun[]
   auditRuns            AuditRun[]
+  permutantes          Permutante[]
 
   @@map("organizations")
 }
@@ -430,9 +431,96 @@ model SpeLand {
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
 
-  spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+  spe                   SpecialPurposeEntity   @relation(fields: [speId], references: [id], onDelete: Cascade)
+  exchangeContractLinks ExchangeContractLand[]
 
   @@map("spe_lands")
+}
+
+/// Terrenista/permutante — pessoa (PF/PJ) que recebe unidades ou percentual
+/// financeiro em troca do terreno. Mesmo padrão estrutural de `Customer`
+/// (docs/ESPEC_PERMUTANTES.md, Parte 1.1), mas modelo próprio: é uma
+/// contraparte de negócio, não um comprador.
+model Permutante {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  type           CustomerType @default(INDIVIDUAL)
+  name           String
+  document       String
+  email          String?
+  phone          String?
+  zipCode        String?
+  street         String?
+  number         String?
+  complement     String?
+  neighborhood   String?
+  city           String?
+  state          String?      @db.VarChar(2)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  exchangeContracts ExchangeContract[]
+
+  @@unique([organizationId, document])
+  @@map("permutantes")
+}
+
+enum ExchangeContractType {
+  PHYSICAL // permuta física
+  FINANCIAL // permuta financeira
+  MIXED // mista
+}
+
+enum ExchangeContractStatus {
+  ACTIVE
+  SETTLED // quitado
+  TERMINATED // encerrado
+}
+
+/// Contrato de permuta (docs/ESPEC_PERMUTANTES.md, Parte 1). Etapas 1-2:
+/// cadastro do contrato + destaque de unidades da permuta física no espelho
+/// de vendas. `managedBySystem` só é relevante quando `type` inclui a parte
+/// física (PHYSICAL/MIXED) — controla se as unidades destacadas continuam no
+/// funil comercial normal (badge "P") ou saem dele (status fixo EXCHANGE).
+/// A apuração financeira da permuta física sob gestão e o motor da permuta
+/// financeira são as etapas 3-4, ainda não implementadas.
+model ExchangeContract {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  developmentId        String                 @db.Uuid
+  permutanteId         String                 @db.Uuid
+  type                 ExchangeContractType
+  appraisalValue       Decimal?               @db.Decimal(14, 2)
+  contractDate         DateTime
+  contractDocumentPath String? // caminho no bucket privado "documents"
+  notes                String?
+  status               ExchangeContractStatus @default(ACTIVE)
+  managedBySystem      Boolean? // só relevante se type = PHYSICAL/MIXED
+  administrationFeePct Decimal?               @db.Decimal(6, 3) // captado agora; repasse (etapa 3) ainda não calcula sobre isso
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  development Development            @relation(fields: [developmentId], references: [id], onDelete: Restrict)
+  permutante  Permutante             @relation(fields: [permutanteId], references: [id], onDelete: Restrict)
+  lands       ExchangeContractLand[]
+  units       Unit[]
+
+  @@map("exchange_contracts")
+}
+
+/// Vínculo N:N entre contrato de permuta e terreno(s) objeto da permuta (a
+/// especificação prevê múltiplos terrenos por contrato).
+model ExchangeContractLand {
+  id                 String @id @default(uuid()) @db.Uuid
+  exchangeContractId String @db.Uuid
+  landId             String @db.Uuid
+
+  exchangeContract ExchangeContract @relation(fields: [exchangeContractId], references: [id], onDelete: Cascade)
+  land             SpeLand          @relation(fields: [landId], references: [id], onDelete: Cascade)
+
+  @@unique([exchangeContractId, landId])
+  @@map("exchange_contract_lands")
 }
 
 enum BankAccountType {
@@ -774,6 +862,7 @@ model Development {
   contracts             Contract[]
   costCenters           CostCenter[]
   payables              Payable[]
+  exchangeContracts     ExchangeContract[]
 
   @@index([organizationId])
   @@index([speId])
@@ -885,9 +974,15 @@ model Unit {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  building    Building?   @relation(fields: [buildingId], references: [id], onDelete: SetNull)
-  floor       Floor?      @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  // Destaque de permuta física (docs/ESPEC_PERMUTANTES.md, Parte 2.1) — nulo
+  // = unidade da SPE. Setado a partir do espelho de vendas, só a partir de
+  // AVAILABLE.
+  exchangeContractId String? @db.Uuid
+
+  development      Development       @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  building         Building?         @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  floor            Floor?            @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  exchangeContract ExchangeContract? @relation(fields: [exchangeContractId], references: [id])
 
   statusHistory    UnitStatusHistory[]
   linksAsPrincipal UnitLink[]          @relation("UnitLinkPrincipal")

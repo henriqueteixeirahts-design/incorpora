@@ -12,7 +12,7 @@ export const UNIT_STATUS_META: Record<UnitStatus, { label: string; color: string
   AWAITING_SIGNATURE: { label: "Aguardando assinatura", color: "#9c36b5" },
   SOLD: { label: "Vendida", color: "#495057" },
   BLOCKED: { label: "Bloqueada", color: "#e03131" },
-  EXCHANGE: { label: "Permuta", color: "#0c8599" },
+  EXCHANGE: { label: "Permutante — fora de gestão", color: "#ae3ec9" },
   DEVELOPER_UNIT: { label: "Unidade da incorporadora", color: "#868e96" },
   INVESTOR_UNIT: { label: "Unidade de investidor", color: "#5c940d" },
   CANCELLED: { label: "Distratada", color: "#c92a2a" },

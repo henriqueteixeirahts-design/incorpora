@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAccessContext } from "@/server/auth-context";
+import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { listUnits } from "@/server/units";
-import { UNIT_STATUS_META } from "@/lib/unit-status";
+import { listExchangeContracts } from "@/server/exchange-contracts";
+import { listReservations, expireOverdueReservations } from "@/server/reservations";
+import { listCustomers, listBrokers, listAgencies } from "@/server/crm";
+import { listSalesTables } from "@/server/sales-tables";
+import { EspelhoGrid } from "./espelho-grid";
 
 export default async function DevelopmentMapPage({
   params,
@@ -16,115 +20,76 @@ export default async function DevelopmentMapPage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  const units = await listUnits(id);
+  await expireOverdueReservations(context.organizationId);
+
+  const [units, contracts, allReservations, customers, brokers, agencies, salesTables] = await Promise.all([
+    listUnits(id),
+    listExchangeContracts(context, id),
+    listReservations(context.organizationId),
+    listCustomers(context.organizationId),
+    listBrokers(context.organizationId),
+    listAgencies(context.organizationId),
+    listSalesTables(id),
+  ]);
+
   const principalUnits = units.filter((unit) => !unit.isAccessory);
+  const buildingUnits = principalUnits.filter((unit) => unit.buildingId);
+  const unassignedUnits = principalUnits.filter((unit) => !unit.buildingId);
 
-  const unitsByBuilding = new Map<string, typeof principalUnits>();
-  const unassignedUnits: typeof principalUnits = [];
+  const reservations = allReservations
+    .filter((r) => r.status === "ACTIVE" && r.unit.developmentId === id)
+    .map((r) => ({
+      unitId: r.unitId,
+      customerName: r.customer.name,
+      brokerName: r.broker?.name ?? null,
+      expiresAt: r.expiresAt,
+    }));
 
-  for (const unit of principalUnits) {
-    if (unit.buildingId) {
-      const list = unitsByBuilding.get(unit.buildingId) ?? [];
-      list.push(unit);
-      unitsByBuilding.set(unit.buildingId, list);
-    } else {
-      unassignedUnits.push(unit);
-    }
-  }
+  const canCreateReservation = hasPermission(context, "reservation", "CREATE");
+  const canManageExchange = hasPermission(context, "exchange_contract", "EDIT");
+
+  const mapUnit = (unit: (typeof units)[number]) => ({
+    id: unit.id,
+    number: unit.number,
+    status: unit.status,
+    unitType: unit.unitType,
+    buildingId: unit.buildingId,
+    floorId: unit.floorId,
+    position: unit.position,
+    referenceValue: unit.referenceValue === null ? null : Number(unit.referenceValue),
+    exchangeContractId: unit.exchangeContractId,
+  });
 
   return (
     <>
       <p style={{ marginBottom: "0.25rem" }}>
         <Link href={`/developments/${id}`}>← {development.name}</Link>
       </p>
-      <h1>Mapa de disponibilidade</h1>
+      <h1>Espelho de vendas</h1>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", margin: "1rem 0" }}>
-        {Object.values(UNIT_STATUS_META).map((meta) => (
-          <span key={meta.label} style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.8rem" }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                background: meta.color,
-                display: "inline-block",
-              }}
-            />
-            {meta.label}
-          </span>
-        ))}
-      </div>
-
-      {development.buildings.map((building) => {
-        const buildingUnits = unitsByBuilding.get(building.id) ?? [];
-        const floors = [...building.floors].sort((a, b) => b.level - a.level);
-
-        return (
-          <section key={building.id} style={{ marginTop: "1.5rem" }}>
-            <h2 style={{ fontSize: "1.05rem" }}>{building.name}</h2>
-            {floors.map((floor) => {
-              const floorUnits = buildingUnits
-                .filter((unit) => unit.floorId === floor.id)
-                .sort((a, b) => a.number.localeCompare(b.number));
-
-              if (floorUnits.length === 0) return null;
-
-              return (
-                <div key={floor.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
-                  <span style={{ width: 90, fontSize: "0.8rem", opacity: 0.7 }}>
-                    {floor.label ?? `Andar ${floor.level}`}
-                  </span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                    {floorUnits.map((unit) => (
-                      <span
-                        key={unit.id}
-                        title={UNIT_STATUS_META[unit.status].label}
-                        style={{
-                          background: UNIT_STATUS_META[unit.status].color,
-                          color: "#fff",
-                          borderRadius: 4,
-                          padding: "0.25rem 0.5rem",
-                          fontSize: "0.8rem",
-                        }}
-                      >
-                        {unit.number}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-        );
-      })}
-
-      {unassignedUnits.length > 0 ? (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.05rem" }}>Lotes / unidades sem torre</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.5rem" }}>
-            {unassignedUnits
-              .sort((a, b) => a.number.localeCompare(b.number))
-              .map((unit) => (
-                <span
-                  key={unit.id}
-                  title={UNIT_STATUS_META[unit.status].label}
-                  style={{
-                    background: UNIT_STATUS_META[unit.status].color,
-                    color: "#fff",
-                    borderRadius: 4,
-                    padding: "0.25rem 0.5rem",
-                    fontSize: "0.8rem",
-                  }}
-                >
-                  {unit.number}
-                </span>
-              ))}
-          </div>
-        </section>
-      ) : null}
-
-      {principalUnits.length === 0 ? <p style={{ opacity: 0.7 }}>Nenhuma unidade cadastrada.</p> : null}
+      <EspelhoGrid
+        developmentId={id}
+        buildings={development.buildings.map((b) => ({
+          id: b.id,
+          name: b.name,
+          floors: b.floors.map((f) => ({ id: f.id, level: f.level, label: f.label })),
+        }))}
+        units={buildingUnits.map(mapUnit)}
+        unassignedUnits={unassignedUnits.map(mapUnit)}
+        contracts={contracts.map((c) => ({
+          id: c.id,
+          permutanteName: c.permutante.name,
+          type: c.type,
+          managedBySystem: c.managedBySystem,
+        }))}
+        reservations={reservations}
+        customers={customers.map((c) => ({ id: c.id, label: c.name }))}
+        brokers={brokers.map((b) => ({ id: b.id, label: b.name }))}
+        agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
+        salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
+        canCreateReservation={canCreateReservation}
+        canManageExchange={canManageExchange}
+      />
     </>
   );
 }

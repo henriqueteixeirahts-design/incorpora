@@ -41,9 +41,10 @@ export default async function DevelopmentDetailPage({
         {development.spe.name} · {[development.city, development.state].filter(Boolean).join("/")}
       </p>
       <p style={{ marginTop: "0.5rem", display: "flex", gap: "1rem" }}>
-        <Link href={`/developments/${id}/map`}>Mapa de disponibilidade →</Link>
+        <Link href={`/developments/${id}/map`}>Espelho de vendas →</Link>
         <Link href={`/developments/${id}/sales-tables`}>Tabelas de venda →</Link>
         <Link href={`/developments/${id}/commercial`}>Comercial →</Link>
+        <Link href={`/developments/${id}/exchange-contracts`}>Permuta →</Link>
       </p>
 
       <section style={{ marginTop: "2rem" }}>

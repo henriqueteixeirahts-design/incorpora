@@ -33,6 +33,8 @@ const RESOURCES = [
   "report",
   "job",
   "audit",
+  "permutante",
+  "exchange_contract",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -87,6 +89,8 @@ const SYSTEM_ROLES: Record<
       contract: ["VIEW"],
       installment: ["VIEW"],
       report: ["VIEW"],
+      permutante: ["VIEW"],
+      exchange_contract: ["VIEW"],
     },
   },
   "Gerente comercial": {
@@ -106,6 +110,8 @@ const SYSTEM_ROLES: Record<
       installment: ["VIEW"],
       index_rule: ["VIEW"],
       report: ["VIEW", "EXPORT"],
+      permutante: ["VIEW", "CREATE", "EDIT"],
+      exchange_contract: ["VIEW", "CREATE", "EDIT"],
     },
   },
   Jurídico: {
@@ -117,6 +123,8 @@ const SYSTEM_ROLES: Record<
       proposal: ["VIEW", "APPROVE"],
       sale: ["VIEW"],
       contract: ["VIEW", "CREATE", "EDIT", "APPROVE"],
+      permutante: ["VIEW"],
+      exchange_contract: ["VIEW"],
     },
   },
   Contabilidade: {
