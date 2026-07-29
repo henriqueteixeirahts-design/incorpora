@@ -20,6 +20,8 @@ import type {
   SpeDocumentHolderType,
   SpePartnerRole,
   SpeInvestorModality,
+  SpeInvestorLoanInterestPeriod,
+  SpeContributionForecastOrigin,
   DocumentCategory,
   LandAcquisitionMethod,
   TaxRegime,
@@ -46,6 +48,18 @@ import {
   deleteSpeLand,
   type CreateSpeLandInput,
 } from "@/server/spe-lands";
+import { listIndexRules } from "@/server/index-rules";
+import {
+  getInvestorContributionsDetail,
+  getSpeContributionSummary,
+  createContributionForecast,
+  updateContributionForecast,
+  cancelContributionForecast,
+  createContribution,
+  deleteContribution,
+  type CreateContributionForecastInput,
+  type CreateContributionInput,
+} from "@/server/spe-contributions";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -336,6 +350,17 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
   const resultParticipationPctRaw = String(formData.get("resultParticipationPct") ?? "").replace(",", ".");
   const contributionDateRaw = String(formData.get("contributionDate") ?? "");
   const notes = String(formData.get("notes") ?? "").trim();
+  const committedCapitalRaw = String(formData.get("committedCapital") ?? "").replace(",", ".");
+  const returnBankName = String(formData.get("returnBankName") ?? "").trim();
+  const returnBankAgency = String(formData.get("returnBankAgency") ?? "").trim();
+  const returnBankAccount = String(formData.get("returnBankAccount") ?? "").trim();
+  const returnPixKeyType = String(formData.get("returnPixKeyType") ?? "").trim();
+  const returnPixKeyValue = String(formData.get("returnPixKeyValue") ?? "").trim();
+  const loanInterestRateRaw = String(formData.get("loanInterestRate") ?? "").replace(",", ".");
+  const loanInterestPeriod = String(formData.get("loanInterestPeriod") ?? "") as SpeInvestorLoanInterestPeriod | "";
+  const loanIndexRuleId = String(formData.get("loanIndexRuleId") ?? "").trim();
+  const loanGraceMonthsRaw = String(formData.get("loanGraceMonths") ?? "");
+  const loanTermMonthsRaw = String(formData.get("loanTermMonths") ?? "");
 
   if (!["INDIVIDUAL", "COMPANY"].includes(type)) return { error: "Informe o tipo (PF/PJ)." };
   if (!name) return { error: "Informe o nome ou razão social." };
@@ -359,6 +384,25 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
   ) {
     return { error: "Percentual de participação no resultado inválido." };
   }
+  const committedCapital = committedCapitalRaw ? Number(committedCapitalRaw) : undefined;
+  if (committedCapital !== undefined && (Number.isNaN(committedCapital) || committedCapital < 0)) {
+    return { error: "Capital comprometido inválido." };
+  }
+  const loanInterestRate = loanInterestRateRaw ? Number(loanInterestRateRaw) : undefined;
+  if (loanInterestRate !== undefined && (Number.isNaN(loanInterestRate) || loanInterestRate < 0)) {
+    return { error: "Taxa de juros do mútuo inválida." };
+  }
+  if (loanInterestPeriod && !["MONTHLY", "YEARLY"].includes(loanInterestPeriod)) {
+    return { error: "Periodicidade da taxa de juros inválida." };
+  }
+  const loanGraceMonths = loanGraceMonthsRaw ? Number(loanGraceMonthsRaw) : undefined;
+  if (loanGraceMonths !== undefined && (!Number.isInteger(loanGraceMonths) || loanGraceMonths < 0)) {
+    return { error: "Carência do mútuo inválida." };
+  }
+  const loanTermMonths = loanTermMonthsRaw ? Number(loanTermMonthsRaw) : undefined;
+  if (loanTermMonths !== undefined && (!Number.isInteger(loanTermMonths) || loanTermMonths <= 0)) {
+    return { error: "Prazo do mútuo inválido." };
+  }
 
   return {
     type,
@@ -371,6 +415,17 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
     resultParticipationPct,
     contributionDate: contributionDateRaw ? new Date(contributionDateRaw) : undefined,
     notes: notes || undefined,
+    committedCapital,
+    returnBankName: returnBankName || undefined,
+    returnBankAgency: returnBankAgency || undefined,
+    returnBankAccount: returnBankAccount || undefined,
+    returnPixKeyType: returnPixKeyType || undefined,
+    returnPixKeyValue: returnPixKeyValue || undefined,
+    loanInterestRate,
+    loanInterestPeriod: loanInterestPeriod || undefined,
+    loanIndexRuleId: loanIndexRuleId || undefined,
+    loanGraceMonths,
+    loanTermMonths,
   };
 }
 
@@ -650,6 +705,173 @@ export async function updateSpeAccountingAction(
     await updateSpeAccounting(context, speId, input);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao atualizar dados contábeis." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function getIndexRulesAction() {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "index_rule", "VIEW")) return [];
+  return listIndexRules(context.organizationId);
+}
+
+export async function getInvestorContributionsDetailAction(investorId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return null;
+  try {
+    return await getInvestorContributionsDetail(context, investorId);
+  } catch {
+    return null;
+  }
+}
+
+export async function getSpeContributionSummaryAction(speId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return null;
+  try {
+    return await getSpeContributionSummary(context, speId);
+  } catch {
+    return null;
+  }
+}
+
+function parseContributionForecastInput(formData: FormData): CreateContributionForecastInput | { error: string } {
+  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  const expectedDateRaw = String(formData.get("expectedDate") ?? "");
+  const origin = String(formData.get("origin") ?? "") as SpeContributionForecastOrigin;
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const amount = Number(amountRaw);
+  if (!amountRaw || Number.isNaN(amount) || amount <= 0) return { error: "Informe um valor previsto válido." };
+  if (!expectedDateRaw) return { error: "Informe a data prevista." };
+  if (!["CASH_FLOW_PLANNING", "PUNCTUAL_AGREEMENT", "CAPITAL_CALL"].includes(origin)) {
+    return { error: "Informe a origem da previsão." };
+  }
+
+  return { amount, expectedDate: new Date(expectedDateRaw), origin, notes: notes || undefined };
+}
+
+export async function createContributionForecastAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const investorId = String(formData.get("investorId") ?? "");
+  if (!investorId) return { error: "Investidor inválido." };
+
+  const input = parseContributionForecastInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createContributionForecast(context, investorId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao lançar previsão." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function updateContributionForecastAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const investorId = String(formData.get("investorId") ?? "");
+  const forecastId = String(formData.get("forecastId") ?? "");
+  if (!investorId || !forecastId) return { error: "Previsão inválida." };
+
+  const input = parseContributionForecastInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await updateContributionForecast(context, investorId, forecastId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar previsão." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function cancelContributionForecastAction(
+  investorId: string,
+  forecastId: string,
+  reason: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await cancelContributionForecast(context, investorId, forecastId, reason);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao cancelar previsão." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+function parseContributionInput(formData: FormData): CreateContributionInput | { error: string } {
+  const forecastId = String(formData.get("forecastId") ?? "").trim();
+  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  const creditDateRaw = String(formData.get("creditDate") ?? "");
+  const bankAccountId = String(formData.get("bankAccountId") ?? "").trim();
+  const method = String(formData.get("method") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const receiptFile = formData.get("receiptFile");
+
+  const amount = Number(amountRaw);
+  if (!amountRaw || Number.isNaN(amount) || amount <= 0) return { error: "Informe um valor de aporte válido." };
+  if (!creditDateRaw) return { error: "Informe a data do crédito." };
+  if (!bankAccountId) return { error: "Informe a conta bancária que recebeu o aporte." };
+
+  return {
+    forecastId: forecastId || undefined,
+    amount,
+    creditDate: new Date(creditDateRaw),
+    bankAccountId,
+    method: method || undefined,
+    notes: notes || undefined,
+    receiptFile: receiptFile instanceof File && receiptFile.size > 0 ? receiptFile : undefined,
+  };
+}
+
+export async function createContributionAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const investorId = String(formData.get("investorId") ?? "");
+  if (!investorId) return { error: "Investidor inválido." };
+
+  const input = parseContributionInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createContribution(context, investorId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao registrar aporte." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function deleteContributionAction(
+  investorId: string,
+  contributionId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteContribution(context, investorId, contributionId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover aporte." };
   }
   revalidatePath("/spes");
   return { success: true };

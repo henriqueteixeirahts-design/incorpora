@@ -26,9 +26,12 @@ import {
   updateSpeLandAction,
   deleteSpeLandAction,
   updateSpeAccountingAction,
+  getIndexRulesAction,
+  getSpeContributionSummaryAction,
   type CreateSpeState,
   type FormState,
 } from "./actions";
+import { InvestorContributionsPanel } from "./investor-contributions";
 
 export type SpeDetail = NonNullable<Awaited<ReturnType<typeof getSpeDetailAction>>>;
 
@@ -594,6 +597,12 @@ function SpeInvestorForm({
   const formAction = investor ? updateSpeInvestorAction : createSpeInvestorAction;
   const [state, dispatch, pending] = useActionState(formAction, investorFormInitialState);
   const [type, setType] = useState<"INDIVIDUAL" | "COMPANY">(investor?.type ?? "INDIVIDUAL");
+  const [modality, setModality] = useState(investor?.modality ?? "EQUITY");
+  const [indexRules, setIndexRules] = useState<Awaited<ReturnType<typeof getIndexRulesAction>>>([]);
+
+  useEffect(() => {
+    getIndexRulesAction().then(setIndexRules);
+  }, []);
 
   useEffect(() => {
     if (state.success) onSaved();
@@ -653,7 +662,13 @@ function SpeInvestorForm({
         </div>
         <div className="field">
           <label htmlFor="investor-modality">Modalidade *</label>
-          <select id="investor-modality" name="modality" required defaultValue={investor?.modality ?? "EQUITY"}>
+          <select
+            id="investor-modality"
+            name="modality"
+            required
+            value={modality}
+            onChange={(e) => setModality(e.target.value as typeof modality)}
+          >
             <option value="EQUITY">Equity (participação)</option>
             <option value="LOAN">Mútuo</option>
             <option value="PHYSICAL_EXCHANGE">Permuta física</option>
@@ -662,7 +677,7 @@ function SpeInvestorForm({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="investor-capital">Capital aportado (R$)</label>
+          <label htmlFor="investor-capital">Capital aportado (R$) — legado</label>
           <input
             id="investor-capital"
             name="contributedCapital"
@@ -670,6 +685,18 @@ function SpeInvestorForm({
             step="0.01"
             min="0"
             defaultValue={investor?.contributedCapital ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="investor-committed-capital">Capital comprometido total (R$)</label>
+          <input
+            id="investor-committed-capital"
+            name="committedCapital"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Deixe em branco se não houver teto definido"
+            defaultValue={investor?.committedCapital ?? ""}
           />
         </div>
         <div className="field">
@@ -700,6 +727,109 @@ function SpeInvestorForm({
           <input id="investor-notes" name="notes" defaultValue={investor?.notes ?? ""} />
         </div>
       </div>
+
+      <h4 style={{ marginTop: "1rem" }}>Conta bancária de devolução</h4>
+      <p className="field-hint">Para onde vão distribuições e devoluções — conta externa do investidor, não do cadastro central.</p>
+      <div className="field-grid">
+        <div className="field">
+          <label htmlFor="investor-return-bank-name">Banco</label>
+          <input id="investor-return-bank-name" name="returnBankName" defaultValue={investor?.returnBankName ?? ""} />
+        </div>
+        <div className="field">
+          <label htmlFor="investor-return-bank-agency">Agência</label>
+          <input
+            id="investor-return-bank-agency"
+            name="returnBankAgency"
+            defaultValue={investor?.returnBankAgency ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="investor-return-bank-account">Conta</label>
+          <input
+            id="investor-return-bank-account"
+            name="returnBankAccount"
+            defaultValue={investor?.returnBankAccount ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="investor-return-pix-type">Tipo de chave Pix</label>
+          <input
+            id="investor-return-pix-type"
+            name="returnPixKeyType"
+            placeholder="CPF/CNPJ/e-mail/telefone/aleatória"
+            defaultValue={investor?.returnPixKeyType ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="investor-return-pix-value">Chave Pix</label>
+          <input
+            id="investor-return-pix-value"
+            name="returnPixKeyValue"
+            defaultValue={investor?.returnPixKeyValue ?? ""}
+          />
+        </div>
+      </div>
+
+      {modality === "LOAN" ? (
+        <>
+          <h4 style={{ marginTop: "1rem" }}>Condições do mútuo</h4>
+          <div className="field-grid">
+            <div className="field">
+              <label htmlFor="investor-loan-rate">Taxa de juros (%)</label>
+              <input
+                id="investor-loan-rate"
+                name="loanInterestRate"
+                type="number"
+                step="0.001"
+                min="0"
+                defaultValue={investor?.loanInterestRate ?? ""}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="investor-loan-period">Periodicidade</label>
+              <select id="investor-loan-period" name="loanInterestPeriod" defaultValue={investor?.loanInterestPeriod ?? ""}>
+                <option value="">—</option>
+                <option value="MONTHLY">% ao mês</option>
+                <option value="YEARLY">% ao ano</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="investor-loan-index">Correção por índice</label>
+              <select id="investor-loan-index" name="loanIndexRuleId" defaultValue={investor?.loanIndexRuleId ?? ""}>
+                <option value="">Sem correção</option>
+                {indexRules.map((rule) => (
+                  <option key={rule.id} value={rule.id}>
+                    {rule.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="investor-loan-grace">Carência (meses)</label>
+              <input
+                id="investor-loan-grace"
+                name="loanGraceMonths"
+                type="number"
+                step="1"
+                min="0"
+                defaultValue={investor?.loanGraceMonths ?? ""}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="investor-loan-term">Prazo (meses)</label>
+              <input
+                id="investor-loan-term"
+                name="loanTermMonths"
+                type="number"
+                step="1"
+                min="1"
+                defaultValue={investor?.loanTermMonths ?? ""}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
         <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
@@ -713,9 +843,52 @@ function SpeInvestorForm({
   );
 }
 
+function SpeContributionSummaryPanel({ speId, refreshKey }: { speId: string; refreshKey: number }) {
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof getSpeContributionSummaryAction>>>(null);
+
+  useEffect(() => {
+    getSpeContributionSummaryAction(speId).then(setSummary);
+  }, [speId, refreshKey]);
+
+  if (!summary) return null;
+
+  const format = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  return (
+    <div className="field-section" style={{ marginBottom: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+      <div>
+        <p className="field-hint">Comprometido</p>
+        <strong>
+          {format(summary.committed)}
+          {summary.hasOpenCommitment ? " +" : ""}
+        </strong>
+      </div>
+      <div>
+        <p className="field-hint">Previsto</p>
+        <strong>{format(summary.totalForecast)}</strong>
+      </div>
+      <div>
+        <p className="field-hint">Realizado</p>
+        <strong>{format(summary.totalRealized)}</strong>
+      </div>
+      <div>
+        <p className="field-hint">% integralizado</p>
+        <strong>{summary.integralizedPct !== null ? `${summary.integralizedPct.toFixed(1)}%` : "—"}</strong>
+      </div>
+    </div>
+  );
+}
+
 function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void }) {
   const [editing, setEditing] = useState<SpeInvestorRow | null | "new">(null);
+  const [expandedInvestorId, setExpandedInvestorId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [summaryRefreshKey, setSummaryRefreshKey] = useState(0);
+
+  function refreshAll() {
+    onRefresh();
+    setSummaryRefreshKey((k) => k + 1);
+  }
 
   async function handleDelete(investor: SpeInvestorRow) {
     if (!confirm(`Remover o investidor "${investor.name}"?`)) return;
@@ -725,12 +898,14 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
       setDeleteError(result.error);
       return;
     }
-    onRefresh();
+    refreshAll();
   }
 
   return (
     <div>
       {deleteError ? <p className="error-text">{deleteError}</p> : null}
+
+      <SpeContributionSummaryPanel speId={spe.id} refreshKey={summaryRefreshKey} />
 
       {spe.investors.length === 0 ? (
         <p className="field-hint">Nenhum investidor cadastrado.</p>
@@ -742,43 +917,63 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
               <th>Documento</th>
               <th>Contato</th>
               <th>Modalidade</th>
-              <th>Capital aportado</th>
+              <th>Comprometido</th>
               <th>% resultado</th>
               <th aria-label="Ações" />
             </tr>
           </thead>
           <tbody>
             {spe.investors.map((investor) => (
-              <tr key={investor.id}>
-                <td>{investor.name}</td>
-                <td>{formatDocument(investor.document, investor.type)}</td>
-                <td>
-                  {investor.email}
-                  <br />
-                  {formatPhone(investor.phone)}
-                </td>
-                <td>{INVESTOR_MODALITY_LABELS[investor.modality] ?? investor.modality}</td>
-                <td>
-                  {investor.contributedCapital !== null
-                    ? investor.contributedCapital.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                    : "—"}
-                </td>
-                <td>
-                  {investor.resultParticipationPct !== null
-                    ? `${investor.resultParticipationPct.toLocaleString("pt-BR")}%`
-                    : "—"}
-                </td>
-                <td>
-                  <div className="row-actions">
-                    <button type="button" className="secondary" onClick={() => setEditing(investor)}>
-                      Editar
-                    </button>
-                    <button type="button" className="secondary" onClick={() => handleDelete(investor)}>
-                      Remover
-                    </button>
-                  </div>
-                </td>
-              </tr>
+              <>
+                <tr key={investor.id}>
+                  <td>{investor.name}</td>
+                  <td>{formatDocument(investor.document, investor.type)}</td>
+                  <td>
+                    {investor.email}
+                    <br />
+                    {formatPhone(investor.phone)}
+                  </td>
+                  <td>{INVESTOR_MODALITY_LABELS[investor.modality] ?? investor.modality}</td>
+                  <td>
+                    {investor.committedCapital !== null
+                      ? investor.committedCapital.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                      : "Sem teto"}
+                  </td>
+                  <td>
+                    {investor.resultParticipationPct !== null
+                      ? `${investor.resultParticipationPct.toLocaleString("pt-BR")}%`
+                      : "—"}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setExpandedInvestorId(expandedInvestorId === investor.id ? null : investor.id)}
+                      >
+                        {expandedInvestorId === investor.id ? "Ocultar aportes" : "Aportes"}
+                      </button>
+                      <button type="button" className="secondary" onClick={() => setEditing(investor)}>
+                        Editar
+                      </button>
+                      <button type="button" className="secondary" onClick={() => handleDelete(investor)}>
+                        Remover
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {expandedInvestorId === investor.id ? (
+                  <tr key={`${investor.id}-contributions`}>
+                    <td colSpan={7}>
+                      <InvestorContributionsPanel
+                        investorId={investor.id}
+                        bankAccountLinks={spe.bankAccountLinks}
+                        onChanged={refreshAll}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </>
             ))}
           </tbody>
         </table>
@@ -791,7 +986,7 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
           investor={editing === "new" ? null : editing}
           onSaved={() => {
             setEditing(null);
-            onRefresh();
+            refreshAll();
           }}
           onCancel={() => setEditing(null)}
         />

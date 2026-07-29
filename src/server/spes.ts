@@ -109,6 +109,8 @@ export async function getSpeDetail(organizationId: string, speId: string) {
       ...i,
       contributedCapital: i.contributedCapital === null ? null : Number(i.contributedCapital),
       resultParticipationPct: i.resultParticipationPct === null ? null : Number(i.resultParticipationPct),
+      committedCapital: i.committedCapital === null ? null : Number(i.committedCapital),
+      loanInterestRate: i.loanInterestRate === null ? null : Number(i.loanInterestRate),
     })),
     activePartnersParticipationTotal: partners
       .filter((p) => !p.endDate)

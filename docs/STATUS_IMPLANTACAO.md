@@ -195,6 +195,26 @@ Novo recurso de permissão `audit` (catálogo + seed, sincronizado em produção
 
 **Fora desta etapa, por decisão da própria sequência da especificação:** o relatório mensal de integridade (Parte 2.3 do documento) fica adiado pra Fase A (motor de templates), já que depende da mesma infraestrutura de geração de documento que a minuta de contrato também está esperando.
 
+### Pós-Sprint 10 — Aportes de investidores, etapas 1-2: capital comprometido + previsto × realizado
+✅ Concluído, conforme Parte 1 e Parte 2.1/2.3 de `docs/ESPEC_APORTES_INVESTIDORES.md`. Plugado na aba Investidores da SPE já existente (`ESPEC_CADASTRO_SPE.md`).
+
+**Etapa 1 — extensão do vínculo investidor↔SPE** (`SpeInvestor`, campos novos aditivos):
+- Capital comprometido total (`committedCapital`, nulo = sem teto definido).
+- Conta bancária de devolução do investidor — campos livres (`returnBankName`/`returnBankAgency`/`returnBankAccount`/`returnPixKeyType`/`returnPixKeyValue`), deliberadamente **fora** do cadastro central de contas (`BankAccount`), porque é uma conta externa do investidor, não da organização.
+- Condições de mútuo (só relevantes quando `modality = LOAN`): taxa de juros + periodicidade (% a.m./a.a.), correção opcional por índice do catálogo existente (`IndexRule`), carência e prazo em meses. **Só a captura das condições** — o motor de cálculo do saldo devedor (memória de juros/correção) é a etapa 5 da especificação, ainda não construída.
+
+**Etapa 2 — previsto × realizado** (dois modelos novos, `SpeInvestorContributionForecast` e `SpeInvestorContribution`):
+- Previsão de aporte: valor + data prevista + origem (planejamento de caixa / acordo pontual / chamada de capital — o campo de origem já aceita "chamada de capital" como rótulo, mas o documento formal em si é etapa 3, ainda não construído). Editável e cancelável (com motivo, auditável) enquanto não estiver totalmente baixada.
+- Aporte realizado: valor + data do crédito + conta da SPE que recebeu (vínculo obrigatório com o cadastro central, só contas já linkadas à SPE aparecem no formulário) + forma + comprovante (anexo opcional) + vínculo opcional com uma previsão.
+- **Baixa automática**: toda vez que um aporte é criado ou removido, o status da previsão vinculada é recalculado a partir da soma dos aportes ligados a ela (`PLANNED` → `PARTIALLY_FULFILLED` → `FULFILLED`), nunca setado manualmente pelo formulário — isso vale também quando o valor previsto é editado depois de já ter aporte parcial, evitando ficar com um `FULFILLED` desatualizado.
+- Painel previsto × realizado: por investidor (dentro do expand "Aportes" na aba Investidores) e agregado por SPE (topo da aba) — comprometido, previsto, realizado, % integralizado.
+
+Todo o módulo vive em `src/server/spe-contributions.ts` (regras de negócio + baixa) e `src/app/(app)/spes/investor-contributions.tsx` (UI, componente novo separado do `spe-modal.tsx` já grande). Reaproveita o padrão de auditoria (`recordAuditEvent`), escopo por organização (`speOwnedScope`) e o storage genérico de anexos (`uploadEntityDocument`) já existentes — nenhuma infraestrutura nova.
+
+**Testado**: 6 casos de integração (`tests/integration/spe-contributions.test.ts`) cobrindo baixa parcial/total, reversão de status quando um aporte é removido, cancelamento de previsão (bloqueado se já totalmente baixada), bloqueio de vínculo a previsão cancelada, o resumo previsto×realizado por investidor e por SPE, e isolamento entre organizações. Smoke test manual no navegador local: SPE criada, conta bancária vinculada, investidor cadastrado com condições de mútuo completas (os campos só aparecem quando modalidade = Mútuo), edição confirmando que os dados persistem, previsão lançada, dois aportes registrados confirmando a baixa parcial→total em tempo real na UI. Migration aditiva (`spe_investor_contribution_forecasts`, `spe_investor_contributions`, campos novos em `spe_investors`) aplicada em produção — não precisou de recurso de permissão novo (usa o `spe` já existente).
+
+**Fora desta etapa, pela própria sequência sugerida do documento:** chamada de capital formal com documento (etapa 3, depende do motor de templates da Fase A), devoluções/distribuições + integração com contas a pagar (etapa 4), motor de cálculo do saldo devedor do mútuo (etapa 5), extrato do investidor em PDF (etapa 6), e Contas a Receber consolidado + fluxo de caixa discriminado por origem (etapa 7).
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original

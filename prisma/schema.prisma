@@ -275,11 +275,17 @@ enum SpeInvestorModality {
   OTHER
 }
 
+enum SpeInvestorLoanInterestPeriod {
+  MONTHLY // % a.m.
+  YEARLY // % a.a.
+}
+
 /// Investidor da SPE — distinto de sócio: pode ser mutuante, permutante ou
-/// aportador sem participação societária formal. Estrutura básica desta
-/// etapa (SPE); docs/ESPEC_APORTES_INVESTIDORES.md estende este vínculo
-/// depois com capital comprometido, condições de mútuo e conta de devolução
-/// — campos aditivos, sem necessidade de remodelar o que já existe aqui.
+/// aportador sem participação societária formal. Campos de comprometido/
+/// condições de mútuo/conta de devolução (docs/ESPEC_APORTES_INVESTIDORES.md,
+/// Parte 1) — `contributedCapital` (legado) segue existindo como valor
+/// informado manualmente antes deste módulo; o total aportado de verdade
+/// agora vem da soma de `contributions`.
 model SpeInvestor {
   id                     String                @id @default(uuid()) @db.Uuid
   speId                  String                @db.Uuid
@@ -289,16 +295,100 @@ model SpeInvestor {
   email                  String
   phone                  String
   modality               SpeInvestorModality
-  contributedCapital     Decimal?              @db.Decimal(14, 2) // capital aportado (R$)
+  contributedCapital     Decimal?              @db.Decimal(14, 2) // capital aportado (R$) — legado, anterior ao módulo de aportes
   resultParticipationPct Decimal?              @db.Decimal(6, 3) // percentual de participação no resultado
   contributionDate       DateTime?
   notes                  String?
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
 
-  spe SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Cascade)
+  // Capital comprometido total — Parte 1.1. Nulo = sem teto definido.
+  committedCapital Decimal? @db.Decimal(14, 2)
+
+  // Conta bancária de devolução do investidor — externa ao cadastro central
+  // de contas (que é só das contas da própria organização/SPE), por isso
+  // campos livres em vez de FK.
+  returnBankName    String?
+  returnBankAgency  String?
+  returnBankAccount String?
+  returnPixKeyType  String?
+  returnPixKeyValue String?
+
+  // Condições de mútuo (Parte 1.2) — só fazem sentido quando modality = LOAN.
+  // O cálculo do saldo devedor (memória de juros/correção) é etapa 5 da
+  // especificação; aqui só se registram as condições contratadas.
+  loanInterestRate   Decimal?                       @db.Decimal(6, 3)
+  loanInterestPeriod SpeInvestorLoanInterestPeriod?
+  loanIndexRuleId    String?                        @db.Uuid
+  loanGraceMonths    Int?
+  loanTermMonths     Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  spe                   SpecialPurposeEntity              @relation(fields: [speId], references: [id], onDelete: Cascade)
+  loanIndexRule         IndexRule?                        @relation(fields: [loanIndexRuleId], references: [id])
+  contributionForecasts SpeInvestorContributionForecast[]
+  contributions         SpeInvestorContribution[]
 
   @@map("spe_investors")
+}
+
+enum SpeContributionForecastOrigin {
+  CASH_FLOW_PLANNING // planejamento de caixa
+  PUNCTUAL_AGREEMENT // acordo pontual
+  CAPITAL_CALL // chamada de capital (documento formal — etapa 3)
+}
+
+enum SpeContributionForecastStatus {
+  PLANNED // previsto, nada realizado ainda
+  PARTIALLY_FULFILLED // baixa parcial por aporte(s) vinculado(s)
+  FULFILLED // totalmente baixado
+  CANCELLED // cancelado — auditável, nunca apagado
+}
+
+/// Previsão de aporte (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 2.1) — sem
+/// cronograma rígido, editável/cancelável. `status` é recalculado a partir
+/// da soma dos aportes realizados vinculados (nunca setado livremente pelo
+/// formulário, exceto CANCELLED).
+model SpeInvestorContributionForecast {
+  id           String                        @id @default(uuid()) @db.Uuid
+  investorId   String                        @db.Uuid
+  amount       Decimal                       @db.Decimal(14, 2)
+  expectedDate DateTime
+  origin       SpeContributionForecastOrigin
+  status       SpeContributionForecastStatus @default(PLANNED)
+  cancelReason String?
+  notes        String?
+  createdAt    DateTime                      @default(now())
+  updatedAt    DateTime                      @updatedAt
+
+  investor      SpeInvestor               @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  contributions SpeInvestorContribution[]
+
+  @@map("spe_investor_contribution_forecasts")
+}
+
+/// Aporte realizado (Parte 2.3) — baixa a previsão vinculada (total ou
+/// parcial) quando `forecastId` é informado; pode ser espontâneo (sem
+/// previsão). `bankAccountId` aponta pro cadastro central de contas — é a
+/// conta da SPE/organização que recebeu, não a do investidor.
+model SpeInvestorContribution {
+  id              String   @id @default(uuid()) @db.Uuid
+  investorId      String   @db.Uuid
+  forecastId      String?  @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  creditDate      DateTime
+  bankAccountId   String   @db.Uuid
+  method          String? // TED/Pix/outro — texto livre
+  receiptFilePath String? // caminho no bucket privado "documents"
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  investor    SpeInvestor                      @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  forecast    SpeInvestorContributionForecast? @relation(fields: [forecastId], references: [id])
+  bankAccount BankAccount                      @relation(fields: [bankAccountId], references: [id])
+
+  @@map("spe_investor_contributions")
 }
 
 enum LandAcquisitionMethod {
@@ -375,8 +465,9 @@ model BankAccount {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  speLinks     SpeBankAccount[]
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  speLinks      SpeBankAccount[]
+  contributions SpeInvestorContribution[]
 
   @@map("bank_accounts")
 }
@@ -1347,6 +1438,7 @@ model IndexRule {
   values       IndexValue[]
   contracts    Contract[] // uso como índice de obra (pré-Habite-se)
   developments Development[] // uso como índice pós-Habite-se
+  speInvestors SpeInvestor[] // uso como índice de correção de mútuo
 
   @@unique([organizationId, code, name])
   @@map("index_rules")

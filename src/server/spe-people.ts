@@ -4,7 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { speOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
-import type { SpeDocumentHolderType, SpePartnerRole, SpeInvestorModality } from "@/generated/prisma/client";
+import type {
+  SpeDocumentHolderType,
+  SpePartnerRole,
+  SpeInvestorModality,
+  SpeInvestorLoanInterestPeriod,
+} from "@/generated/prisma/client";
 
 export function listSpePartners(context: AccessContext, speId: string) {
   return prisma.spePartner.findMany({
@@ -108,6 +113,17 @@ export type CreateSpeInvestorInput = {
   resultParticipationPct?: number;
   contributionDate?: Date;
   notes?: string;
+  committedCapital?: number;
+  returnBankName?: string;
+  returnBankAgency?: string;
+  returnBankAccount?: string;
+  returnPixKeyType?: string;
+  returnPixKeyValue?: string;
+  loanInterestRate?: number;
+  loanInterestPeriod?: SpeInvestorLoanInterestPeriod;
+  loanIndexRuleId?: string;
+  loanGraceMonths?: number;
+  loanTermMonths?: number;
 };
 
 export async function createSpeInvestor(context: AccessContext, speId: string, input: CreateSpeInvestorInput) {
