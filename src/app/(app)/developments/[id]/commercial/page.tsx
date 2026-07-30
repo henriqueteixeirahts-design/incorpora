@@ -36,6 +36,12 @@ const PROPOSAL_STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelada",
 };
 
+const EVALUATION_STATUS_LABELS: Record<string, string> = {
+  APPROVED_AUTO: "✅ Aprovada automaticamente",
+  PENDING_ANALYSIS: "🟡 Aguardando análise do gestor",
+  REJECTED_AUTO: "❌ Reprovada automaticamente",
+};
+
 const APPROVAL_LEVEL_LABELS: Record<string, string> = {
   COMMERCIAL: "Comercial",
   SALES_MANAGER: "Gerente comercial",
@@ -233,6 +239,17 @@ export default async function CommercialPage({
               Preço de tabela {formatCurrency(Number(proposal.listPrice))} · desconto{" "}
               {Number(proposal.discountPercent)}% · venda {formatCurrency(Number(proposal.salePrice))}
             </p>
+
+            {proposal.evaluationStatus ? (
+              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                {EVALUATION_STATUS_LABELS[proposal.evaluationStatus] ?? proposal.evaluationStatus} — VPL tabela{" "}
+                {formatCurrency(Number(proposal.npvStandard))} vs. proposto{" "}
+                {formatCurrency(Number(proposal.npvProposed))} ({Number(proposal.npvDeviationPercent) >= 0 ? "+" : ""}
+                {Number(proposal.npvDeviationPercent)}%)
+                <br />
+                {proposal.evaluationReason}
+              </p>
+            ) : null}
 
             {proposal.approvals.length > 0 ? (
               <ul style={{ marginTop: "0.5rem", paddingLeft: "1.1rem", fontSize: "0.85rem" }}>

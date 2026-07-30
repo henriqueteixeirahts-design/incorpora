@@ -120,6 +120,16 @@ export async function createProposalAction(
   const listPriceOverride = listPriceRaw ? Number(listPriceRaw) : undefined;
   const notes = String(formData.get("notes") ?? "").trim() || undefined;
 
+  const numberField = (key: string) => {
+    const raw = formData.get(key);
+    if (!raw) return undefined;
+    const value = Number(raw);
+    return Number.isNaN(value) ? undefined : value;
+  };
+  const proposedDownPaymentPercent = numberField("proposedDownPaymentPercent");
+  const proposedMonthlyInstallments = numberField("proposedMonthlyInstallments");
+  const proposedKeysInstallmentPercent = numberField("proposedKeysInstallmentPercent");
+
   if (!unitId || !customerId) return { error: "Selecione a unidade e o cliente." };
 
   try {
@@ -133,6 +143,9 @@ export async function createProposalAction(
       discountPercent,
       listPriceOverride,
       notes,
+      proposedDownPaymentPercent,
+      proposedMonthlyInstallments,
+      proposedKeysInstallmentPercent,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao criar proposta." };

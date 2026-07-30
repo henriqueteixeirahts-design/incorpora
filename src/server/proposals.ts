@@ -4,10 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
-import { simulatePaymentFlow } from "@/lib/payment-flow";
+import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
+import { evaluateProposal } from "@/lib/proposal-evaluation";
+import { getEffectiveProposalEvaluationRule } from "@/server/proposal-evaluation-rules";
 import { developmentOwnedScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
-import type { ApprovalDecision, ApprovalLevel } from "@/generated/prisma/client";
+import type { ApprovalDecision, ApprovalLevel, Prisma } from "@/generated/prisma/client";
+import type { CorrectionPhaseConfig } from "@/lib/index-correction";
 
 export function listProposals(organizationId: string) {
   return prisma.proposal.findMany({
@@ -33,15 +36,45 @@ export function getProposal(organizationId: string, proposalId: string) {
   });
 }
 
-/**
- * Alçada de aprovação por faixa de desconto (PRD seção 7, exemplo literal):
- * até 2% -> gerente comercial; 2-5% -> diretor; acima de 5% -> sócios.
- * Ajustável conforme o usuário validar as regras reais.
- */
-export function requiredApprovalLevels(discountPercent: number): ApprovalLevel[] {
-  if (discountPercent > 5) return ["SALES_MANAGER", "DIRECTOR", "PARTNERS"];
-  if (discountPercent > 2) return ["SALES_MANAGER", "DIRECTOR"];
-  return ["SALES_MANAGER"];
+/** Fases de correção pra projetar o fluxo NOMINAL da proposta — vêm da tabela de vendas (obra) e do empreendimento (pós-Habite-se), já que ainda não existe Contract nesta etapa. */
+function buildProposalCorrectionPhases(
+  salesTable: {
+    preHabiteSeIndexRule: { values: { referenceMonth: Date; ratePercent: Prisma.Decimal }[] } | null;
+    preHabiteSeMonthlyInterestPercent: Prisma.Decimal | null;
+    preHabiteSeInterestType: "SIMPLE" | "COMPOUND";
+  } | null,
+  development: {
+    habiteSeDate: Date | null;
+    postHabiteSeMonthlyInterestPercent: Prisma.Decimal | null;
+    postHabiteSeInterestType: "SIMPLE" | "COMPOUND";
+    postHabiteSeIndexRule: { values: { referenceMonth: Date; ratePercent: Prisma.Decimal }[] } | null;
+  },
+): { habiteSeDate: Date | null; preHabiteSe: CorrectionPhaseConfig; postHabiteSe: CorrectionPhaseConfig | null } {
+  const preHabiteSe: CorrectionPhaseConfig = {
+    indexValues: (salesTable?.preHabiteSeIndexRule?.values ?? []).map((v) => ({
+      referenceMonth: v.referenceMonth,
+      ratePercent: Number(v.ratePercent),
+    })),
+    monthlyInterestPercent: salesTable?.preHabiteSeMonthlyInterestPercent
+      ? Number(salesTable.preHabiteSeMonthlyInterestPercent)
+      : null,
+    interestType: salesTable?.preHabiteSeInterestType ?? "COMPOUND",
+  };
+
+  const postHabiteSe: CorrectionPhaseConfig | null = development.postHabiteSeIndexRule
+    ? {
+        indexValues: development.postHabiteSeIndexRule.values.map((v) => ({
+          referenceMonth: v.referenceMonth,
+          ratePercent: Number(v.ratePercent),
+        })),
+        monthlyInterestPercent: development.postHabiteSeMonthlyInterestPercent
+          ? Number(development.postHabiteSeMonthlyInterestPercent)
+          : null,
+        interestType: development.postHabiteSeInterestType,
+      }
+    : null;
+
+  return { habiteSeDate: development.habiteSeDate, preHabiteSe, postHabiteSe };
 }
 
 export type CreateProposalInput = {
@@ -54,6 +87,12 @@ export type CreateProposalInput = {
   discountPercent: number;
   listPriceOverride?: number;
   notes?: string;
+  // Contra-proposta de fluxo (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.1) —
+  // quando informados, substituem os parâmetros da tabela padrão só nesta
+  // proposta; omitidos = segue a tabela padrão sem desvio.
+  proposedDownPaymentPercent?: number;
+  proposedMonthlyInstallments?: number;
+  proposedKeysInstallmentPercent?: number;
 };
 
 export async function createProposal(context: AccessContext, input: CreateProposalInput) {
@@ -67,7 +106,10 @@ export async function createProposal(context: AccessContext, input: CreatePropos
     }
 
     const salesTable = input.salesTableId
-      ? await tx.salesTable.findFirst({ where: { id: input.salesTableId, ...developmentOwnedScope(context) } })
+      ? await tx.salesTable.findFirst({
+          where: { id: input.salesTableId, ...developmentOwnedScope(context) },
+          include: { preHabiteSeIndexRule: { include: { values: true } } },
+        })
       : null;
 
     const customer = await tx.customer.findFirst({
@@ -103,13 +145,50 @@ export async function createProposal(context: AccessContext, input: CreatePropos
 
     const salePrice = round2(listPrice * (1 - input.discountPercent / 100));
 
-    const paymentFlow = simulatePaymentFlow({
+    const standardFlow = simulatePaymentFlow({
       salePrice,
       downPaymentPercent: salesTable?.downPaymentPercent ? Number(salesTable.downPaymentPercent) : null,
       monthlyInstallments: salesTable?.monthlyInstallments ?? null,
       keysInstallmentPercent: salesTable?.keysInstallmentPercent
         ? Number(salesTable.keysInstallmentPercent)
         : null,
+    });
+
+    const hasCustomFlow =
+      input.proposedDownPaymentPercent !== undefined ||
+      input.proposedMonthlyInstallments !== undefined ||
+      input.proposedKeysInstallmentPercent !== undefined;
+
+    const proposedFlow: PaymentFlowResult = hasCustomFlow
+      ? simulatePaymentFlow({
+          salePrice,
+          downPaymentPercent:
+            input.proposedDownPaymentPercent ??
+            (salesTable?.downPaymentPercent ? Number(salesTable.downPaymentPercent) : null),
+          monthlyInstallments: input.proposedMonthlyInstallments ?? salesTable?.monthlyInstallments ?? null,
+          keysInstallmentPercent:
+            input.proposedKeysInstallmentPercent ??
+            (salesTable?.keysInstallmentPercent ? Number(salesTable.keysInstallmentPercent) : null),
+        })
+      : standardFlow;
+
+    const development = await tx.development.findUniqueOrThrow({
+      where: { id: input.developmentId },
+      include: { postHabiteSeIndexRule: { include: { values: true } } },
+    });
+    const phases = buildProposalCorrectionPhases(salesTable, development);
+    const rule = await getEffectiveProposalEvaluationRule(input.developmentId);
+
+    const evaluation = evaluateProposal({
+      standardFlow,
+      proposedFlow,
+      isOffTable: hasCustomFlow,
+      baseDate: new Date(),
+      habiteSeDate: phases.habiteSeDate,
+      preHabiteSe: phases.preHabiteSe,
+      postHabiteSe: phases.postHabiteSe,
+      salePrice,
+      rule,
     });
 
     const proposal = await tx.proposal.create({
@@ -125,7 +204,14 @@ export async function createProposal(context: AccessContext, input: CreatePropos
         discountPercent: input.discountPercent,
         salePrice,
         commissionPercent: salesTable?.commissionPercent ?? undefined,
-        paymentFlow: paymentFlow as unknown as object,
+        paymentFlow: standardFlow as unknown as object,
+        proposedPaymentFlow: hasCustomFlow ? (proposedFlow as unknown as object) : undefined,
+        evaluationStatus: evaluation.status,
+        npvStandard: evaluation.npvStandard,
+        npvProposed: evaluation.npvProposed,
+        npvDeviationPercent: evaluation.deviationPercent,
+        evaluationReason: evaluation.reason,
+        evaluationChecks: evaluation.checks as unknown as object,
         notes: input.notes,
         createdByUserId: context.userId,
       },
@@ -147,13 +233,21 @@ export async function createProposal(context: AccessContext, input: CreatePropos
       eventType: "proposal.created",
       entityType: "Proposal",
       entityId: proposal.id,
-      payload: { unitId: input.unitId, salePrice },
+      payload: { unitId: input.unitId, salePrice, evaluationStatus: evaluation.status },
     });
 
     return proposal;
   });
 }
 
+/**
+ * Submete a proposta — o motor de avaliação já rodou na criação (a análise
+ * numérica acompanha a proposta desde o início, PRD/Parte 5.3); aqui só se
+ * decide o que fazer com o resultado já registrado: aprovação automática,
+ * reprovação automática, ou entrada no módulo de aprovação (alçada
+ * configurável por empreendimento, Parte 5.2 — substitui a faixa fixa por %
+ * de desconto que existia antes deste módulo).
+ */
 export async function submitProposalForApproval(context: AccessContext, proposalId: string) {
   return prisma.$transaction(async (tx) => {
     const proposal = await tx.proposal.findFirst({
@@ -163,7 +257,63 @@ export async function submitProposalForApproval(context: AccessContext, proposal
     if (!proposal) throw new Error("Proposta inválida.");
     if (proposal.status !== "DRAFT") throw new Error("Proposta já foi enviada para aprovação.");
 
-    const levels = requiredApprovalLevels(Number(proposal.discountPercent));
+    if (proposal.evaluationStatus === "REJECTED_AUTO") {
+      const updated = await tx.proposal.update({ where: { id: proposalId }, data: { status: "REJECTED" } });
+
+      const activeReservation = await tx.reservation.findFirst({
+        where: { unitId: proposal.unitId, status: "ACTIVE" },
+      });
+      await changeUnitStatusTx(tx, {
+        organizationId: context.organizationId,
+        developmentId: proposal.developmentId,
+        unitId: proposal.unitId,
+        fromStatus: proposal.unit.status,
+        toStatus: activeReservation ? "RESERVED" : "AVAILABLE",
+        actorUserId: context.userId,
+        reason: `Proposta reprovada automaticamente — ${proposal.evaluationReason}`,
+      });
+
+      await recordDevelopmentEvent(tx, {
+        organizationId: context.organizationId,
+        developmentId: proposal.developmentId,
+        actorUserId: context.userId,
+        eventType: "proposal.rejected_auto",
+        entityType: "Proposal",
+        entityId: proposalId,
+        payload: { reason: proposal.evaluationReason },
+      });
+
+      return updated;
+    }
+
+    if (proposal.evaluationStatus === "APPROVED_AUTO") {
+      const updated = await tx.proposal.update({ where: { id: proposalId }, data: { status: "APPROVED" } });
+
+      await changeUnitStatusTx(tx, {
+        organizationId: context.organizationId,
+        developmentId: proposal.developmentId,
+        unitId: proposal.unitId,
+        fromStatus: proposal.unit.status,
+        toStatus: "PROPOSAL_APPROVED",
+        actorUserId: context.userId,
+        reason: "Aprovada automaticamente pelo motor de avaliação (dentro da tolerância de VPL)",
+      });
+
+      await recordDevelopmentEvent(tx, {
+        organizationId: context.organizationId,
+        developmentId: proposal.developmentId,
+        actorUserId: context.userId,
+        eventType: "proposal.approved_auto",
+        entityType: "Proposal",
+        entityId: proposalId,
+      });
+
+      return updated;
+    }
+
+    // PENDING_ANALYSIS — segue pro módulo de aprovação existente.
+    const rule = await getEffectiveProposalEvaluationRule(proposal.developmentId);
+    const levels: ApprovalLevel[] = rule.analysisApprovalLevels;
 
     for (const level of levels) {
       await tx.proposalApproval.upsert({
@@ -185,7 +335,7 @@ export async function submitProposalForApproval(context: AccessContext, proposal
       fromStatus: proposal.unit.status,
       toStatus: "PROPOSAL_UNDER_REVIEW",
       actorUserId: context.userId,
-      reason: "Proposta enviada para aprovação",
+      reason: "Proposta enviada para aprovação — fora da tolerância de VPL",
     });
 
     await recordDevelopmentEvent(tx, {

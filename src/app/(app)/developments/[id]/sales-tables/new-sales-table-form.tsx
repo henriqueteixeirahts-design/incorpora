@@ -5,7 +5,15 @@ import { createSalesTableAction, type FormState } from "./actions";
 
 const initialState: FormState = {};
 
-export function NewSalesTableForm({ developmentId }: { developmentId: string }) {
+type IndexRuleOption = { id: string; name: string };
+
+export function NewSalesTableForm({
+  developmentId,
+  indexRules,
+}: {
+  developmentId: string;
+  indexRules: IndexRuleOption[];
+}) {
   const [state, formAction, pending] = useActionState(createSalesTableAction, initialState);
 
   return (
@@ -48,6 +56,39 @@ export function NewSalesTableForm({ developmentId }: { developmentId: string }) 
         <div style={{ flex: 1 }}>
           <label htmlFor="indexCode">Indexador</label>
           <input id="indexCode" name="indexCode" placeholder="INCC, IPCA..." />
+        </div>
+      </div>
+
+      <label htmlFor="downPaymentDestination">Destino da entrada</label>
+      <select id="downPaymentDestination" name="downPaymentDestination" defaultValue="SPE_ACCOUNT">
+        <option value="SPE_ACCOUNT">Conta da SPE</option>
+        <option value="BROKER_COMMISSION">Corretor/imobiliária (é a comissão)</option>
+      </select>
+
+      <p className="field-hint" style={{ marginTop: "0.5rem" }}>
+        Regra de correção da fase de obra (só pra projetar o fluxo nominal na avaliação de propostas —
+        o contrato real define a sua própria regra depois da venda).
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="preHabiteSeIndexRuleId">Índice (obra)</label>
+          <select id="preHabiteSeIndexRuleId" name="preHabiteSeIndexRuleId" defaultValue="">
+            <option value="">Nenhum (só juros/taxa fixa)</option>
+            {indexRules.map((rule) => (
+              <option key={rule.id} value={rule.id}>
+                {rule.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="preHabiteSeMonthlyInterestPercent">Juros mensais (%)</label>
+          <input
+            id="preHabiteSeMonthlyInterestPercent"
+            name="preHabiteSeMonthlyInterestPercent"
+            type="number"
+            step="0.01"
+          />
         </div>
       </div>
 

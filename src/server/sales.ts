@@ -5,7 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import type { AccessContext } from "@/server/auth-context";
-import type { CommissionBeneficiaryType, Prisma } from "@/generated/prisma/client";
+import type { CommissionBeneficiaryType, DownPaymentDestination, Prisma } from "@/generated/prisma/client";
 
 export function listSales(organizationId: string) {
   return prisma.sale.findMany({
@@ -69,7 +69,7 @@ export function getSale(organizationId: string, saleId: string) {
       unit: true,
       customer: true,
       development: { include: { spe: true } },
-      proposal: { include: { broker: true, agency: true } },
+      proposal: { include: { broker: true, agency: true, salesTable: true } },
       commissionSplits: true,
     },
   });
@@ -206,6 +206,40 @@ export async function addCommissionSplit(
     });
 
     return split;
+  });
+}
+
+/**
+ * Sobrescreve o destino da entrada definido na tabela de vendas, por venda
+ * (docs/ESPEC_MODULO_COMERCIAL.md, Parte 4.2). Só tem efeito antes da
+ * assinatura do contrato — depois disso a carteira já foi montada com o
+ * destino vigente na hora (ver `confirmSignature` em src/server/contracts.ts).
+ */
+export async function setSaleDownPaymentDestinationOverride(
+  context: AccessContext,
+  saleId: string,
+  destination: DownPaymentDestination | null,
+) {
+  return prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findFirst({ where: { id: saleId, organizationId: context.organizationId } });
+    if (!sale) throw new Error("Venda inválida.");
+
+    const updated = await tx.sale.update({
+      where: { id: saleId },
+      data: { downPaymentDestinationOverride: destination },
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Sale",
+      entityId: saleId,
+      beforeData: { downPaymentDestinationOverride: sale.downPaymentDestinationOverride },
+      afterData: { downPaymentDestinationOverride: destination },
+    });
+
+    return updated;
   });
 }
 

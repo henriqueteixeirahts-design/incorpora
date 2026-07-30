@@ -161,7 +161,13 @@ export async function confirmSignature(
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
-      include: { sale: { include: { proposal: true } }, portfolio: true, unit: true },
+      include: {
+        sale: {
+          include: { proposal: { include: { salesTable: true } }, commissionSplits: true },
+        },
+        portfolio: true,
+        unit: true,
+      },
     });
     if (!contract) throw new Error("Contrato inválido.");
     if (contract.status === "SIGNED") throw new Error("Contrato já está assinado.");
@@ -187,26 +193,74 @@ export async function confirmSignature(
     }
 
     if (!contract.portfolio) {
-      const paymentFlow = contract.sale.proposal.paymentFlow as unknown as PaymentFlowResult | null;
+      const proposal = contract.sale.proposal;
+      // Fluxo REAL negociado: a contra-proposta quando houve uma (Parte 5.1),
+      // senão o fluxo da tabela padrão — nunca ignora o que foi de fato
+      // avaliado/aprovado.
+      const paymentFlow = (proposal.proposedPaymentFlow ?? proposal.paymentFlow) as unknown as PaymentFlowResult | null;
       const items = paymentFlow?.items ?? [];
+
+      // Destino da entrada (Parte 4.2) — override da venda, senão o da
+      // tabela de vendas, senão SPE_ACCOUNT (proposta totalmente fora de
+      // tabela, sem SalesTable pra herdar).
+      const destination = contract.sale.downPaymentDestinationOverride ?? proposal.salesTable?.downPaymentDestination ?? "SPE_ACCOUNT";
+
+      const downPaymentItems = items.filter((item) => item.isDownPayment);
+      const collectibleItems =
+        destination === "BROKER_COMMISSION" ? items.filter((item) => !item.isDownPayment) : items;
+
+      const totalValue = round2(collectibleItems.reduce((sum, item) => sum + item.amount, 0));
 
       const portfolio = await tx.receivablePortfolio.create({
         data: {
           organizationId: context.organizationId,
           contractId,
-          totalValue: contract.sale.salePrice,
+          totalValue,
         },
       });
 
-      if (items.length > 0) {
+      if (collectibleItems.length > 0) {
         await tx.installment.createMany({
-          data: items.map((item, index) => ({
+          data: collectibleItems.map((item, index) => ({
             portfolioId: portfolio.id,
             sequence: index + 1,
             label: item.label,
             dueDate: addMonths(signedAt, item.dueOffsetMonths),
             originalValue: item.amount,
           })),
+        });
+      }
+
+      // Entrada É a comissão (Parte 4.2): não entra na carteira da SPE —
+      // abate da comissão devida; se sobrar, vira crédito à SPE (registrado
+      // pra visibilidade do Financeiro, sem cobrança automática).
+      if (destination === "BROKER_COMMISSION" && downPaymentItems.length > 0) {
+        const downPaymentTotal = round2(downPaymentItems.reduce((sum, item) => sum + item.amount, 0));
+        let remaining = downPaymentTotal;
+
+        for (const split of contract.sale.commissionSplits) {
+          if (remaining <= 0) break;
+          const splitValue = Number(split.value);
+          const deducted = Math.min(splitValue, remaining);
+          remaining = round2(remaining - deducted);
+          await tx.commissionSplit.update({
+            where: { id: split.id },
+            data: { value: round2(splitValue - deducted) },
+          });
+        }
+
+        if (remaining > 0) {
+          await tx.contract.update({ where: { id: contractId }, data: { downPaymentCommissionExcess: remaining } });
+        }
+
+        await recordDevelopmentEvent(tx, {
+          organizationId: context.organizationId,
+          developmentId: contract.developmentId,
+          actorUserId: context.userId,
+          eventType: "contract.down_payment_as_commission",
+          entityType: "Contract",
+          entityId: contractId,
+          payload: { downPaymentTotal, commissionExcess: remaining > 0 ? remaining : undefined },
         });
       }
 
@@ -217,7 +271,7 @@ export async function confirmSignature(
         eventType: "receivable_portfolio.created",
         entityType: "ReceivablePortfolio",
         entityId: portfolio.id,
-        payload: { installments: items.length },
+        payload: { installments: collectibleItems.length },
       });
     }
 
@@ -248,4 +302,8 @@ function addMonths(date: Date, months: number) {
   const result = new Date(date);
   result.setMonth(result.getMonth() + months);
   return result;
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }

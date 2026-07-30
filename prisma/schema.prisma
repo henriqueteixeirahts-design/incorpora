@@ -849,21 +849,22 @@ model Development {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  spe                   SpecialPurposeEntity @relation(fields: [speId], references: [id], onDelete: Restrict)
-  postHabiteSeIndexRule IndexRule?           @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
-  buildings             Building[]
-  units                 Unit[]
-  accessGrants          AccessGrant[]
-  developmentEvents     DevelopmentEvent[]
-  salesTables           SalesTable[]
-  proposals             Proposal[]
-  sales                 Sale[]
-  contracts             Contract[]
-  costCenters           CostCenter[]
-  payables              Payable[]
-  exchangeContracts     ExchangeContract[]
-  reservationRule       ReservationRule?
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  spe                    SpecialPurposeEntity    @relation(fields: [speId], references: [id], onDelete: Restrict)
+  postHabiteSeIndexRule  IndexRule?              @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
+  buildings              Building[]
+  units                  Unit[]
+  accessGrants           AccessGrant[]
+  developmentEvents      DevelopmentEvent[]
+  salesTables            SalesTable[]
+  proposals              Proposal[]
+  sales                  Sale[]
+  contracts              Contract[]
+  costCenters            CostCenter[]
+  payables               Payable[]
+  exchangeContracts      ExchangeContract[]
+  reservationRule        ReservationRule?
+  proposalEvaluationRule ProposalEvaluationRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -1158,25 +1159,43 @@ model Broker {
 
 /// Tabela de vendas de um empreendimento (PRD seção 5). Um empreendimento
 /// pode ter várias tabelas simultâneas (lançamento, promocional, investidor...).
-model SalesTable {
-  id                     String    @id @default(uuid()) @db.Uuid
-  developmentId          String    @db.Uuid
-  name                   String
-  startDate              DateTime  @default(now())
-  validUntil             DateTime?
-  downPaymentPercent     Decimal?  @db.Decimal(5, 2) // % de entrada
-  monthlyInstallments    Int? // quantidade de parcelas mensais
-  keysInstallmentPercent Decimal?  @db.Decimal(5, 2) // % na parcela de chaves
-  maxDiscountPercent     Decimal?  @db.Decimal(5, 2)
-  commissionPercent      Decimal?  @db.Decimal(5, 2)
-  indexCode              String? // ex.: "INCC", "IPCA", "FIXED" — motor real na Fase 10
-  isActive               Boolean   @default(true)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+enum DownPaymentDestination {
+  SPE_ACCOUNT // entrada compõe o fluxo normal da carteira
+  BROKER_COMMISSION // a entrada É a comissão — paga direto ao corretor/imobiliária
+}
 
-  development Development      @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  units       SalesTableUnit[]
-  proposals   Proposal[]
+model SalesTable {
+  id                                String                 @id @default(uuid()) @db.Uuid
+  developmentId                     String                 @db.Uuid
+  name                              String
+  startDate                         DateTime               @default(now())
+  validUntil                        DateTime?
+  downPaymentPercent                Decimal?               @db.Decimal(5, 2) // % de entrada
+  monthlyInstallments               Int? // quantidade de parcelas mensais
+  keysInstallmentPercent            Decimal?               @db.Decimal(5, 2) // % na parcela de chaves
+  maxDiscountPercent                Decimal?               @db.Decimal(5, 2)
+  commissionPercent                 Decimal?               @db.Decimal(5, 2)
+  indexCode                         String? // ex.: "INCC", "IPCA", "FIXED" — motor real na Fase 10
+  // Destino do valor de entrada (docs/ESPEC_MODULO_COMERCIAL.md, Parte 4.2) —
+  // sobrescrevível por venda em Sale.downPaymentDestinationOverride.
+  downPaymentDestination            DownPaymentDestination @default(SPE_ACCOUNT)
+  // Regra de correção da fase de obra (pré-Habite-se) usada só pra projetar o
+  // fluxo NOMINAL da proposta antes do desconto a valor presente (Parte 5.2)
+  // — o Contract real ainda define a sua própria regra em separado
+  // (src/server/receivables.ts:setContractCorrectionRule), pois só existe
+  // depois que a venda é convertida. Nula = sem projeção de índice na fase
+  // de obra (só juros, se houver).
+  preHabiteSeIndexRuleId            String?                @db.Uuid
+  preHabiteSeMonthlyInterestPercent Decimal?               @db.Decimal(5, 2)
+  preHabiteSeInterestType           InterestType           @default(COMPOUND)
+  isActive                          Boolean                @default(true)
+  createdAt                         DateTime               @default(now())
+  updatedAt                         DateTime               @updatedAt
+
+  development          Development      @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  preHabiteSeIndexRule IndexRule?       @relation(fields: [preHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
+  units                SalesTableUnit[]
+  proposals            Proposal[]
 
   @@index([developmentId])
   @@map("sales_tables")
@@ -1265,6 +1284,38 @@ model ReservationRule {
   @@map("reservation_rules")
 }
 
+enum RatePeriod {
+  MONTHLY // % a.m.
+  YEARLY // % a.a.
+}
+
+/// Regras do motor de avaliação automática de propostas por empreendimento
+/// (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2) — mesmo padrão de
+/// `ReservationRule` (1:1 com Development, defaults sugeridos quando não
+/// configurada — ver DEFAULT_PROPOSAL_EVALUATION_RULE em
+/// src/server/proposal-evaluation-rules.ts).
+model ProposalEvaluationRule {
+  id                      String          @id @default(uuid()) @db.Uuid
+  developmentId           String          @unique @db.Uuid
+  allowOffTable           Boolean         @default(true)
+  discountRatePercent     Decimal         @default(1) @db.Decimal(6, 3) // taxa de desconto (TMA) pro VPL
+  discountRatePeriod      RatePeriod      @default(MONTHLY)
+  vplTolerancePercent     Decimal         @default(3) @db.Decimal(6, 3) // aprova sozinha até este deságio de VPL
+  vplAnalysisLimitPercent Decimal         @default(10) @db.Decimal(6, 3) // acima disso, reprovada automaticamente
+  minDownPaymentPercent   Decimal         @default(10) @db.Decimal(5, 2) // limite duro
+  maxTermMonths           Int             @default(120) // limite duro
+  maxPostKeysPercent      Decimal         @default(30) @db.Decimal(5, 2) // limite duro
+  // Papéis que analisam propostas em "aguardando análise" — substitui a
+  // faixa fixa por % de desconto que existia antes deste módulo.
+  analysisApprovalLevels  ApprovalLevel[] @default([SALES_MANAGER])
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("proposal_evaluation_rules")
+}
+
 enum ReservationWaitlistStatus {
   WAITING
   CONVERTED // promovida a reserva de verdade quando a unidade foi liberada
@@ -1322,29 +1373,47 @@ enum ApprovalDecision {
   REJECTED
 }
 
+enum ProposalEvaluationStatus {
+  APPROVED_AUTO // dentro da tolerância de VPL — vira proposta formal sem intervenção humana
+  PENDING_ANALYSIS // fora da tolerância, dentro do limite de deságio — vai pro módulo de aprovação
+  REJECTED_AUTO // violou limite duro ou deságio além do limite — recusada na hora
+}
+
 /// Proposta comercial (PRD seção 7). Versionada via parentProposalId — cada
 /// alteração relevante gera uma nova versão em vez de sobrescrever a anterior.
 model Proposal {
-  id                String         @id @default(uuid()) @db.Uuid
-  organizationId    String         @db.Uuid
-  developmentId     String         @db.Uuid
-  unitId            String         @db.Uuid
-  customerId        String         @db.Uuid
-  salesTableId      String?        @db.Uuid
-  brokerId          String?        @db.Uuid
-  agencyId          String?        @db.Uuid
-  parentProposalId  String?        @db.Uuid
-  version           Int            @default(1)
-  listPrice         Decimal        @db.Decimal(14, 2)
-  discountPercent   Decimal        @default(0) @db.Decimal(5, 2)
-  salePrice         Decimal        @db.Decimal(14, 2)
-  commissionPercent Decimal?       @db.Decimal(5, 2)
-  paymentFlow       Json? // snapshot do simulador (entrada/mensais/chaves)
-  status            ProposalStatus @default(DRAFT)
-  notes             String?
-  createdByUserId   String?        @db.Uuid
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                  String                    @id @default(uuid()) @db.Uuid
+  organizationId      String                    @db.Uuid
+  developmentId       String                    @db.Uuid
+  unitId              String                    @db.Uuid
+  customerId          String                    @db.Uuid
+  salesTableId        String?                   @db.Uuid
+  brokerId            String?                   @db.Uuid
+  agencyId            String?                   @db.Uuid
+  parentProposalId    String?                   @db.Uuid
+  version             Int                       @default(1)
+  listPrice           Decimal                   @db.Decimal(14, 2)
+  discountPercent     Decimal                   @default(0) @db.Decimal(5, 2)
+  salePrice           Decimal                   @db.Decimal(14, 2)
+  commissionPercent   Decimal?                  @db.Decimal(5, 2)
+  paymentFlow         Json? // snapshot do simulador (entrada/mensais/chaves) — o fluxo da TABELA PADRÃO
+  // Contra-proposta de fluxo (Parte 5.1) — nulo quando a proposta segue a
+  // tabela padrão sem desvio (paymentFlow == proposedPaymentFlow nesse caso).
+  proposedPaymentFlow Json?
+  // Módulo de avaliação automática (Parte 5.2) — a análise numérica que
+  // acompanha a proposta pro gestor decidir com dado, registrada em toda
+  // proposta submetida (auditoria).
+  evaluationStatus    ProposalEvaluationStatus?
+  npvStandard         Decimal?                  @db.Decimal(14, 2)
+  npvProposed         Decimal?                  @db.Decimal(14, 2)
+  npvDeviationPercent Decimal?                  @db.Decimal(7, 3)
+  evaluationReason    String?
+  evaluationChecks    Json?
+  status              ProposalStatus            @default(DRAFT)
+  notes               String?
+  createdByUserId     String?                   @db.Uuid
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
 
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   development    Development        @relation(fields: [developmentId], references: [id], onDelete: Cascade)
@@ -1388,16 +1457,19 @@ enum SaleStatus {
 
 /// Venda — criada a partir da conversão de uma proposta aprovada (PRD seção 8).
 model Sale {
-  id             String     @id @default(uuid()) @db.Uuid
-  organizationId String     @db.Uuid
-  developmentId  String     @db.Uuid
-  unitId         String     @unique @db.Uuid
-  proposalId     String     @unique @db.Uuid
-  customerId     String     @db.Uuid
-  saleDate       DateTime   @default(now())
-  salePrice      Decimal    @db.Decimal(14, 2)
-  status         SaleStatus @default(ACTIVE)
-  createdAt      DateTime   @default(now())
+  id                             String                  @id @default(uuid()) @db.Uuid
+  organizationId                 String                  @db.Uuid
+  developmentId                  String                  @db.Uuid
+  unitId                         String                  @unique @db.Uuid
+  proposalId                     String                  @unique @db.Uuid
+  customerId                     String                  @db.Uuid
+  saleDate                       DateTime                @default(now())
+  salePrice                      Decimal                 @db.Decimal(14, 2)
+  status                         SaleStatus              @default(ACTIVE)
+  // Sobrescreve o destino da entrada definido na tabela de vendas (Parte
+  // 4.2) — nulo = usa o da tabela. Alteração gated por permissão na action.
+  downPaymentDestinationOverride DownPaymentDestination?
+  createdAt                      DateTime                @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   development  Development  @relation(fields: [developmentId], references: [id], onDelete: Cascade)
@@ -1491,6 +1563,12 @@ model Contract {
   interestType                      InterestType @default(COMPOUND)
   latePaymentFinePercent            Decimal      @default(2) @db.Decimal(5, 2)
   latePaymentMonthlyInterestPercent Decimal      @default(1) @db.Decimal(5, 2)
+
+  // Excedente da entrada sobre a comissão total, quando a entrada É a
+  // comissão do corretor (Parte 4.2) e é maior que o devido — "lançado como
+  // crédito à SPE". Só registrado pra visibilidade do Financeiro; não existe
+  // mecanismo de cobrança automática contra o corretor (fora do modelo hoje).
+  downPaymentCommissionExcess Decimal? @db.Decimal(14, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1604,6 +1682,7 @@ model IndexRule {
   contracts    Contract[] // uso como índice de obra (pré-Habite-se)
   developments Development[] // uso como índice pós-Habite-se
   speInvestors SpeInvestor[] // uso como índice de correção de mútuo
+  salesTables  SalesTable[] // uso como índice pré-Habite-se pra projeção de fluxo nominal da proposta
 
   @@unique([organizationId, code, name])
   @@map("index_rules")

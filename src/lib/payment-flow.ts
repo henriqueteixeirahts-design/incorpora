@@ -6,6 +6,11 @@ export type PaymentFlowItem = {
   label: string;
   dueOffsetMonths: number;
   amount: number;
+  // Marcações usadas pelo motor de avaliação de propostas (docs/
+  // ESPEC_MODULO_COMERCIAL.md, Parte 5.2) pra identificar entrada mínima e
+  // % pós-chaves sem depender de casar a `label` como texto.
+  isDownPayment?: boolean;
+  isKeysInstallment?: boolean;
 };
 
 export type PaymentFlowInput = {
@@ -33,7 +38,7 @@ export function simulatePaymentFlow(input: PaymentFlowInput): PaymentFlowResult 
   const items: PaymentFlowItem[] = [];
 
   if (downPayment > 0) {
-    items.push({ label: "Entrada", dueOffsetMonths: 0, amount: downPayment });
+    items.push({ label: "Entrada", dueOffsetMonths: 0, amount: downPayment, isDownPayment: true });
   }
 
   if (monthlyCount > 0 && remaining > 0) {
@@ -53,6 +58,7 @@ export function simulatePaymentFlow(input: PaymentFlowInput): PaymentFlowResult 
       label: "Chaves",
       dueOffsetMonths: monthlyCount + 1,
       amount: keysInstallment,
+      isKeysInstallment: true,
     });
   }
 

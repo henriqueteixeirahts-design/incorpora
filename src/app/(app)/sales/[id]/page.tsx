@@ -8,6 +8,7 @@ import { listIndexRules } from "@/server/index-rules";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { CreateContractForm, MarkAwaitingSignatureForm, ConfirmSignatureForm } from "./contract-forms";
 import { CorrectionRuleForm } from "./correction-rule-form";
+import { DownPaymentDestinationForm } from "./down-payment-destination-form";
 import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form";
 import { AnticipationForm } from "./anticipation-form";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
@@ -156,6 +157,23 @@ export default async function SaleDetailPage({
           </div>
         )}
       </section>
+
+      {(!contract || contract.status !== "SIGNED") && hasPermission(context, "sale", "EDIT") ? (
+        <section style={{ marginTop: "2rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Destino da entrada</h2>
+          <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+            Só pode ser alterado antes da assinatura — a carteira é montada com o destino vigente
+            nesse momento.
+          </p>
+          <div style={{ marginTop: "0.75rem" }}>
+            <DownPaymentDestinationForm
+              saleId={id}
+              tableDefault={sale.proposal.salesTable?.downPaymentDestination ?? null}
+              override={sale.downPaymentDestinationOverride}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {contract && canEditContract ? (
         <section style={{ marginTop: "2rem" }}>

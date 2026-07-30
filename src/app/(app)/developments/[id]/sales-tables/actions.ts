@@ -34,6 +34,13 @@ export async function createSalesTableAction(
       maxDiscountPercent: numberField("maxDiscountPercent"),
       commissionPercent: numberField("commissionPercent"),
       indexCode: String(formData.get("indexCode") ?? "").trim() || undefined,
+      downPaymentDestination:
+        (String(formData.get("downPaymentDestination") ?? "") as "SPE_ACCOUNT" | "BROKER_COMMISSION" | "") ||
+        undefined,
+      preHabiteSeIndexRuleId: String(formData.get("preHabiteSeIndexRuleId") ?? "").trim() || undefined,
+      preHabiteSeMonthlyInterestPercent: numberField("preHabiteSeMonthlyInterestPercent"),
+      preHabiteSeInterestType:
+        (String(formData.get("preHabiteSeInterestType") ?? "") as "SIMPLE" | "COMPOUND" | "") || undefined,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao criar tabela." };

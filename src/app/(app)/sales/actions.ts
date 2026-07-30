@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { addCommissionSplit, getSale } from "@/server/sales";
-import type { CommissionBeneficiaryType } from "@/generated/prisma/client";
+import { addCommissionSplit, getSale, setSaleDownPaymentDestinationOverride } from "@/server/sales";
+import type { CommissionBeneficiaryType, DownPaymentDestination } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -40,4 +40,27 @@ export async function getSaleCommissionSplitsAction(saleId: string) {
   if (!hasPermission(context, "sale", "VIEW")) return null;
   const sale = await getSale(context.organizationId, saleId);
   return sale?.commissionSplits ?? null;
+}
+
+export async function setDownPaymentDestinationOverrideAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "sale", "EDIT")) return { error: "Sem permissão." };
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const raw = String(formData.get("destination") ?? "");
+  if (!saleId) return { error: "Venda inválida." };
+
+  const destination = raw ? (raw as DownPaymentDestination) : null;
+
+  try {
+    await setSaleDownPaymentDestinationOverride(context, saleId, destination);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao definir destino da entrada." };
+  }
+
+  revalidatePath("/sales");
+  return { success: true };
 }

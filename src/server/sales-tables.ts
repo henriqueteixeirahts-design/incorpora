@@ -33,6 +33,10 @@ export type CreateSalesTableInput = {
   maxDiscountPercent?: number;
   commissionPercent?: number;
   indexCode?: string;
+  downPaymentDestination?: "SPE_ACCOUNT" | "BROKER_COMMISSION";
+  preHabiteSeIndexRuleId?: string;
+  preHabiteSeMonthlyInterestPercent?: number;
+  preHabiteSeInterestType?: "SIMPLE" | "COMPOUND";
 };
 
 export async function createSalesTable(context: AccessContext, input: CreateSalesTableInput) {
@@ -53,6 +57,10 @@ export async function createSalesTable(context: AccessContext, input: CreateSale
         maxDiscountPercent: input.maxDiscountPercent,
         commissionPercent: input.commissionPercent,
         indexCode: input.indexCode,
+        downPaymentDestination: input.downPaymentDestination,
+        preHabiteSeIndexRuleId: input.preHabiteSeIndexRuleId,
+        preHabiteSeMonthlyInterestPercent: input.preHabiteSeMonthlyInterestPercent,
+        preHabiteSeInterestType: input.preHabiteSeInterestType,
       },
     });
 

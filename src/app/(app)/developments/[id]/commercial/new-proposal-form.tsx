@@ -71,6 +71,18 @@ export function NewProposalForm({
       <label htmlFor="prop-discount">Desconto (%)</label>
       <input id="prop-discount" name="discountPercent" type="number" step="0.01" defaultValue={0} required />
 
+      <details>
+        <summary>Contra-proposta de fluxo (opcional — deixe em branco pra seguir a tabela padrão)</summary>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+          <label htmlFor="prop-down-payment">Entrada (%)</label>
+          <input id="prop-down-payment" name="proposedDownPaymentPercent" type="number" step="0.01" />
+          <label htmlFor="prop-installments">Parcelas mensais</label>
+          <input id="prop-installments" name="proposedMonthlyInstallments" type="number" />
+          <label htmlFor="prop-keys">Chaves (%)</label>
+          <input id="prop-keys" name="proposedKeysInstallmentPercent" type="number" step="0.01" />
+        </div>
+      </details>
+
       <label htmlFor="prop-broker">Corretor</label>
       <select id="prop-broker" name="brokerId" defaultValue="">
         <option value="">—</option>

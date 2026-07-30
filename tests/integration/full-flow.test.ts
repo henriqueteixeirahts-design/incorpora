@@ -7,7 +7,7 @@ import { createUnit } from "@/server/units";
 import { createCustomer } from "@/server/customers";
 import { createSalesTable, setSalesTableUnitPrice } from "@/server/sales-tables";
 import { createReservation } from "@/server/reservations";
-import { createProposal, submitProposalForApproval, decideProposalApproval, getProposal } from "@/server/proposals";
+import { createProposal, submitProposalForApproval, getProposal } from "@/server/proposals";
 import { convertProposalToSale, getSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature, getContract } from "@/server/contracts";
 import { registerInstallmentPayment } from "@/server/receivables";
@@ -116,7 +116,9 @@ describe("Ciclo completo: reserva → proposta → aprovação → venda → con
     let unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("RESERVED");
 
-    // 2. Proposta (desconto 0% — só exige alçada de gerente comercial)
+    // 2. Proposta (desconto 0%, dentro da tabela padrão — desvio de VPL 0%,
+    // logo o motor de avaliação aprova automaticamente, sem passar pelo
+    // módulo de alçada — docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2/5.3).
     const proposal = await createProposal(context, {
       developmentId,
       unitId,
@@ -126,17 +128,11 @@ describe("Ciclo completo: reserva → proposta → aprovação → venda → con
     });
     expect(Number(proposal.salePrice)).toBe(500000);
     expect(proposal.status).toBe("DRAFT");
+    expect(proposal.evaluationStatus).toBe("APPROVED_AUTO");
 
-    // 3. Envio pra aprovação
+    // 3. Envio pra aprovação — aprovação automática, sem alçada humana
     await submitProposalForApproval(context, proposal.id);
     let proposalDetail = await getProposal(org.id, proposal.id);
-    expect(proposalDetail?.status).toBe("PENDING_APPROVAL");
-    unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
-    expect(unit.status).toBe("PROPOSAL_UNDER_REVIEW");
-
-    // 4. Aprovação (única alçada exigida pra 0% de desconto)
-    await decideProposalApproval(context, proposal.id, "SALES_MANAGER", "APPROVED");
-    proposalDetail = await getProposal(org.id, proposal.id);
     expect(proposalDetail?.status).toBe("APPROVED");
     unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("PROPOSAL_APPROVED");

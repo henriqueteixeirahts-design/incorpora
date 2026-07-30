@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { listSalesTables } from "@/server/sales-tables";
+import { listIndexRules } from "@/server/index-rules";
 import { NewSalesTableForm } from "./new-sales-table-form";
+
+const DOWN_PAYMENT_DESTINATION_LABELS: Record<string, string> = {
+  SPE_ACCOUNT: "SPE",
+  BROKER_COMMISSION: "Corretor (comissão)",
+};
 
 export default async function SalesTablesPage({
   params,
@@ -16,7 +22,10 @@ export default async function SalesTablesPage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  const salesTables = await listSalesTables(id);
+  const [salesTables, indexRules] = await Promise.all([
+    listSalesTables(id),
+    listIndexRules(context.organizationId),
+  ]);
   const canCreate = hasPermission(context, "sales_table", "CREATE");
 
   return (
@@ -35,6 +44,7 @@ export default async function SalesTablesPage({
             <th>Chaves</th>
             <th>Desconto máx.</th>
             <th>Comissão</th>
+            <th>Destino da entrada</th>
             <th>Preços definidos</th>
             <th></th>
           </tr>
@@ -48,6 +58,7 @@ export default async function SalesTablesPage({
               <td>{table.keysInstallmentPercent ? `${table.keysInstallmentPercent}%` : "—"}</td>
               <td>{table.maxDiscountPercent ? `${table.maxDiscountPercent}%` : "—"}</td>
               <td>{table.commissionPercent ? `${table.commissionPercent}%` : "—"}</td>
+              <td>{DOWN_PAYMENT_DESTINATION_LABELS[table.downPaymentDestination] ?? table.downPaymentDestination}</td>
               <td>{table._count.units}</td>
               <td>
                 <Link href={`/developments/${id}/sales-tables/${table.id}`}>Abrir</Link>
@@ -56,7 +67,7 @@ export default async function SalesTablesPage({
           ))}
           {salesTables.length === 0 ? (
             <tr>
-              <td colSpan={8} style={{ opacity: 0.7 }}>
+              <td colSpan={9} style={{ opacity: 0.7 }}>
                 Nenhuma tabela de vendas cadastrada.
               </td>
             </tr>
@@ -64,7 +75,9 @@ export default async function SalesTablesPage({
         </tbody>
       </table>
 
-      {canCreate ? <NewSalesTableForm developmentId={id} /> : null}
+      {canCreate ? (
+        <NewSalesTableForm developmentId={id} indexRules={indexRules.map((r) => ({ id: r.id, name: r.name }))} />
+      ) : null}
     </>
   );
 }
