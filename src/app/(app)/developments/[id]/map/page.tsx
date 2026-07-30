@@ -53,6 +53,7 @@ export default async function DevelopmentMapPage({
     }));
 
   const canCreateReservation = hasPermission(context, "reservation", "CREATE");
+  const canCreateProposal = hasPermission(context, "proposal", "CREATE");
   const canManageExchange = hasPermission(context, "exchange_contract", "EDIT");
   const canCancelReservation = hasPermission(context, "reservation", "CANCEL");
   const canRenewReservation = hasPermission(
@@ -108,6 +109,7 @@ export default async function DevelopmentMapPage({
         agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
         salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
         canCreateReservation={canCreateReservation}
+        canCreateProposal={canCreateProposal}
         canManageExchange={canManageExchange}
         canCancelReservation={canCancelReservation}
         canRenewReservation={canRenewReservation}

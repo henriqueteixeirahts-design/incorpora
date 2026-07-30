@@ -130,18 +130,31 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.secondary {
+button.secondary,
+a.secondary {
   background: transparent;
   color: var(--tsh-blue);
   border-color: var(--border-color);
 }
 
-button.secondary:hover {
+a.secondary {
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+button.secondary:hover,
+a.secondary:hover {
   background: color-mix(in srgb, var(--tsh-blue) 8%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
-  button.secondary {
+  button.secondary,
+  a.secondary {
     color: var(--foreground);
   }
 }

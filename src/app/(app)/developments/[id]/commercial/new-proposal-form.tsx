@@ -14,6 +14,7 @@ export function NewProposalForm({
   brokers,
   agencies,
   salesTables,
+  defaultUnitId,
 }: {
   developmentId: string;
   units: Option[];
@@ -21,18 +22,20 @@ export function NewProposalForm({
   brokers: Option[];
   agencies: Option[];
   salesTables: Option[];
+  defaultUnitId?: string;
 }) {
   const [state, formAction, pending] = useActionState(createProposalAction, initialState);
 
   return (
     <form
+      id="nova-proposta"
       action={formAction}
       style={{ display: "flex", flexDirection: "column", gap: "0.6rem", maxWidth: 360 }}
     >
       <input type="hidden" name="developmentId" value={developmentId} />
 
       <label htmlFor="prop-unit">Unidade</label>
-      <select id="prop-unit" name="unitId" required defaultValue="">
+      <select id="prop-unit" name="unitId" required defaultValue={defaultUnitId ?? ""}>
         <option value="" disabled>
           Selecione...
         </option>

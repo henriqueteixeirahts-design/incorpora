@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { UNIT_STATUS_META, UNIT_STATUS_VALUES } from "@/lib/unit-status";
 import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
@@ -177,6 +178,7 @@ export function EspelhoGrid({
   agencies,
   salesTables,
   canCreateReservation,
+  canCreateProposal,
   canManageExchange,
   canCancelReservation,
   canRenewReservation,
@@ -196,6 +198,7 @@ export function EspelhoGrid({
   agencies: Option[];
   salesTables: Option[];
   canCreateReservation: boolean;
+  canCreateProposal: boolean;
   canManageExchange: boolean;
   canCancelReservation: boolean;
   canRenewReservation: boolean;
@@ -519,6 +522,15 @@ export function EspelhoGrid({
                   >
                     Cancelar reserva
                   </button>
+                ) : null}
+                {canCreateProposal ? (
+                  <Link
+                    href={`/developments/${developmentId}/commercial?unitId=${selectedUnit.id}#nova-proposta`}
+                    className="secondary"
+                    style={{ display: "inline-flex", alignItems: "center" }}
+                  >
+                    Simular proposta
+                  </Link>
                 ) : null}
               </div>
             </>

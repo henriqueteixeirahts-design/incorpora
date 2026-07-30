@@ -53,10 +53,13 @@ const APPROVAL_LEVEL_LABELS: Record<string, string> = {
 
 export default async function CommercialPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ unitId?: string }>;
 }) {
   const { id } = await params;
+  const { unitId: defaultUnitId } = await searchParams;
   const context = await requireAccessContext();
 
   const development = await getDevelopment(context.organizationId, id);
@@ -304,6 +307,7 @@ export default async function CommercialPage({
               brokers={brokers.map((b) => ({ id: b.id, label: b.name }))}
               agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
               salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
+              defaultUnitId={defaultUnitId}
             />
           </div>
         ) : null}
