@@ -103,7 +103,7 @@ const SYSTEM_ROLES: Record<
       broker: ["VIEW", "CREATE", "EDIT"],
       agency: ["VIEW", "CREATE", "EDIT"],
       sales_table: ["VIEW", "CREATE", "EDIT"],
-      reservation: ["VIEW", "CREATE", "EDIT", "CANCEL"],
+      reservation: ["VIEW", "CREATE", "EDIT", "CANCEL", "APPROVE"],
       proposal: ["VIEW", "CREATE", "EDIT", "APPROVE"],
       sale: ["VIEW", "CREATE"],
       contract: ["VIEW", "CREATE", "EDIT"],

@@ -5,12 +5,16 @@ import { getDevelopment } from "@/server/developments";
 import { listUnits } from "@/server/units";
 import { listCustomers, listBrokers, listAgencies } from "@/server/crm";
 import { listSalesTables } from "@/server/sales-tables";
-import { listReservations, expireOverdueReservations } from "@/server/reservations";
+import { listReservations, listWaitlistForOrganization } from "@/server/reservations";
+import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import { listProposals } from "@/server/proposals";
+import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
 import { NewReservationForm } from "./new-reservation-form";
 import { NewProposalForm } from "./new-proposal-form";
 import {
   cancelReservationAction,
+  renewReservationAction,
+  cancelWaitlistEntryAction,
   submitProposalAction,
   decideApprovalAction,
   convertToSaleAction,
@@ -52,9 +56,9 @@ export default async function CommercialPage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  await expireOverdueReservations(context.organizationId);
+  await runJobForSingleOrganization(expireReservationsJob, context.organizationId, "EVENT");
 
-  const [units, customers, brokers, agencies, salesTables, allReservations, allProposals] =
+  const [units, customers, brokers, agencies, salesTables, allReservations, allProposals, allWaitlist, rule] =
     await Promise.all([
       listUnits(id),
       listCustomers(context.organizationId),
@@ -63,10 +67,13 @@ export default async function CommercialPage({
       listSalesTables(id),
       listReservations(context.organizationId),
       listProposals(context.organizationId),
+      listWaitlistForOrganization(context.organizationId),
+      getEffectiveReservationRule(id),
     ]);
 
   const reservations = allReservations.filter((r) => r.unit.developmentId === id);
   const proposals = allProposals.filter((p) => p.developmentId === id);
+  const waitlist = allWaitlist.filter((w) => w.unit.developmentId === id);
 
   const availableUnits = units.filter(
     (unit) => !unit.isAccessory && (unit.status === "AVAILABLE" || unit.status === "RESERVED"),
@@ -74,10 +81,14 @@ export default async function CommercialPage({
 
   const canCreateReservation = hasPermission(context, "reservation", "CREATE");
   const canCancelReservation = hasPermission(context, "reservation", "CANCEL");
+  const canRenewAsEditor = hasPermission(context, "reservation", "EDIT");
+  const canRenewAsApprover = hasPermission(context, "reservation", "APPROVE");
   const canCreateProposal = hasPermission(context, "proposal", "CREATE");
   const canEditProposal = hasPermission(context, "proposal", "EDIT");
   const canApproveProposal = hasPermission(context, "proposal", "APPROVE");
   const canCreateSale = hasPermission(context, "sale", "CREATE");
+
+  const canRenewReservation = rule.requiresApprovalForRenewal ? canRenewAsApprover : canRenewAsEditor;
 
   return (
     <>
@@ -99,25 +110,46 @@ export default async function CommercialPage({
             </tr>
           </thead>
           <tbody>
-            {reservations.map((reservation) => (
-              <tr key={reservation.id}>
-                <td>{reservation.unit.number}</td>
-                <td>{reservation.customer.name}</td>
-                <td>{RESERVATION_STATUS_LABELS[reservation.status]}</td>
-                <td>{new Date(reservation.expiresAt).toLocaleString("pt-BR")}</td>
-                <td>
-                  {canCancelReservation && reservation.status === "ACTIVE" ? (
-                    <form action={cancelReservationAction}>
-                      <input type="hidden" name="developmentId" value={id} />
-                      <input type="hidden" name="reservationId" value={reservation.id} />
-                      <button type="submit" className="secondary">
-                        Cancelar
-                      </button>
-                    </form>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+            {reservations.map((reservation) => {
+              const canRenewThis =
+                canRenewReservation &&
+                reservation.status === "ACTIVE" &&
+                rule.renewalAllowed &&
+                reservation.renewalCount < rule.maxRenewals;
+              return (
+                <tr key={reservation.id}>
+                  <td>{reservation.unit.number}</td>
+                  <td>
+                    {reservation.customer.name}
+                    {reservation.fromWaitlist ? " (fila de espera)" : ""}
+                  </td>
+                  <td>{RESERVATION_STATUS_LABELS[reservation.status]}</td>
+                  <td>{new Date(reservation.expiresAt).toLocaleString("pt-BR")}</td>
+                  <td>
+                    <div className="row-actions">
+                      {canRenewThis ? (
+                        <form action={renewReservationAction}>
+                          <input type="hidden" name="developmentId" value={id} />
+                          <input type="hidden" name="reservationId" value={reservation.id} />
+                          <button type="submit" className="secondary">
+                            Renovar
+                          </button>
+                        </form>
+                      ) : null}
+                      {canCancelReservation && reservation.status === "ACTIVE" ? (
+                        <form action={cancelReservationAction}>
+                          <input type="hidden" name="developmentId" value={id} />
+                          <input type="hidden" name="reservationId" value={reservation.id} />
+                          <button type="submit" className="secondary">
+                            Cancelar
+                          </button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {reservations.length === 0 ? (
               <tr>
                 <td colSpan={5} style={{ opacity: 0.7 }}>
@@ -128,6 +160,42 @@ export default async function CommercialPage({
           </tbody>
         </table>
 
+        {waitlist.length > 0 ? (
+          <div style={{ marginTop: "1.5rem" }}>
+            <h3 style={{ fontSize: "0.95rem" }}>Fila de espera</h3>
+            <table style={{ marginTop: "0.5rem", maxWidth: 700 }}>
+              <thead>
+                <tr>
+                  <th>Unidade</th>
+                  <th>Cliente</th>
+                  <th>Desde</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {waitlist.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.unit.number}</td>
+                    <td>{entry.customer.name}</td>
+                    <td>{new Date(entry.createdAt).toLocaleString("pt-BR")}</td>
+                    <td>
+                      {canCancelReservation ? (
+                        <form action={cancelWaitlistEntryAction}>
+                          <input type="hidden" name="developmentId" value={id} />
+                          <input type="hidden" name="entryId" value={entry.id} />
+                          <button type="submit" className="secondary">
+                            Remover da fila
+                          </button>
+                        </form>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
         {canCreateReservation ? (
           <div style={{ marginTop: "1rem" }}>
             <NewReservationForm
@@ -137,6 +205,7 @@ export default async function CommercialPage({
               brokers={brokers.map((b) => ({ id: b.id, label: b.name }))}
               agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
               salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
+              defaultValidityHours={rule.validityHours}
             />
           </div>
         ) : null}

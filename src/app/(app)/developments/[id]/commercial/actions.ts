@@ -2,12 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { createReservation, cancelReservation } from "@/server/reservations";
+import {
+  createReservation,
+  cancelReservation,
+  cancelWaitlistEntry,
+  renewReservation,
+  reservationRequiresApprovalToRenew,
+} from "@/server/reservations";
 import { createProposal, submitProposalForApproval, decideProposalApproval } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import type { ApprovalLevel } from "@/generated/prisma/client";
 
-export type FormState = { error?: string };
+export type FormState = { error?: string; message?: string };
 
 function revalidateCommercial(developmentId: string) {
   revalidatePath(`/developments/${developmentId}/commercial`);
@@ -34,8 +40,9 @@ export async function createReservationAction(
 
   if (!unitId || !customerId) return { error: "Selecione a unidade e o cliente." };
 
+  let result;
   try {
-    await createReservation(context, {
+    result = await createReservation(context, {
       unitId,
       customerId,
       brokerId,
@@ -49,7 +56,9 @@ export async function createReservationAction(
   }
 
   revalidateCommercial(developmentId);
-  return {};
+  return {
+    message: result.kind === "waitlisted" ? "Unidade já reservada — cliente entrou na fila de espera." : undefined,
+  };
 }
 
 export async function cancelReservationAction(formData: FormData) {
@@ -61,6 +70,35 @@ export async function cancelReservationAction(formData: FormData) {
   if (!reservationId) return;
 
   await cancelReservation(context, reservationId, "Cancelada manualmente");
+  revalidateCommercial(developmentId);
+}
+
+export async function renewReservationAction(formData: FormData) {
+  const context = await requireAccessContext();
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const reservationId = String(formData.get("reservationId") ?? "");
+  if (!reservationId) return;
+
+  const requiresApproval = await reservationRequiresApprovalToRenew(context.organizationId, reservationId);
+  const canRenew = requiresApproval
+    ? hasPermission(context, "reservation", "APPROVE")
+    : hasPermission(context, "reservation", "EDIT");
+  if (!canRenew) return;
+
+  await renewReservation(context, reservationId);
+  revalidateCommercial(developmentId);
+}
+
+export async function cancelWaitlistEntryAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "reservation", "CANCEL")) return;
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) return;
+
+  await cancelWaitlistEntry(context, entryId);
   revalidateCommercial(developmentId);
 }
 

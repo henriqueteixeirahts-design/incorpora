@@ -863,6 +863,7 @@ model Development {
   costCenters           CostCenter[]
   payables              Payable[]
   exchangeContracts     ExchangeContract[]
+  reservationRule       ReservationRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -990,6 +991,7 @@ model Unit {
 
   salesTableEntries SalesTableUnit[]
   reservations      Reservation[]
+  waitlistEntries   ReservationWaitlistEntry[]
   proposals         Proposal[]
   sale              Sale?
   contract          Contract?
@@ -1085,12 +1087,13 @@ model Customer {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reservations Reservation[]
-  proposals    Proposal[]
-  sales        Sale[]
-  contracts    Contract[]
-  contacts     CustomerContact[]
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reservations    Reservation[]
+  waitlistEntries ReservationWaitlistEntry[]
+  proposals       Proposal[]
+  sales           Sale[]
+  contracts       Contract[]
+  contacts        CustomerContact[]
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -1123,10 +1126,11 @@ model RealEstateAgency {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  brokers      Broker[]
-  reservations Reservation[]
-  proposals    Proposal[]
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brokers         Broker[]
+  reservations    Reservation[]
+  waitlistEntries ReservationWaitlistEntry[]
+  proposals       Proposal[]
 
   @@map("real_estate_agencies")
 }
@@ -1143,10 +1147,11 @@ model Broker {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
-  reservations Reservation[]
-  proposals    Proposal[]
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agency          RealEstateAgency?          @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  reservations    Reservation[]
+  waitlistEntries ReservationWaitlistEntry[]
+  proposals       Proposal[]
 
   @@map("brokers")
 }
@@ -1216,16 +1221,81 @@ model Reservation {
   createdAt       DateTime          @default(now())
   cancelledAt     DateTime?
   cancelReason    String?
+  // Regras de reserva (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2) — renovação
+  // com teto configurável por empreendimento, e marca de reserva nascida da
+  // fila de espera (janela de prioridade menor, não uma reserva comum).
+  renewalCount    Int               @default(0)
+  fromWaitlist    Boolean           @default(false)
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  unit         Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  broker       Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
-  agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit            Unit                       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  customer        Customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  broker          Broker?                    @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  agency          RealEstateAgency?          @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  waitlistEntries ReservationWaitlistEntry[]
 
   @@index([organizationId, status])
   @@index([unitId])
   @@map("reservations")
+}
+
+/// Regras de reserva por empreendimento (Parte 2) — nula/ausente até a TSH
+/// configurar; nesse caso os defaults sugeridos pela especificação valem
+/// (ver DEFAULT_RESERVATION_RULE em src/server/reservation-rules.ts).
+model ReservationRule {
+  id                             String   @id @default(uuid()) @db.Uuid
+  developmentId                  String   @unique @db.Uuid
+  validityHours                  Int      @default(48)
+  maxActiveReservationsPerBroker Int? // nulo = sem limite
+  waitlistEnabled                Boolean  @default(true)
+  waitlistPriorityHours          Int      @default(24)
+  renewalAllowed                 Boolean  @default(true)
+  maxRenewals                    Int      @default(1)
+  requiresApprovalForRenewal     Boolean  @default(true)
+  requireIdentifiedCustomer      Boolean  @default(true)
+  // Papéis com permissão pra reservar neste empreendimento, além da regra
+  // geral de permissão (reservation.CREATE) — vazio = sem restrição extra,
+  // vale só a permissão. Guarda o nome do papel (Role.name), não o id.
+  allowedReserverRoles           String[] @default([])
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("reservation_rules")
+}
+
+enum ReservationWaitlistStatus {
+  WAITING
+  CONVERTED // promovida a reserva de verdade quando a unidade foi liberada
+  CANCELLED
+}
+
+/// Fila de espera por unidade reservada (Parte 2) — FIFO por createdAt.
+/// Quando a reserva ativa da unidade expira ou é cancelada, o primeiro da
+/// fila é promovido automaticamente a uma reserva real, com prazo de
+/// prioridade mais curto (`ReservationRule.waitlistPriorityHours`) em vez do
+/// prazo normal.
+model ReservationWaitlistEntry {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  unitId                 String                    @db.Uuid
+  customerId             String                    @db.Uuid
+  brokerId               String?                   @db.Uuid
+  agencyId               String?                   @db.Uuid
+  status                 ReservationWaitlistStatus @default(WAITING)
+  createdAt              DateTime                  @default(now())
+  convertedAt            DateTime?
+  convertedReservationId String?                   @unique @db.Uuid
+  cancelledAt            DateTime?
+
+  unit                 Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  customer             Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  broker               Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  agency               RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  convertedReservation Reservation?      @relation(fields: [convertedReservationId], references: [id], onDelete: SetNull)
+
+  @@index([unitId, status])
+  @@map("reservation_waitlist_entries")
 }
 
 enum ProposalStatus {

@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
+import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import type { AccessContext } from "@/server/auth-context";
+import type { Prisma, Unit, Reservation, ReservationWaitlistEntry } from "@/generated/prisma/client";
 
 export function listReservations(organizationId: string) {
   return prisma.reservation.findMany({
@@ -14,17 +16,117 @@ export function listReservations(organizationId: string) {
   });
 }
 
+export function listWaitlistForUnit(unitId: string) {
+  return prisma.reservationWaitlistEntry.findMany({
+    where: { unitId, status: "WAITING" },
+    include: { customer: true, broker: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export function listWaitlistForOrganization(organizationId: string) {
+  return prisma.reservationWaitlistEntry.findMany({
+    where: { status: "WAITING", unit: { development: { organizationId } } },
+    include: { unit: true, customer: true, broker: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 /**
- * Sem worker assíncrono ainda (Fase 1 técnica prevê um, mas não está no ar):
- * varredura preguiçosa que expira reservas vencidas e libera a unidade
- * sempre que a lista é consultada. Substituir por job agendado quando
- * houver infraestrutura de fila.
+ * Libera a unidade (RESERVED -> AVAILABLE) e, se houver fila de espera não
+ * vazia, promove o primeiro da fila a uma reserva de verdade na hora —
+ * prazo de prioridade (não o prazo normal), unidade volta pra RESERVED sob
+ * o nome de quem estava na fila. Compartilhado entre cancelamento e
+ * expiração (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2 — comportamentos).
  */
-export async function expireOverdueReservations(organizationId: string) {
+async function releaseUnitAndPromoteWaitlist(
+  tx: Prisma.TransactionClient,
+  params: {
+    organizationId: string;
+    unit: Unit;
+    actorUserId?: string | null;
+    releaseReason: string;
+  },
+) {
+  const { organizationId, unit, actorUserId, releaseReason } = params;
+
+  if (unit.status === "RESERVED") {
+    await changeUnitStatusTx(tx, {
+      organizationId,
+      developmentId: unit.developmentId,
+      unitId: unit.id,
+      fromStatus: unit.status,
+      toStatus: "AVAILABLE",
+      actorUserId,
+      reason: releaseReason,
+    });
+  }
+
+  const nextInLine = await tx.reservationWaitlistEntry.findFirst({
+    where: { unitId: unit.id, status: "WAITING" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!nextInLine) return null;
+
+  const rule = await getEffectiveReservationRule(unit.developmentId);
+  const expiresAt = new Date(Date.now() + rule.waitlistPriorityHours * 60 * 60 * 1000);
+
+  const promoted = await tx.reservation.create({
+    data: {
+      organizationId,
+      unitId: unit.id,
+      customerId: nextInLine.customerId,
+      brokerId: nextInLine.brokerId,
+      agencyId: nextInLine.agencyId,
+      expiresAt,
+      reason: "Promovida da fila de espera",
+      fromWaitlist: true,
+    },
+  });
+
+  await changeUnitStatusTx(tx, {
+    organizationId,
+    developmentId: unit.developmentId,
+    unitId: unit.id,
+    fromStatus: "AVAILABLE",
+    toStatus: "RESERVED",
+    actorUserId,
+    reason: "Unidade reservada automaticamente pra o primeiro da fila de espera",
+  });
+
+  await tx.reservationWaitlistEntry.update({
+    where: { id: nextInLine.id },
+    data: { status: "CONVERTED", convertedAt: new Date(), convertedReservationId: promoted.id },
+  });
+
+  await recordDevelopmentEvent(tx, {
+    organizationId,
+    developmentId: unit.developmentId,
+    actorUserId,
+    eventType: "reservation.waitlist_promoted",
+    entityType: "Reservation",
+    entityId: promoted.id,
+    payload: { unitId: unit.id, customerId: nextInLine.customerId, waitlistEntryId: nextInLine.id },
+  });
+
+  return promoted;
+}
+
+/**
+ * Expira reservas vencidas da organização e promove a fila de espera de
+ * cada unidade liberada — o trabalho de fundo por trás do job
+ * `expire-reservations` (src/server/jobs.ts). Chamado tanto pelo job (cron
+ * futuro/manual) quanto por gatilho de evento (carregar o espelho), sempre
+ * pelo mesmo caminho de código.
+ */
+export async function expireReservationsForOrganization(organizationId: string) {
   const overdue = await prisma.reservation.findMany({
     where: { organizationId, status: "ACTIVE", expiresAt: { lt: new Date() } },
     include: { unit: true },
   });
+
+  let expiredCount = 0;
+  let promotedCount = 0;
 
   for (const reservation of overdue) {
     await prisma.$transaction(async (tx) => {
@@ -33,17 +135,6 @@ export async function expireOverdueReservations(organizationId: string) {
         data: { status: "EXPIRED" },
       });
 
-      if (reservation.unit.status === "RESERVED") {
-        await changeUnitStatusTx(tx, {
-          organizationId,
-          developmentId: reservation.unit.developmentId,
-          unitId: reservation.unitId,
-          fromStatus: reservation.unit.status,
-          toStatus: "AVAILABLE",
-          reason: "Reserva expirada",
-        });
-      }
-
       await recordDevelopmentEvent(tx, {
         organizationId,
         developmentId: reservation.unit.developmentId,
@@ -51,8 +142,18 @@ export async function expireOverdueReservations(organizationId: string) {
         entityType: "Reservation",
         entityId: reservation.id,
       });
+
+      const promoted = await releaseUnitAndPromoteWaitlist(tx, {
+        organizationId,
+        unit: reservation.unit,
+        releaseReason: "Reserva expirada",
+      });
+      if (promoted) promotedCount += 1;
     });
+    expiredCount += 1;
   }
+
+  return { expired: expiredCount, promotedFromWaitlist: promotedCount };
 }
 
 export type CreateReservationInput = {
@@ -65,17 +166,40 @@ export type CreateReservationInput = {
   reason?: string;
 };
 
+export type CreateReservationResult =
+  | { kind: "reservation"; reservation: Reservation }
+  | { kind: "waitlisted"; entry: ReservationWaitlistEntry };
+
 export async function createReservation(
   context: AccessContext,
   input: CreateReservationInput,
-) {
+): Promise<CreateReservationResult> {
   return prisma.$transaction(async (tx) => {
     const unit = await tx.unit.findFirst({
       where: { id: input.unitId, development: { organizationId: context.organizationId } },
     });
     if (!unit) throw new Error("Unidade inválida.");
-    if (unit.status !== "AVAILABLE") {
-      throw new Error("Unidade não está disponível para reserva.");
+
+    const rule = await getEffectiveReservationRule(unit.developmentId);
+
+    if (rule.allowedReserverRoles.length > 0) {
+      const allowed = context.roleNames.some((role) => rule.allowedReserverRoles.includes(role));
+      if (!allowed) throw new Error("Seu papel não tem permissão pra reservar unidades deste empreendimento.");
+    }
+
+    if (input.brokerId && rule.maxActiveReservationsPerBroker !== null) {
+      const activeCount = await tx.reservation.count({
+        where: {
+          brokerId: input.brokerId,
+          status: "ACTIVE",
+          unit: { developmentId: unit.developmentId },
+        },
+      });
+      if (activeCount >= rule.maxActiveReservationsPerBroker) {
+        throw new Error(
+          `Corretor já atingiu o máximo de ${rule.maxActiveReservationsPerBroker} reservas ativas neste empreendimento.`,
+        );
+      }
     }
 
     const customer = await tx.customer.findFirst({
@@ -97,6 +221,46 @@ export async function createReservation(
         where: { id: input.salesTableId, development: { organizationId: context.organizationId } },
       });
       if (!salesTable) throw new Error("Tabela de vendas inválida.");
+    }
+
+    if (unit.status !== "AVAILABLE") {
+      if (unit.status === "RESERVED" && rule.waitlistEnabled) {
+        const alreadyQueued = await tx.reservationWaitlistEntry.findFirst({
+          where: { unitId: unit.id, customerId: input.customerId, status: "WAITING" },
+        });
+        if (alreadyQueued) throw new Error("Este cliente já está na fila de espera desta unidade.");
+
+        const entry = await tx.reservationWaitlistEntry.create({
+          data: {
+            unitId: input.unitId,
+            customerId: input.customerId,
+            brokerId: input.brokerId,
+            agencyId: input.agencyId,
+          },
+        });
+
+        await recordAuditEvent(tx, {
+          organizationId: context.organizationId,
+          actorUserId: context.userId,
+          action: "create",
+          entityType: "ReservationWaitlistEntry",
+          entityId: entry.id,
+          afterData: entry,
+        });
+
+        await recordDevelopmentEvent(tx, {
+          organizationId: context.organizationId,
+          developmentId: unit.developmentId,
+          actorUserId: context.userId,
+          eventType: "reservation.waitlist_joined",
+          entityType: "ReservationWaitlistEntry",
+          entityId: entry.id,
+          payload: { unitId: input.unitId, customerId: input.customerId },
+        });
+
+        return { kind: "waitlisted", entry };
+      }
+      throw new Error("Unidade não está disponível para reserva.");
     }
 
     const reservation = await tx.reservation.create({
@@ -142,7 +306,7 @@ export async function createReservation(
       payload: { unitId: input.unitId, customerId: input.customerId },
     });
 
-    return reservation;
+    return { kind: "reservation", reservation };
   });
 }
 
@@ -164,18 +328,6 @@ export async function cancelReservation(
       data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason },
     });
 
-    if (reservation.unit.status === "RESERVED") {
-      await changeUnitStatusTx(tx, {
-        organizationId: context.organizationId,
-        developmentId: reservation.unit.developmentId,
-        unitId: reservation.unitId,
-        fromStatus: reservation.unit.status,
-        toStatus: "AVAILABLE",
-        actorUserId: context.userId,
-        reason: "Reserva cancelada",
-      });
-    }
-
     await recordAuditEvent(tx, {
       organizationId: context.organizationId,
       actorUserId: context.userId,
@@ -184,6 +336,104 @@ export async function cancelReservation(
       entityId: reservationId,
       beforeData: { status: "ACTIVE" },
       afterData: { status: "CANCELLED", cancelReason },
+    });
+
+    await releaseUnitAndPromoteWaitlist(tx, {
+      organizationId: context.organizationId,
+      unit: reservation.unit,
+      actorUserId: context.userId,
+      releaseReason: "Reserva cancelada",
+    });
+
+    return updated;
+  });
+}
+
+export async function cancelWaitlistEntry(context: AccessContext, entryId: string) {
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.reservationWaitlistEntry.findFirst({
+      where: { id: entryId, status: "WAITING", unit: { development: { organizationId: context.organizationId } } },
+    });
+    if (!entry) throw new Error("Entrada na fila não encontrada.");
+
+    const updated = await tx.reservationWaitlistEntry.update({
+      where: { id: entryId },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "cancel",
+      entityType: "ReservationWaitlistEntry",
+      entityId: entryId,
+      beforeData: { status: "WAITING" },
+      afterData: { status: "CANCELLED" },
+    });
+
+    return updated;
+  });
+}
+
+/**
+ * Renovação de reserva (Parte 2) — teto de renovações e, quando exigido
+ * pela regra do empreendimento, só quem tem alçada de aprovação
+ * (`reservation.APPROVE`, checado na action, não aqui) pode renovar.
+ */
+export async function reservationRequiresApprovalToRenew(
+  organizationId: string,
+  reservationId: string,
+): Promise<boolean> {
+  const reservation = await prisma.reservation.findFirst({
+    where: { id: reservationId, organizationId },
+    include: { unit: true },
+  });
+  if (!reservation) throw new Error("Reserva inválida.");
+  const rule = await getEffectiveReservationRule(reservation.unit.developmentId);
+  return rule.requiresApprovalForRenewal;
+}
+
+export async function renewReservation(context: AccessContext, reservationId: string) {
+  return prisma.$transaction(async (tx) => {
+    const reservation = await tx.reservation.findFirst({
+      where: { id: reservationId, organizationId: context.organizationId },
+      include: { unit: true },
+    });
+    if (!reservation) throw new Error("Reserva inválida.");
+    if (reservation.status !== "ACTIVE") throw new Error("Reserva não está ativa.");
+
+    const rule = await getEffectiveReservationRule(reservation.unit.developmentId);
+    if (!rule.renewalAllowed) throw new Error("Este empreendimento não permite renovação de reserva.");
+    if (reservation.renewalCount >= rule.maxRenewals) {
+      throw new Error(`Limite de ${rule.maxRenewals} renovação(ões) já atingido.`);
+    }
+
+    const updated = await tx.reservation.update({
+      where: { id: reservationId },
+      data: {
+        expiresAt: new Date(Date.now() + rule.validityHours * 60 * 60 * 1000),
+        renewalCount: { increment: 1 },
+      },
+    });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Reservation",
+      entityId: reservationId,
+      beforeData: { expiresAt: reservation.expiresAt, renewalCount: reservation.renewalCount },
+      afterData: { expiresAt: updated.expiresAt, renewalCount: updated.renewalCount },
+    });
+
+    await recordDevelopmentEvent(tx, {
+      organizationId: context.organizationId,
+      developmentId: reservation.unit.developmentId,
+      actorUserId: context.userId,
+      eventType: "reservation.renewed",
+      entityType: "Reservation",
+      entityId: reservationId,
+      payload: { renewalCount: updated.renewalCount, expiresAt: updated.expiresAt },
     });
 
     return updated;

@@ -14,6 +14,7 @@ export function NewReservationForm({
   brokers,
   agencies,
   salesTables,
+  defaultValidityHours = 48,
 }: {
   developmentId: string;
   units: Option[];
@@ -21,6 +22,7 @@ export function NewReservationForm({
   brokers: Option[];
   agencies: Option[];
   salesTables: Option[];
+  defaultValidityHours?: number;
 }) {
   const [state, formAction, pending] = useActionState(createReservationAction, initialState);
 
@@ -86,12 +88,13 @@ export function NewReservationForm({
       </select>
 
       <label htmlFor="res-hours">Validade (horas)</label>
-      <input id="res-hours" name="expiresInHours" type="number" defaultValue={48} min={1} />
+      <input id="res-hours" name="expiresInHours" type="number" defaultValue={defaultValidityHours} min={1} />
 
       <label htmlFor="res-reason">Observação</label>
       <input id="res-reason" name="reason" />
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
+      {state.message ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>{state.message}</p> : null}
 
       <button type="submit" disabled={pending}>
         {pending ? "Salvando..." : "Criar reserva"}

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recalculateAllOpenInstallments } from "@/server/receivables";
 import { syncIndexRulesForOrganization } from "@/server/index-rules";
 import { runAuditForOrganization } from "@/server/audit";
+import { expireReservationsForOrganization } from "@/server/reservations";
 import type { AccessContext } from "@/server/auth-context";
 import type { JobTrigger, Prisma } from "@/generated/prisma/client";
 
@@ -136,11 +137,24 @@ export const auditUpdateFullJob: JobDefinition = {
   runForOrganization: (organizationId, triggeredBy) => runAuditJob(organizationId, triggeredBy, true),
 };
 
+export const expireReservationsJob: JobDefinition = {
+  name: "expire-reservations",
+  label: "Expirar reservas vencidas",
+  description:
+    "Expira reservas ativas cujo prazo passou, libera a unidade, e promove o primeiro da fila de espera (se houver) a uma reserva de verdade com prazo de prioridade (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2). Disparado por evento (carregar o espelho/Comercial) até a fila de jobs de verdade entrar em produção.",
+  idempotent: true,
+  runForOrganization: async (organizationId) => {
+    const result = await expireReservationsForOrganization(organizationId);
+    return { success: true, summary: result };
+  },
+};
+
 export const JOB_REGISTRY: JobDefinition[] = [
   recalculateInstallmentsJob,
   syncIndexValuesJob,
   auditUpdateJob,
   auditUpdateFullJob,
+  expireReservationsJob,
 ];
 
 export function getJobByName(name: string) {

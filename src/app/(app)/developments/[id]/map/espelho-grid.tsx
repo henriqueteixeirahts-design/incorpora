@@ -7,6 +7,8 @@ import {
   createReservationFromMapAction,
   destacarUnidadeFromMapAction,
   removerDestaqueFromMapAction,
+  renewReservationFromMapAction,
+  cancelReservationFromMapAction,
   type FormState,
 } from "./actions";
 
@@ -37,10 +39,12 @@ export type EspelhoContract = {
 };
 
 export type EspelhoReservation = {
+  id: string;
   unitId: string;
   customerName: string;
   brokerName: string | null;
   expiresAt: Date;
+  renewalCount: number;
 };
 
 type Option = { id: string; label: string };
@@ -69,6 +73,7 @@ function ReservationPanel({
   brokers,
   agencies,
   salesTables,
+  defaultValidityHours,
   onDone,
 }: {
   developmentId: string;
@@ -77,9 +82,11 @@ function ReservationPanel({
   brokers: Option[];
   agencies: Option[];
   salesTables: Option[];
+  defaultValidityHours: number;
   onDone: () => void;
 }) {
   const [state, dispatch, pending] = useActionState(createReservationFromMapAction, reservationInitialState);
+  const isWaitlistFlow = unit.status === "RESERVED";
 
   useEffect(() => {
     if (state.success) onDone();
@@ -137,19 +144,22 @@ function ReservationPanel({
           ))}
         </select>
       </div>
-      <div className="field">
-        <label htmlFor="map-res-hours">Validade (horas)</label>
-        <input id="map-res-hours" name="expiresInHours" type="number" defaultValue={48} min={1} />
-      </div>
+      {!isWaitlistFlow ? (
+        <div className="field">
+          <label htmlFor="map-res-hours">Validade (horas)</label>
+          <input id="map-res-hours" name="expiresInHours" type="number" defaultValue={defaultValidityHours} min={1} />
+        </div>
+      ) : null}
       <div className="field">
         <label htmlFor="map-res-reason">Observação</label>
         <input id="map-res-reason" name="reason" />
       </div>
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
+      {state.message ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>{state.message}</p> : null}
 
       <button type="submit" disabled={pending}>
-        {pending ? "Reservando..." : "Reservar"}
+        {pending ? "Enviando..." : isWaitlistFlow ? "Entrar na fila de espera" : "Reservar"}
       </button>
     </form>
   );
@@ -168,6 +178,12 @@ export function EspelhoGrid({
   salesTables,
   canCreateReservation,
   canManageExchange,
+  canCancelReservation,
+  canRenewReservation,
+  renewalAllowed,
+  maxRenewals,
+  defaultValidityHours,
+  waitlistCounts,
 }: {
   developmentId: string;
   buildings: EspelhoBuilding[];
@@ -181,6 +197,12 @@ export function EspelhoGrid({
   salesTables: Option[];
   canCreateReservation: boolean;
   canManageExchange: boolean;
+  canCancelReservation: boolean;
+  canRenewReservation: boolean;
+  renewalAllowed: boolean;
+  maxRenewals: number;
+  defaultValidityHours: number;
+  waitlistCounts: Record<string, number>;
 }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -463,23 +485,60 @@ export function EspelhoGrid({
           </p>
 
           {selectedUnit.status === "RESERVED" && selectedReservation ? (
-            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              Reservada para {selectedReservation.customerName}
-              {selectedReservation.brokerName ? ` (corretor: ${selectedReservation.brokerName})` : ""} — expira em{" "}
-              {new Date(selectedReservation.expiresAt).toLocaleString("pt-BR")}
-            </p>
+            <>
+              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                Reservada para {selectedReservation.customerName}
+                {selectedReservation.brokerName ? ` (corretor: ${selectedReservation.brokerName})` : ""} — expira em{" "}
+                {new Date(selectedReservation.expiresAt).toLocaleString("pt-BR")}
+              </p>
+              {(waitlistCounts[selectedUnit.id] ?? 0) > 0 ? (
+                <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                  {waitlistCounts[selectedUnit.id]} cliente(s) na fila de espera.
+                </p>
+              ) : null}
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                {canRenewReservation && renewalAllowed && selectedReservation.renewalCount < maxRenewals ? (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={async () => {
+                      await renewReservationFromMapAction(developmentId, selectedReservation.id);
+                    }}
+                  >
+                    Renovar
+                  </button>
+                ) : null}
+                {canCancelReservation ? (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={async () => {
+                      await cancelReservationFromMapAction(developmentId, selectedReservation.id);
+                      setSelectedUnitId(null);
+                    }}
+                  >
+                    Cancelar reserva
+                  </button>
+                ) : null}
+              </div>
+            </>
           ) : null}
 
-          {selectedUnit.status === "AVAILABLE" && canCreateReservation ? (
-            <ReservationPanel
-              developmentId={developmentId}
-              unit={selectedUnit}
-              customers={customers}
-              brokers={brokers}
-              agencies={agencies}
-              salesTables={salesTables}
-              onDone={() => setSelectedUnitId(null)}
-            />
+          {!exchangeMode &&
+          (selectedUnit.status === "AVAILABLE" || selectedUnit.status === "RESERVED") &&
+          canCreateReservation ? (
+            <div style={{ marginTop: "0.75rem" }}>
+              <ReservationPanel
+                developmentId={developmentId}
+                unit={selectedUnit}
+                customers={customers}
+                brokers={brokers}
+                agencies={agencies}
+                salesTables={salesTables}
+                defaultValidityHours={defaultValidityHours}
+                onDone={() => setSelectedUnitId(null)}
+              />
+            </div>
           ) : null}
 
           <button

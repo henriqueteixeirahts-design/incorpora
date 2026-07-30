@@ -45,6 +45,7 @@ export default async function DevelopmentDetailPage({
         <Link href={`/developments/${id}/sales-tables`}>Tabelas de venda →</Link>
         <Link href={`/developments/${id}/commercial`}>Comercial →</Link>
         <Link href={`/developments/${id}/exchange-contracts`}>Permuta →</Link>
+        <Link href={`/developments/${id}/reservation-rules`}>Regras de reserva →</Link>
       </p>
 
       <section style={{ marginTop: "2rem" }}>

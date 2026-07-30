@@ -104,12 +104,14 @@ afterAll(async () => {
 describe("Ciclo completo: reserva → proposta → aprovação → venda → contrato → assinatura → carteira → recebimento", () => {
   it("percorre o fluxo inteiro com as transições de status corretas em cada etapa", async () => {
     // 1. Reserva
-    const reservation = await createReservation(context, {
+    const reservationResult = await createReservation(context, {
       unitId,
       customerId,
       salesTableId,
       expiresAt: new Date(Date.now() + 7 * 86400000),
     });
+    if (reservationResult.kind !== "reservation") throw new Error("Esperava reserva, não fila de espera.");
+    const reservation = reservationResult.reservation;
     expect(reservation.status).toBe("ACTIVE");
     let unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("RESERVED");
