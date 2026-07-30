@@ -3,14 +3,17 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getSale } from "@/server/sales";
 import { getContractBySale } from "@/server/contracts";
-import { getSignedContractUrl } from "@/server/storage";
+import { getSignedContractUrl, getSignedDocumentUrl } from "@/server/storage";
 import { listIndexRules } from "@/server/index-rules";
+import { listApplicableDocumentTemplates } from "@/server/document-templates";
+import { listGeneratedDocuments } from "@/server/document-generation";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { CreateContractForm, MarkAwaitingSignatureForm, ConfirmSignatureForm } from "./contract-forms";
 import { CorrectionRuleForm } from "./correction-rule-form";
 import { DownPaymentDestinationForm } from "./down-payment-destination-form";
 import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form";
 import { AnticipationForm } from "./anticipation-form";
+import { GenerateDocumentForm } from "./generate-document-form";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
@@ -49,6 +52,18 @@ export default async function SaleDetailPage({
   const canEditContract = hasPermission(context, "contract", "EDIT");
   const canRegisterPayment = hasPermission(context, "installment", "CREATE");
   const canRecalculate = hasPermission(context, "installment", "EDIT");
+  const canGenerateDocument =
+    hasPermission(context, "document_template", "VIEW") && hasPermission(context, "document", "CREATE");
+
+  const applicableTemplates = contract
+    ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "SALES_CONTRACT")
+    : [];
+  const generatedDocuments = contract
+    ? await listGeneratedDocuments(context.organizationId, contract.id)
+    : [];
+  const generatedDocumentUrls = await Promise.all(
+    generatedDocuments.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)),
+  );
 
   const paymentFlow = sale.proposal.paymentFlow as unknown as PaymentFlowResult | null;
   const openInstallments = contract?.portfolio?.installments.filter(
@@ -142,6 +157,40 @@ export default async function SaleDetailPage({
                 ) : null}
               </div>
             </details>
+
+            {canGenerateDocument ? (
+              <div style={{ marginTop: "0.75rem" }}>
+                <p style={{ fontSize: "0.85rem", fontWeight: 500 }}>Gerar documento</p>
+                <GenerateDocumentForm
+                  saleId={id}
+                  contractId={contract.id}
+                  templates={applicableTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
+                />
+              </div>
+            ) : null}
+
+            {generatedDocuments.length > 0 ? (
+              <div style={{ marginTop: "0.75rem" }}>
+                <p style={{ fontSize: "0.85rem", fontWeight: 500 }}>Documentos gerados</p>
+                <ul style={{ paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
+                  {generatedDocuments.map((doc, index) => (
+                    <li key={doc.id}>
+                      {doc.fileName} — v{doc.documentTemplateVersion} — {doc.uploadedBy?.fullName ?? "—"} em{" "}
+                      {new Date(doc.createdAt).toLocaleString("pt-BR")}
+                      {generatedDocumentUrls[index] ? (
+                        <>
+                          {" "}
+                          —{" "}
+                          <a href={generatedDocumentUrls[index]!} target="_blank" rel="noreferrer">
+                            Baixar
+                          </a>
+                        </>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
               {canEditContract && contract.status === "DRAFT" ? (

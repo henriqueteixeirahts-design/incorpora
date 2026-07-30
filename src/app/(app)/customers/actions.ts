@@ -38,6 +38,9 @@ function parseCustomerInput(formData: FormData): CreateCustomerInput | { error: 
   const neighborhood = String(formData.get("neighborhood") ?? "").trim();
   const city = String(formData.get("city") ?? "").trim();
   const state = String(formData.get("state") ?? "").trim().toUpperCase();
+  const maritalStatus = String(formData.get("maritalStatus") ?? "").trim();
+  const nationality = String(formData.get("nationality") ?? "").trim();
+  const profession = String(formData.get("profession") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!name) return { error: "Nome é obrigatório." };
@@ -62,6 +65,9 @@ function parseCustomerInput(formData: FormData): CreateCustomerInput | { error: 
     neighborhood: neighborhood || undefined,
     city: city || undefined,
     state: state || undefined,
+    maritalStatus: maritalStatus || undefined,
+    nationality: nationality || undefined,
+    profession: profession || undefined,
     notes: notes || undefined,
   };
 }

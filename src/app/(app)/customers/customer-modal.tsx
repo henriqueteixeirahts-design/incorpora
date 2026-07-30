@@ -169,6 +169,29 @@ export function CustomerModal({
             </div>
           </div>
 
+          {documentType === "INDIVIDUAL" ? (
+            <div className="field-section">
+              <h3>Qualificação civil</h3>
+              <p style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: "-0.5rem", marginBottom: "0.5rem" }}>
+                Usado pelo motor de templates de documento (qualificação das partes no contrato).
+              </p>
+              <div className="field-grid">
+                <div className="field">
+                  <label htmlFor="maritalStatus">Estado civil</label>
+                  <input id="maritalStatus" name="maritalStatus" defaultValue={customer?.maritalStatus ?? ""} />
+                </div>
+                <div className="field">
+                  <label htmlFor="nationality">Nacionalidade</label>
+                  <input id="nationality" name="nationality" defaultValue={customer?.nationality ?? ""} />
+                </div>
+                <div className="field">
+                  <label htmlFor="profession">Profissão</label>
+                  <input id="profession" name="profession" defaultValue={customer?.profession ?? ""} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="field-section">
             <h3>Contato</h3>
             <div className="field-grid">

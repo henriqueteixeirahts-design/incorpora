@@ -66,6 +66,7 @@ model Organization {
   jobRuns              JobRun[]
   auditRuns            AuditRun[]
   permutantes          Permutante[]
+  documentTemplates    DocumentTemplate[]
 
   @@map("organizations")
 }
@@ -81,12 +82,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accessGrants      AccessGrant[]
-  auditEvents       AuditEvent[]        @relation("AuditEventActor")
-  developmentEvents DevelopmentEvent[]  @relation("DevelopmentEventActor")
-  uploadedDocuments Document[]          @relation("DocumentUploadedBy")
-  notifications     Notification[]
-  unitStatusChanges UnitStatusHistory[] @relation("UnitStatusChangedBy")
+  accessGrants             AccessGrant[]
+  auditEvents              AuditEvent[]        @relation("AuditEventActor")
+  developmentEvents        DevelopmentEvent[]  @relation("DevelopmentEventActor")
+  uploadedDocuments        Document[]          @relation("DocumentUploadedBy")
+  notifications            Notification[]
+  unitStatusChanges        UnitStatusHistory[] @relation("UnitStatusChangedBy")
+  createdDocumentTemplates DocumentTemplate[]  @relation("DocumentTemplateCreatedBy")
 
   @@map("users")
 }
@@ -641,26 +643,93 @@ enum DocumentCategory {
 
 /// Documento genérico, anexável a qualquer entidade via (entityType, entityId).
 /// Cobre plantas, memoriais, matrículas e demais arquivos do empreendimento.
+/// Quando gerado a partir de um DocumentTemplate (Fase A, Parte 1), guarda a
+/// versão exata do modelo usado — rastreabilidade jurídica (a versão em si
+/// nunca é apagada, mesmo que o modelo evolua depois).
 model Document {
-  id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid
-  entityType     String // ex.: "Development", "Unit"
-  entityId       String
-  category       DocumentCategory @default(OTHER)
-  description    String? // observação livre sobre o anexo
-  fileName       String
-  fileUrl        String // caminho no Supabase Storage
-  mimeType       String?
-  sizeBytes      Int?
-  expiresAt      DateTime? // data de validade — usado por certidões; alerta automático de vencimento fica para depois
-  uploadedById   String?          @db.Uuid
-  createdAt      DateTime         @default(now())
+  id                      String           @id @default(uuid()) @db.Uuid
+  organizationId          String           @db.Uuid
+  entityType              String // ex.: "Development", "Unit", "Contract"
+  entityId                String
+  category                DocumentCategory @default(OTHER)
+  description             String? // observação livre sobre o anexo
+  fileName                String
+  fileUrl                 String // caminho no Supabase Storage
+  mimeType                String?
+  sizeBytes               Int?
+  expiresAt               DateTime? // data de validade — usado por certidões; alerta automático de vencimento fica para depois
+  documentTemplateId      String?          @db.Uuid
+  documentTemplateVersion Int?
+  uploadedById            String?          @db.Uuid
+  createdAt               DateTime         @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  uploadedBy   User?        @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy       User?             @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  documentTemplate DocumentTemplate? @relation(fields: [documentTemplateId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, entityType, entityId])
   @@map("documents")
+}
+
+enum DocumentTemplateType {
+  SALES_CONTRACT // contrato de compra e venda / promessa
+  ASSIGNMENT // cessão de direitos
+  RESCISSION // distrato
+  AMENDMENT // aditivo contratual
+  OTHER // procuração, declaração, livre
+}
+
+enum DocumentTemplateStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Modelo de documento (Fase A, Parte 1 — motor de templates). Nasce por
+/// organização desde o dia 1 (Pilar 4 das Fundações multi-tenant): não há
+/// linha "global" compartilhada entre organizações. Versionado por
+/// `templateGroupId` (estável entre versões do "mesmo" modelo) +
+/// `version` (incrementa a cada edição) — editar nunca sobrescreve a versão
+/// anterior, só cria uma nova linha e marca a anterior como INACTIVE. O
+/// documento gerado (`Document.documentTemplateId/documentTemplateVersion`)
+/// sempre referencia a versão exata usada na geração, mesmo que o modelo
+/// mude depois.
+model DocumentTemplate {
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @db.Uuid
+  templateGroupId String                 @db.Uuid
+  version         Int                    @default(1)
+  name            String
+  type            DocumentTemplateType
+  status          DocumentTemplateStatus @default(ACTIVE)
+  effectiveDate   DateTime               @default(now())
+  content         String // corpo em texto puro com variáveis {{grupo.campo}}
+  createdByUserId String?                @db.Uuid
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                         @relation("DocumentTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  developments DocumentTemplateDevelopment[]
+  documents    Document[]
+
+  @@index([organizationId, templateGroupId])
+  @@index([organizationId, type, status])
+  @@map("document_templates")
+}
+
+/// Empreendimentos em que o modelo se aplica — sem nenhuma linha aqui, o
+/// modelo se aplica a todos os empreendimentos da organização (spec: "(ou
+/// todos)").
+model DocumentTemplateDevelopment {
+  id                 String @id @default(uuid()) @db.Uuid
+  documentTemplateId String @db.Uuid
+  developmentId      String @db.Uuid
+
+  documentTemplate DocumentTemplate @relation(fields: [documentTemplateId], references: [id], onDelete: Cascade)
+  development      Development      @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentTemplateId, developmentId])
+  @@map("document_template_developments")
 }
 
 enum NotificationChannel {
@@ -849,9 +918,9 @@ model Development {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  spe                    SpecialPurposeEntity    @relation(fields: [speId], references: [id], onDelete: Restrict)
-  postHabiteSeIndexRule  IndexRule?              @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
+  organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  spe                    SpecialPurposeEntity          @relation(fields: [speId], references: [id], onDelete: Restrict)
+  postHabiteSeIndexRule  IndexRule?                    @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
   buildings              Building[]
   units                  Unit[]
   accessGrants           AccessGrant[]
@@ -865,6 +934,7 @@ model Development {
   exchangeContracts      ExchangeContract[]
   reservationRule        ReservationRule?
   proposalEvaluationRule ProposalEvaluationRule?
+  documentTemplates      DocumentTemplateDevelopment[]
 
   @@index([organizationId])
   @@index([speId])
@@ -1084,6 +1154,13 @@ model Customer {
   neighborhood   String?
   city           String?
   state          String?      @db.VarChar(2)
+  // Qualificação civil — só se aplica a CustomerType.INDIVIDUAL, mas fica
+  // nullable pra CNPJ também (sem constraint condicional). Necessário pro
+  // quadro-resumo/qualificação das partes do motor de templates (Fase A,
+  // Parte 1) — sem esses campos, {{cliente.estado_civil}} etc. nunca resolvem.
+  maritalStatus  String?
+  nationality    String?
+  profession     String?
   notes          String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

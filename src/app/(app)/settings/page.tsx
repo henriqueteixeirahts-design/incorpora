@@ -24,6 +24,16 @@ export default async function SettingsPage() {
       ],
     },
     {
+      title: "Documentos",
+      items: [
+        {
+          href: "/settings/documents",
+          label: "Modelos de documento",
+          visible: hasPermission(context, "document_template", "VIEW"),
+        },
+      ],
+    },
+    {
       title: "Acesso ao sistema",
       items: [
         {

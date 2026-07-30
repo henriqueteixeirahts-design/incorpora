@@ -35,6 +35,7 @@ const RESOURCES = [
   "audit",
   "permutante",
   "exchange_contract",
+  "document_template",
 ] as const;
 
 const ACTIONS = Object.values(PermissionAction);
@@ -62,6 +63,7 @@ const SYSTEM_ROLES: Record<
       sale: ["VIEW", "EXPORT"],
       proposal: ["VIEW", "APPROVE"],
       contract: ["VIEW", "EDIT", "EXPORT"],
+      document_template: ["VIEW"],
       installment: ["VIEW", "CREATE", "EDIT", "EXPORT"],
       index_rule: ["VIEW", "CREATE", "EDIT"],
       supplier: ["VIEW", "CREATE", "EDIT"],
@@ -87,6 +89,7 @@ const SYSTEM_ROLES: Record<
       proposal: ["VIEW", "CREATE", "EDIT"],
       sale: ["VIEW"],
       contract: ["VIEW"],
+      document_template: ["VIEW"],
       installment: ["VIEW"],
       report: ["VIEW"],
       permutante: ["VIEW"],
@@ -107,6 +110,7 @@ const SYSTEM_ROLES: Record<
       proposal: ["VIEW", "CREATE", "EDIT", "APPROVE"],
       sale: ["VIEW", "CREATE"],
       contract: ["VIEW", "CREATE", "EDIT"],
+      document_template: ["VIEW", "CREATE", "EDIT"],
       installment: ["VIEW"],
       index_rule: ["VIEW"],
       report: ["VIEW", "EXPORT"],
@@ -123,6 +127,7 @@ const SYSTEM_ROLES: Record<
       proposal: ["VIEW", "APPROVE"],
       sale: ["VIEW"],
       contract: ["VIEW", "CREATE", "EDIT", "APPROVE"],
+      document_template: ["VIEW", "CREATE", "EDIT"],
       permutante: ["VIEW"],
       exchange_contract: ["VIEW"],
     },

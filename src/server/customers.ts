@@ -106,6 +106,9 @@ export type CreateCustomerInput = {
   neighborhood?: string;
   city?: string;
   state?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  profession?: string;
   notes?: string;
 };
 

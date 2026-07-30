@@ -3,16 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
-import { uploadContractDocument } from "@/server/storage";
+import { uploadContractDocument, uploadEntityDocument } from "@/server/storage";
 import {
   setContractCorrectionRule,
   recalculatePortfolio,
   registerInstallmentPayment,
   simulateInstallmentAnticipation,
 } from "@/server/receivables";
+import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
+import { renderDocumentPdf } from "@/lib/document-pdf";
 import type { InterestType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
+export type GenerateDocumentState = { error?: string; missing?: string[]; missingTemplateName?: string };
 export type AnticipationState = {
   error?: string;
   result?: Awaited<ReturnType<typeof simulateInstallmentAnticipation>>;
@@ -154,6 +157,51 @@ export async function registerPaymentAction(
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao registrar recebimento." };
+  }
+
+  revalidatePath(`/sales/${saleId}`);
+  return {};
+}
+
+export async function generateDocumentAction(
+  _prevState: GenerateDocumentState,
+  formData: FormData,
+): Promise<GenerateDocumentState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document_template", "VIEW")) return { error: "Sem permissão." };
+  if (!hasPermission(context, "document", "CREATE")) return { error: "Sem permissão." };
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
+  if (!contractId || !documentTemplateId) return { error: "Selecione um modelo." };
+
+  try {
+    const preview = await previewDocumentGeneration(context.organizationId, contractId, documentTemplateId);
+    if (preview.status === "MISSING_DATA") {
+      return { missing: preview.missing, missingTemplateName: preview.templateName };
+    }
+
+    const pdfBuffer = await renderDocumentPdf({
+      title: preview.templateName,
+      text: preview.text,
+      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+    });
+
+    const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;
+    const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
+    const storagePath = await uploadEntityDocument(file, "Contract", contractId);
+
+    await recordGeneratedDocument(context, {
+      contractId,
+      documentTemplateId: preview.documentTemplateId,
+      templateVersion: preview.templateVersion,
+      fileName,
+      storagePath,
+      sizeBytes: pdfBuffer.length,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao gerar documento." };
   }
 
   revalidatePath(`/sales/${saleId}`);
