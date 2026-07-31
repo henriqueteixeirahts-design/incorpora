@@ -1329,6 +1329,7 @@ model Reservation {
   broker          Broker?                    @relation(fields: [brokerId], references: [id], onDelete: SetNull)
   agency          RealEstateAgency?          @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   waitlistEntries ReservationWaitlistEntry[]
+  sales           Sale[]
 
   @@index([organizationId, status])
   @@index([unitId])
@@ -1540,6 +1541,15 @@ model Sale {
   unitId                         String                  @unique @db.Uuid
   proposalId                     String                  @unique @db.Uuid
   customerId                     String                  @db.Uuid
+  // Reserva ativa no momento da conversão, quando havia uma — link explícito
+  // pra montar a linha do tempo da venda (Fase A, Parte 3.2) sem precisar
+  // adivinhar por unitId+customerId+status. Nulo em vendas sem reserva prévia
+  // (ou vendas anteriores à existência deste campo).
+  reservationId                  String?                 @db.Uuid
+  // Número sequencial da venda por organização (Fase A, Parte 3.1 — coluna
+  // "nº da venda" da lista), independente do número do contrato (que só
+  // existe depois que a minuta é gerada).
+  saleNumber                     String
   saleDate                       DateTime                @default(now())
   salePrice                      Decimal                 @db.Decimal(14, 2)
   status                         SaleStatus              @default(ACTIVE)
@@ -1553,10 +1563,12 @@ model Sale {
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   proposal     Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   commissionSplits CommissionSplit[]
   contract         Contract?
 
+  @@unique([organizationId, saleNumber])
   @@map("sales")
 }
 

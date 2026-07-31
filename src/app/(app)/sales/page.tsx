@@ -1,5 +1,11 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { listSalesPaged, type SaleSortField } from "@/server/sales";
+import {
+  listSalesPaged,
+  walletStatusFromInstallments,
+  type SaleSortField,
+  type ContractStatusFilter,
+  type WalletStatusFilter,
+} from "@/server/sales";
 import { listBrokers, listAgencies } from "@/server/crm";
 import { SalesManager } from "./sales-manager";
 
@@ -17,6 +23,12 @@ export default async function SalesPage({
   const sortBy = (params.sort as SaleSortField) ?? "saleDate";
   const sortDir = params.dir === "asc" ? "asc" : "desc";
   const page = Math.max(1, Number(params.page) || 1);
+  const contractStatus = (params.contractStatus as ContractStatusFilter) || "";
+  const brokerId = params.brokerId ?? "";
+  const agencyId = params.agencyId ?? "";
+  const dateFrom = params.dateFrom ?? "";
+  const dateTo = params.dateTo ?? "";
+  const walletStatus = (params.walletStatus as WalletStatusFilter) || "";
 
   const [{ items, total }, brokers, agencies] = await Promise.all([
     listSalesPaged(context.organizationId, {
@@ -25,6 +37,12 @@ export default async function SalesPage({
       sortDir,
       page,
       pageSize: PAGE_SIZE,
+      contractStatus: contractStatus || undefined,
+      brokerId: brokerId || undefined,
+      agencyId: agencyId || undefined,
+      dateFrom: dateFrom ? new Date(dateFrom) : undefined,
+      dateTo: dateTo ? new Date(dateTo) : undefined,
+      walletStatus: walletStatus || undefined,
     }),
     listBrokers(context.organizationId),
     listAgencies(context.organizationId),
@@ -40,11 +58,16 @@ export default async function SalesPage({
       <SalesManager
         sales={items.map((sale) => ({
           id: sale.id,
+          saleNumber: sale.saleNumber,
           developmentName: sale.development.name,
           unitNumber: sale.unit.number,
           customerName: sale.customer.name,
           salePrice: Number(sale.salePrice),
           saleDate: sale.saleDate.toISOString(),
+          contractStatus: sale.contract?.status ?? null,
+          walletStatus: walletStatusFromInstallments(sale.contract?.portfolio?.installments),
+          brokerName: sale.proposal.broker?.name ?? null,
+          agencyName: sale.proposal.agency?.name ?? null,
           commissionSplits: sale.commissionSplits.map((split) => ({
             id: split.id,
             beneficiaryType: split.beneficiaryType,
@@ -62,6 +85,12 @@ export default async function SalesPage({
         search={search}
         sortBy={sortBy}
         sortDir={sortDir}
+        contractStatus={contractStatus}
+        brokerId={brokerId}
+        agencyId={agencyId}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        walletStatus={walletStatus}
         canEditCommission={canEditCommission}
       />
     </>

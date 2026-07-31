@@ -16,11 +16,30 @@ export function listSales(organizationId: string) {
 }
 
 export type SaleSortField = "saleDate" | "salePrice" | "customer" | "development";
+export type ContractStatusFilter = "NONE" | "DRAFT" | "AWAITING_SIGNATURE" | "SIGNED" | "CANCELLED";
+export type WalletStatusFilter = "EM_DIA" | "INADIMPLENTE";
 
-export async function listSalesPaged(
-  organizationId: string,
-  params: { search?: string; sortBy?: SaleSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
-) {
+export type ListSalesFilters = {
+  search?: string;
+  sortBy?: SaleSortField;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+  contractStatus?: ContractStatusFilter;
+  brokerId?: string;
+  agencyId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  walletStatus?: WalletStatusFilter;
+};
+
+/** "Em dia" ou "Inadimplente" (Fase A, Parte 3.1) — inadimplente = pelo menos uma parcela OVERDUE na carteira. Sem contrato/carteira ainda, retorna null (não é nem uma coisa nem outra). */
+export function walletStatusFromInstallments(installments: { status: string }[] | undefined): WalletStatusFilter | null {
+  if (!installments || installments.length === 0) return null;
+  return installments.some((i) => i.status === "OVERDUE") ? "INADIMPLENTE" : "EM_DIA";
+}
+
+export async function listSalesPaged(organizationId: string, params: ListSalesFilters) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;
   const sortBy = params.sortBy ?? "saleDate";
@@ -35,7 +54,23 @@ export async function listSalesPaged(
             { customer: { name: { contains: search, mode: "insensitive" } } },
             { development: { name: { contains: search, mode: "insensitive" } } },
             { unit: { number: { contains: search, mode: "insensitive" } } },
+            { saleNumber: { contains: search, mode: "insensitive" } },
           ],
+        }
+      : {}),
+    ...(params.contractStatus === "NONE"
+      ? { contract: null }
+      : params.contractStatus
+        ? { contract: { status: params.contractStatus } }
+        : {}),
+    ...(params.brokerId ? { proposal: { brokerId: params.brokerId } } : {}),
+    ...(params.agencyId ? { proposal: { agencyId: params.agencyId } } : {}),
+    ...(params.dateFrom || params.dateTo
+      ? {
+          saleDate: {
+            ...(params.dateFrom ? { gte: params.dateFrom } : {}),
+            ...(params.dateTo ? { lte: params.dateTo } : {}),
+          },
         }
       : {}),
   };
@@ -47,10 +82,33 @@ export async function listSalesPaged(
         ? { development: { name: sortDir } }
         : { [sortBy]: sortDir };
 
+  const includeArgs = {
+    unit: true,
+    customer: true,
+    development: true,
+    commissionSplits: true,
+    proposal: { include: { broker: true, agency: true } },
+    contract: { include: { portfolio: { include: { installments: { select: { status: true } } } } } },
+  } satisfies Prisma.SaleInclude;
+
+  // Filtro de carteira precisa do status calculado, não dá pra empurrar pro
+  // WHERE do banco (depende de agregar as parcelas) — busca tudo que bate
+  // nos outros filtros e filtra em memória antes de paginar. Aceitável pro
+  // volume de vendas de uma incorporadora (nunca são dezenas de milhares).
+  if (params.walletStatus) {
+    const all = await prisma.sale.findMany({ where, include: includeArgs, orderBy });
+    const filtered = all.filter(
+      (sale) => walletStatusFromInstallments(sale.contract?.portfolio?.installments) === params.walletStatus,
+    );
+    const total = filtered.length;
+    const items = filtered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+    return { items, total, page, pageSize };
+  }
+
   const [items, total] = await Promise.all([
     prisma.sale.findMany({
       where,
-      include: { unit: true, customer: true, development: true, commissionSplits: true },
+      include: includeArgs,
       orderBy,
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -71,8 +129,17 @@ export function getSale(organizationId: string, saleId: string) {
       development: { include: { spe: true } },
       proposal: { include: { broker: true, agency: true, salesTable: true } },
       commissionSplits: true,
+      reservation: true,
     },
   });
+}
+
+async function nextSaleNumber(tx: Prisma.TransactionClient, organizationId: string) {
+  const year = new Date().getFullYear();
+  const count = await tx.sale.count({
+    where: { organizationId, saleNumber: { startsWith: `V-${year}-` } },
+  });
+  return `V-${year}-${String(count + 1).padStart(4, "0")}`;
 }
 
 /**
@@ -91,6 +158,12 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
     if (!proposal) throw new Error("Proposta inválida.");
     if (proposal.status !== "APPROVED") throw new Error("Proposta precisa estar aprovada.");
 
+    const activeReservation = await tx.reservation.findFirst({
+      where: { unitId: proposal.unitId, status: "ACTIVE" },
+    });
+
+    const saleNumber = await nextSaleNumber(tx, context.organizationId);
+
     const sale = await tx.sale.create({
       data: {
         organizationId: context.organizationId,
@@ -98,6 +171,8 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
         unitId: proposal.unitId,
         proposalId: proposal.id,
         customerId: proposal.customerId,
+        reservationId: activeReservation?.id,
+        saleNumber,
         salePrice: proposal.salePrice,
       },
     });
@@ -118,9 +193,6 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
 
     await tx.proposal.update({ where: { id: proposalId }, data: { status: "CONVERTED" } });
 
-    const activeReservation = await tx.reservation.findFirst({
-      where: { unitId: proposal.unitId, status: "ACTIVE" },
-    });
     if (activeReservation) {
       await tx.reservation.update({
         where: { id: activeReservation.id },

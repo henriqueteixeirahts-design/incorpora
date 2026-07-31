@@ -145,6 +145,7 @@ beforeAll(async () => {
       unitId: unitA.id,
       proposalId: proposalA.id,
       customerId: customerA.id,
+      saleNumber: "V-TEST-0001",
       salePrice: 500000,
     },
   });

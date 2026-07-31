@@ -175,6 +175,7 @@ describe("Jobs reais migrados dos crons — exercitados de ponta a ponta", () =>
         unitId: unit.id,
         proposalId: proposal.id,
         customerId: customer.id,
+        saleNumber: "V-TEST-0001",
         salePrice: 500000,
       },
     });

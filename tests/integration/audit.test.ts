@@ -146,6 +146,7 @@ describe("V2 — Cobertura da correção", () => {
           unitId: unit.id,
           proposalId: proposal.id,
           customerId: customer.id,
+          saleNumber: "V-TEST-0001",
           salePrice: 100000,
         },
       });
@@ -227,6 +228,7 @@ describe("V3 — Consistência da memória (recálculo por caminho independente)
           unitId: unit.id,
           proposalId: proposal.id,
           customerId: customer.id,
+          saleNumber: "V-TEST-0001",
           salePrice: 1000,
         },
       });
