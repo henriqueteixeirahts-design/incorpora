@@ -67,6 +67,7 @@ model Organization {
   auditRuns            AuditRun[]
   permutantes          Permutante[]
   documentTemplates    DocumentTemplate[]
+  contractAmendments   ContractAmendment[]
 
   @@map("organizations")
 }
@@ -1705,10 +1706,52 @@ model Contract {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   indexRule    IndexRule?   @relation(fields: [indexRuleId], references: [id], onDelete: SetNull)
 
-  portfolio ReceivablePortfolio?
+  portfolio  ReceivablePortfolio?
+  amendments ContractAmendment[]
 
   @@unique([organizationId, contractNumber])
   @@map("contracts")
+}
+
+enum ContractAmendmentType {
+  FLOW_RENEGOTIATION // renegociação de fluxo — reprograma a carteira
+  UNIT_CHANGE // alteração de unidade
+  TERM_CHANGE // alteração de prazo
+  OTHER
+}
+
+enum ContractAmendmentStatus {
+  DRAFT
+  SIGNED
+}
+
+/// Aditivo contratual (Fase A, Parte 2.2) — criado a partir do contrato
+/// vigente, numeração sequencial vinculada (`CT-2026-0001-AD01`). Só o tipo
+/// `FLOW_RENEGOTIATION` tem efeito automático na carteira (reprogramação ao
+/// assinar); os demais tipos ficam registrados e documentados, sem side
+/// effect estrutural (mudar unidade/prazo de verdade é fora do escopo desta
+/// etapa — a spec não detalha esse comportamento).
+model ContractAmendment {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  organizationId      String                  @db.Uuid
+  contractId          String                  @db.Uuid
+  sequenceNumber      Int // 1, 2, 3... por contrato
+  amendmentNumber     String // "CT-2026-0001-AD01"
+  type                ContractAmendmentType
+  status              ContractAmendmentStatus @default(DRAFT)
+  proposedPaymentFlow Json? // só quando type = FLOW_RENEGOTIATION — snapshot do novo fluxo (mesmo shape do PaymentFlowResult)
+  notes               String?
+  signedAt            DateTime?
+  signedDocumentPath  String? // caminho no bucket "contracts" do Supabase Storage, mesmo padrão do Contract
+  createdByUserId     String?                 @db.Uuid
+  createdAt           DateTime                @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, sequenceNumber])
+  @@unique([organizationId, amendmentNumber])
+  @@map("contract_amendments")
 }
 
 /// Carteira de recebíveis de um contrato — criada automaticamente na

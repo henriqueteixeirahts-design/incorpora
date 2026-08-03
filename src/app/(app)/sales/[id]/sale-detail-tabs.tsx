@@ -8,6 +8,7 @@ import { DownPaymentDestinationForm } from "./down-payment-destination-form";
 import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form";
 import { AnticipationForm } from "./anticipation-form";
 import { GenerateDocumentForm } from "./generate-document-form";
+import { NewAmendmentForm, SignAmendmentButton, AmendmentDocumentForm } from "./amendment-forms";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -60,12 +61,36 @@ export type GeneratedDocumentRow = {
   downloadUrl: string | null;
 };
 
+export type AmendmentRow = {
+  id: string;
+  amendmentNumber: string;
+  type: string;
+  status: string;
+  notes: string | null;
+  createdAtLabel: string;
+  signedAtLabel: string | null;
+  proposedFlowItems: PaymentFlowItemRow[] | null;
+  generatedDocuments: GeneratedDocumentRow[];
+};
+
 const COMMISSION_STATUS_LABELS: Record<string, string> = {
   PENDING: "A liberar",
   RELEASED: "Liberada",
   INVOICED: "Faturada",
   PAID: "Paga",
   CANCELLED: "Cancelada",
+};
+
+const AMENDMENT_TYPE_LABELS: Record<string, string> = {
+  FLOW_RENEGOTIATION: "Renegociação de fluxo",
+  UNIT_CHANGE: "Alteração de unidade",
+  TERM_CHANGE: "Alteração de prazo",
+  OTHER: "Outro",
+};
+
+const AMENDMENT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Rascunho",
+  SIGNED: "Assinado",
 };
 
 export type CommissionSplitRow = {
@@ -110,6 +135,9 @@ export function SaleDetailTabs({
   canRecalculate,
   canGenerateDocument,
   canEditSale,
+  amendments,
+  amendmentTemplates,
+  remainingBalance,
 }: {
   saleId: string;
   /** Server Component pré-renderizado no page.tsx — não dá pra importar/renderizar Server Component de dentro de um Client Component. */
@@ -148,6 +176,9 @@ export function SaleDetailTabs({
   canRecalculate: boolean;
   canGenerateDocument: boolean;
   canEditSale: boolean;
+  amendments: AmendmentRow[];
+  amendmentTemplates: { id: string; label: string }[];
+  remainingBalance: number;
 }) {
   const [activeTab, setActiveTab] = useState("resumo");
 
@@ -350,6 +381,99 @@ export function SaleDetailTabs({
                     current={correctionCurrent}
                   />
                 </div>
+              </div>
+            ) : null}
+
+            {contract.status === "SIGNED" ? (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ fontSize: "1rem" }}>Aditivos</h3>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+                  Criado a partir do contrato vigente. Renegociação de fluxo reprograma a carteira ao
+                  assinar — parcelas já recebidas nunca são alteradas.
+                </p>
+
+                {amendments.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
+                    {amendments.map((amendment) => (
+                      <div
+                        key={amendment.id}
+                        style={{
+                          border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+                          borderRadius: 8,
+                          padding: "0.75rem 1rem",
+                        }}
+                      >
+                        <p>
+                          <strong>{amendment.amendmentNumber}</strong> — {AMENDMENT_TYPE_LABELS[amendment.type] ?? amendment.type}{" "}
+                          — {AMENDMENT_STATUS_LABELS[amendment.status] ?? amendment.status}
+                        </p>
+                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                          Criado em {amendment.createdAtLabel}
+                          {amendment.signedAtLabel ? ` · assinado em ${amendment.signedAtLabel}` : ""}
+                        </p>
+                        {amendment.notes ? <p style={{ fontSize: "0.85rem" }}>{amendment.notes}</p> : null}
+
+                        {amendment.proposedFlowItems ? (
+                          <details style={{ marginTop: "0.5rem" }}>
+                            <summary style={{ fontSize: "0.85rem", cursor: "pointer" }}>Novo fluxo proposto</summary>
+                            <ul style={{ paddingLeft: "1.1rem", marginTop: "0.4rem", fontSize: "0.85rem" }}>
+                              {amendment.proposedFlowItems.map((item, index) => (
+                                <li key={index}>
+                                  {item.label}: {formatCurrency(item.amount)} (mês {item.dueOffsetMonths})
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        ) : null}
+
+                        {canGenerateDocument ? (
+                          <div style={{ marginTop: "0.5rem" }}>
+                            <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
+                            <AmendmentDocumentForm
+                              saleId={saleId}
+                              contractId={contract.id}
+                              amendmentId={amendment.id}
+                              templates={amendmentTemplates}
+                            />
+                          </div>
+                        ) : null}
+
+                        {amendment.generatedDocuments.length > 0 ? (
+                          <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                            {amendment.generatedDocuments.map((doc) => (
+                              <li key={doc.id}>
+                                {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
+                                {doc.downloadUrl ? (
+                                  <>
+                                    {" "}
+                                    —{" "}
+                                    <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                                      Baixar
+                                    </a>
+                                  </>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+
+                        {canEditContract && amendment.status === "DRAFT" ? (
+                          <div style={{ marginTop: "0.5rem" }}>
+                            <SignAmendmentButton saleId={saleId} amendmentId={amendment.id} />
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhum aditivo criado ainda.</p>
+                )}
+
+                {canEditContract ? (
+                  <div style={{ marginTop: "1rem" }}>
+                    <NewAmendmentForm saleId={saleId} contractId={contract.id} remainingBalance={remainingBalance} />
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </>

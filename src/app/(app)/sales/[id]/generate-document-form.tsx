@@ -10,22 +10,25 @@ type Option = { id: string; label: string };
 export function GenerateDocumentForm({
   saleId,
   contractId,
+  amendmentId,
   templates,
 }: {
   saleId: string;
   contractId: string;
+  amendmentId?: string;
   templates: Option[];
 }) {
   const [state, formAction, pending] = useActionState(generateDocumentAction, initialState);
 
   if (templates.length === 0) {
-    return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo de contrato ativo pra este empreendimento.</p>;
+    return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo ativo pra este empreendimento.</p>;
   }
 
   return (
     <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
+      {amendmentId ? <input type="hidden" name="amendmentId" value={amendmentId} /> : null}
 
       <select name="documentTemplateId" required defaultValue="">
         <option value="" disabled>

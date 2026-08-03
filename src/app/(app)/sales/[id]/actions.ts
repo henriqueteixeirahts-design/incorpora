@@ -12,10 +12,12 @@ import {
 } from "@/server/receivables";
 import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
 import { renderDocumentPdf } from "@/lib/document-pdf";
-import type { InterestType } from "@/generated/prisma/client";
+import { createAmendment, signAmendment } from "@/server/contract-amendments";
+import type { ContractAmendmentType, InterestType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
 export type GenerateDocumentState = { error?: string; missing?: string[]; missingTemplateName?: string };
+export type AmendmentFormState = { error?: string; success?: boolean };
 export type AnticipationState = {
   error?: string;
   result?: Awaited<ReturnType<typeof simulateInstallmentAnticipation>>;
@@ -174,10 +176,11 @@ export async function generateDocumentAction(
   const saleId = String(formData.get("saleId") ?? "");
   const contractId = String(formData.get("contractId") ?? "");
   const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
+  const amendmentId = String(formData.get("amendmentId") ?? "").trim() || undefined;
   if (!contractId || !documentTemplateId) return { error: "Selecione um modelo." };
 
   try {
-    const preview = await previewDocumentGeneration(context.organizationId, contractId, documentTemplateId);
+    const preview = await previewDocumentGeneration(context.organizationId, contractId, documentTemplateId, amendmentId);
     if (preview.status === "MISSING_DATA") {
       return { missing: preview.missing, missingTemplateName: preview.templateName };
     }
@@ -190,7 +193,7 @@ export async function generateDocumentAction(
 
     const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;
     const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
-    const storagePath = await uploadEntityDocument(file, "Contract", contractId);
+    const storagePath = await uploadEntityDocument(file, amendmentId ? "ContractAmendment" : "Contract", amendmentId ?? contractId);
 
     await recordGeneratedDocument(context, {
       contractId,
@@ -199,6 +202,7 @@ export async function generateDocumentAction(
       fileName,
       storagePath,
       sizeBytes: pdfBuffer.length,
+      amendmentId,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao gerar documento." };
@@ -206,6 +210,54 @@ export async function generateDocumentAction(
 
   revalidatePath(`/sales/${saleId}`);
   return {};
+}
+
+export async function createAmendmentAction(
+  _prevState: AmendmentFormState,
+  formData: FormData,
+): Promise<AmendmentFormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return { error: "Sem permissão." };
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const type = String(formData.get("type") ?? "") as ContractAmendmentType;
+  const notes = String(formData.get("notes") ?? "").trim() || undefined;
+  const downPaymentPercentRaw = formData.get("downPaymentPercent");
+  const monthlyInstallmentsRaw = formData.get("monthlyInstallments");
+  const keysInstallmentPercentRaw = formData.get("keysInstallmentPercent");
+
+  if (!contractId) return { error: "Contrato inválido." };
+  if (!["FLOW_RENEGOTIATION", "UNIT_CHANGE", "TERM_CHANGE", "OTHER"].includes(type)) {
+    return { error: "Tipo de aditivo inválido." };
+  }
+
+  try {
+    await createAmendment(context, contractId, {
+      type,
+      notes,
+      downPaymentPercent: downPaymentPercentRaw ? Number(downPaymentPercentRaw) : undefined,
+      monthlyInstallments: monthlyInstallmentsRaw ? Number(monthlyInstallmentsRaw) : undefined,
+      keysInstallmentPercent: keysInstallmentPercentRaw ? Number(keysInstallmentPercentRaw) : undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao criar aditivo." };
+  }
+
+  revalidatePath(`/sales/${saleId}`);
+  return { success: true };
+}
+
+export async function signAmendmentAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return;
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const amendmentId = String(formData.get("amendmentId") ?? "");
+  if (!amendmentId) return;
+
+  await signAmendment(context, amendmentId);
+  revalidatePath(`/sales/${saleId}`);
 }
 
 export async function simulateAnticipationAction(

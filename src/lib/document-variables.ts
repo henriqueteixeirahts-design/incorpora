@@ -66,6 +66,13 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
       },
     ],
   },
+  {
+    group: "Aditivo",
+    tokens: [
+      { key: "aditivo.numero", label: "Número do aditivo (ex.: CT-2026-0001-AD01)" },
+      { key: "aditivo.tipo", label: "Tipo do aditivo" },
+    ],
+  },
 ];
 
 export type DocumentVariableContext = {
@@ -108,6 +115,8 @@ export type DocumentVariableContext = {
   };
   commission: { percent: number | null; totalValue: number | null };
   penalties: { finePercent: number; monthlyInterestPercent: number };
+  /** Só presente quando o documento é gerado a partir de um aditivo (Fase A, Parte 2.2). */
+  amendment: { number: string; typeLabel: string } | null;
 };
 
 export type ResolvedVariables = {
@@ -192,6 +201,9 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
     "fluxo.entrada": formatCurrency(ctx.flow.downPaymentAmount),
     "fluxo.indice_obra": ctx.correction.preHabiteSeIndexName ?? NO_INDEX_LABEL,
     "fluxo.indice_pos_chaves": ctx.correction.postHabiteSeIndexName ?? NO_INDEX_LABEL,
+
+    "aditivo.numero": ctx.amendment?.number ?? "",
+    "aditivo.tipo": ctx.amendment?.typeLabel ?? "",
   };
 
   const blocks: Record<string, string> = {

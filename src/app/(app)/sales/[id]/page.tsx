@@ -6,8 +6,9 @@ import { getContractBySale } from "@/server/contracts";
 import { getSignedContractUrl, getSignedDocumentUrl } from "@/server/storage";
 import { listIndexRules } from "@/server/index-rules";
 import { listApplicableDocumentTemplates } from "@/server/document-templates";
-import { listGeneratedDocuments } from "@/server/document-generation";
+import { listGeneratedDocuments, listAmendmentGeneratedDocuments } from "@/server/document-generation";
 import { listSaleTimeline } from "@/server/sale-timeline";
+import { listAmendments, getRemainingBalance } from "@/server/contract-amendments";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { SaleDetailTabs } from "./sale-detail-tabs";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
@@ -51,6 +52,22 @@ export default async function SaleDetailPage({
     context.organizationId,
     { id: sale.id, proposalId: sale.proposalId, reservationId: sale.reservationId },
     contract,
+  );
+
+  const amendments =
+    contract && contract.status === "SIGNED" ? await listAmendments(context.organizationId, contract.id) : [];
+  const amendmentTemplates =
+    contract && contract.status === "SIGNED"
+      ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "AMENDMENT")
+      : [];
+  const remainingBalance =
+    contract && contract.status === "SIGNED" ? await getRemainingBalance(context.organizationId, contract.id) : 0;
+
+  const amendmentDocuments = await Promise.all(
+    amendments.map((amendment) => listAmendmentGeneratedDocuments(context.organizationId, amendment.id)),
+  );
+  const amendmentDocumentUrls = await Promise.all(
+    amendmentDocuments.map((docs) => Promise.all(docs.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)))),
   );
 
   const paymentFlow = (sale.proposal.proposedPaymentFlow ??
@@ -163,6 +180,28 @@ export default async function SaleDetailPage({
           canRecalculate={canRecalculate}
           canGenerateDocument={canGenerateDocument}
           canEditSale={canEditSale}
+          amendments={amendments.map((amendment, index) => ({
+            id: amendment.id,
+            amendmentNumber: amendment.amendmentNumber,
+            type: amendment.type,
+            status: amendment.status,
+            notes: amendment.notes,
+            createdAtLabel: new Date(amendment.createdAt).toLocaleDateString("pt-BR"),
+            signedAtLabel: amendment.signedAt ? new Date(amendment.signedAt).toLocaleDateString("pt-BR") : null,
+            proposedFlowItems: amendment.proposedPaymentFlow
+              ? (amendment.proposedPaymentFlow as unknown as PaymentFlowResult).items
+              : null,
+            generatedDocuments: amendmentDocuments[index].map((doc, docIndex) => ({
+              id: doc.id,
+              fileName: doc.fileName,
+              templateVersion: doc.documentTemplateVersion,
+              uploadedByName: doc.uploadedBy?.fullName ?? "—",
+              createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+              downloadUrl: amendmentDocumentUrls[index][docIndex],
+            })),
+          }))}
+          amendmentTemplates={amendmentTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
+          remainingBalance={remainingBalance}
         />
       </div>
     </>

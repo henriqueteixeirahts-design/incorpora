@@ -11,6 +11,10 @@ import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { getLatestDocumentTemplateVersion } from "@/server/document-templates";
 import type { AccessContext } from "@/server/auth-context";
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 function formatStructuredAddress(entity: {
   street: string | null;
   number: string | null;
@@ -33,10 +37,23 @@ function formatStructuredAddress(entity: {
   return entity.address ?? "";
 }
 
-/** Busca todos os dados necessários pra resolver as variáveis de um contrato. */
+const AMENDMENT_TYPE_LABELS: Record<string, string> = {
+  FLOW_RENEGOTIATION: "Renegociação de fluxo",
+  UNIT_CHANGE: "Alteração de unidade",
+  TERM_CHANGE: "Alteração de prazo",
+  OTHER: "Outro",
+};
+
+/**
+ * Busca todos os dados necessários pra resolver as variáveis de um contrato.
+ * Quando `amendmentOverride` é passado (geração do documento de um aditivo),
+ * o fluxo/valor total exibidos são os do aditivo (o novo fluxo renegociado),
+ * não os do contrato original — e as variáveis `{{aditivo.*}}` resolvem.
+ */
 export async function buildGenerationContext(
   organizationId: string,
   contractId: string,
+  amendmentOverride?: { number: string; type: string; proposedPaymentFlow: PaymentFlowResult | null },
 ): Promise<DocumentVariableContext> {
   const contract = await prisma.contract.findFirstOrThrow({
     where: { id: contractId, organizationId },
@@ -73,10 +90,15 @@ export async function buildGenerationContext(
     contract.development.spe.partners[0] ??
     null;
 
-  const flow = (contract.sale.proposal.proposedPaymentFlow ??
-    contract.sale.proposal.paymentFlow) as unknown as PaymentFlowResult | null;
+  const flow = amendmentOverride
+    ? amendmentOverride.proposedPaymentFlow
+    : ((contract.sale.proposal.proposedPaymentFlow ??
+        contract.sale.proposal.paymentFlow) as unknown as PaymentFlowResult | null);
   const items = flow?.items ?? [];
   const downPaymentAmount = items.find((i) => i.isDownPayment)?.amount ?? 0;
+  const totalValue = amendmentOverride
+    ? round2(items.reduce((sum, item) => sum + item.amount, 0))
+    : Number(contract.sale.salePrice);
 
   const commissionSplits = contract.sale.commissionSplits;
   const commissionPercent =
@@ -127,8 +149,11 @@ export async function buildGenerationContext(
       nationality: contract.customer.nationality,
       profession: contract.customer.profession,
     },
-    sale: { totalValue: Number(contract.sale.salePrice) },
+    sale: { totalValue },
     flow: { items, downPaymentAmount },
+    amendment: amendmentOverride
+      ? { number: amendmentOverride.number, typeLabel: AMENDMENT_TYPE_LABELS[amendmentOverride.type] ?? amendmentOverride.type }
+      : null,
     correction: {
       preHabiteSeIndexName: contract.indexRule?.name ?? null,
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
@@ -154,12 +179,16 @@ export type GenerationPreview =
 /**
  * Resolve as variáveis do modelo contra os dados reais do contrato, sem
  * gerar/persistir nada ainda — só pra decidir se pode prosseguir (spec 1.4:
- * avisar ANTES de gerar quando faltar dado, listando o que falta).
+ * avisar ANTES de gerar quando faltar dado, listando o que falta). Quando
+ * `amendmentId` é passado, gera o documento do ADITIVO (fluxo/valor total
+ * do aditivo, variáveis `{{aditivo.*}}` resolvidas) em vez do contrato
+ * original.
  */
 export async function previewDocumentGeneration(
   organizationId: string,
   contractId: string,
   documentTemplateId: string,
+  amendmentId?: string,
 ): Promise<GenerationPreview> {
   const template = await prisma.documentTemplate.findFirst({
     where: { id: documentTemplateId, organizationId },
@@ -174,7 +203,20 @@ export async function previewDocumentGeneration(
     throw new Error("Esse modelo está inativo.");
   }
 
-  const ctx = await buildGenerationContext(organizationId, contractId);
+  let amendmentOverride: { number: string; type: string; proposedPaymentFlow: PaymentFlowResult | null } | undefined;
+  if (amendmentId) {
+    const amendment = await prisma.contractAmendment.findFirst({
+      where: { id: amendmentId, organizationId, contractId },
+    });
+    if (!amendment) throw new Error("Aditivo inválido.");
+    amendmentOverride = {
+      number: amendment.amendmentNumber,
+      type: amendment.type,
+      proposedPaymentFlow: amendment.proposedPaymentFlow as unknown as PaymentFlowResult | null,
+    };
+  }
+
+  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride);
   const resolved = resolveDocumentVariables(ctx);
   const { text, missing } = substituteTemplate(template.content, resolved);
 
@@ -206,14 +248,15 @@ export async function recordGeneratedDocument(
     fileName: string;
     storagePath: string;
     sizeBytes: number;
+    amendmentId?: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
     const document = await tx.document.create({
       data: {
         organizationId: context.organizationId,
-        entityType: "Contract",
-        entityId: params.contractId,
+        entityType: params.amendmentId ? "ContractAmendment" : "Contract",
+        entityId: params.amendmentId ?? params.contractId,
         category: "CONTRACT",
         fileName: params.fileName,
         fileUrl: params.storagePath,
@@ -241,6 +284,14 @@ export async function recordGeneratedDocument(
 export function listGeneratedDocuments(organizationId: string, contractId: string) {
   return prisma.document.findMany({
     where: { organizationId, entityType: "Contract", entityId: contractId, documentTemplateId: { not: null } },
+    include: { uploadedBy: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export function listAmendmentGeneratedDocuments(organizationId: string, amendmentId: string) {
+  return prisma.document.findMany({
+    where: { organizationId, entityType: "ContractAmendment", entityId: amendmentId, documentTemplateId: { not: null } },
     include: { uploadedBy: true },
     orderBy: { createdAt: "desc" },
   });

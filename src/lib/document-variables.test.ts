@@ -54,6 +54,7 @@ const BASE_CTX: DocumentVariableContext = {
   correction: { preHabiteSeIndexName: "INCC-M", postHabiteSeIndexName: "IGP-M" },
   commission: { percent: 6, totalValue: 30000 },
   penalties: { finePercent: 2, monthlyInterestPercent: 1 },
+  amendment: null,
 };
 
 describe("resolveDocumentVariables", () => {
