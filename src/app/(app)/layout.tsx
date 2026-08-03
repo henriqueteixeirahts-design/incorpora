@@ -46,6 +46,9 @@ export default async function AppLayout({
         <Link href="/sales" className="app-nav-link">
           Vendas
         </Link>
+        <Link href="/commissions" className="app-nav-link">
+          Comissões
+        </Link>
         <Link href="/reports" className="app-nav-link">
           Relatórios
         </Link>

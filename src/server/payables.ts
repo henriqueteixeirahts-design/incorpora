@@ -212,17 +212,19 @@ export async function advancePayableStatus(context: AccessContext, payableId: st
   return prisma.$transaction(async (tx) => {
     const payable = await tx.payable.findFirst({
       where: { id: payableId, organizationId: context.organizationId },
+      include: { commissionSplit: true },
     });
     if (!payable) throw new Error("Conta a pagar inválida.");
 
     const nextStatus = NEXT_STATUS[payable.status];
     if (!nextStatus) throw new Error("Não há próxima etapa para este status.");
 
+    const paidAt = new Date();
     const updated = await tx.payable.update({
       where: { id: payableId },
       data: {
         status: nextStatus,
-        ...(nextStatus === "PAID" ? { paidAt: new Date(), paidAmount: payable.amount } : {}),
+        ...(nextStatus === "PAID" ? { paidAt, paidAmount: payable.amount } : {}),
       },
     });
 
@@ -245,6 +247,26 @@ export async function advancePayableStatus(context: AccessContext, payableId: st
         entityType: "Payable",
         entityId: payableId,
         payload: { fromStatus: payable.status, toStatus: nextStatus },
+      });
+    }
+
+    // Conta a pagar de comissão paga (Fase A, Parte 4.2) — completa o ciclo
+    // de liberação/pagamento do split sem uma ação separada de "pagar
+    // comissão"; a mesma ação que já existe pra qualquer conta a pagar basta.
+    if (nextStatus === "PAID" && payable.commissionSplit) {
+      await tx.commissionSplit.update({
+        where: { id: payable.commissionSplit.id },
+        data: { status: "PAID", paidAt },
+      });
+
+      await recordAuditEvent(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        action: "update",
+        entityType: "CommissionSplit",
+        entityId: payable.commissionSplit.id,
+        beforeData: { status: payable.commissionSplit.status },
+        afterData: { status: "PAID" },
       });
     }
 

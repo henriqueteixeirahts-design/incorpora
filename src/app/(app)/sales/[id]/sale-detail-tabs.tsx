@@ -60,6 +60,14 @@ export type GeneratedDocumentRow = {
   downloadUrl: string | null;
 };
 
+const COMMISSION_STATUS_LABELS: Record<string, string> = {
+  PENDING: "A liberar",
+  RELEASED: "Liberada",
+  INVOICED: "Faturada",
+  PAID: "Paga",
+  CANCELLED: "Cancelada",
+};
+
 export type CommissionSplitRow = {
   id: string;
   beneficiaryType: string;
@@ -67,6 +75,8 @@ export type CommissionSplitRow = {
   percent: number;
   value: number;
   status: string;
+  releasedAtLabel: string | null;
+  paidAtLabel: string | null;
 };
 
 export function SaleDetailTabs({
@@ -82,6 +92,7 @@ export function SaleDetailTabs({
   applicableTemplates,
   generatedDocuments,
   commissionSplits,
+  downPaymentAbatement,
   saleTotal,
   proposalBrokerName,
   proposalAgencyName,
@@ -113,6 +124,7 @@ export function SaleDetailTabs({
   applicableTemplates: { id: string; label: string }[];
   generatedDocuments: GeneratedDocumentRow[];
   commissionSplits: CommissionSplitRow[];
+  downPaymentAbatement: { downPaymentTotal: number; commissionExcess: number | null } | null;
   saleTotal: number;
   proposalBrokerName: string | null;
   proposalAgencyName: string | null;
@@ -348,33 +360,56 @@ export function SaleDetailTabs({
         {commissionSplits.length === 0 ? (
           <p style={{ opacity: 0.7, fontSize: "0.85rem" }}>Nenhuma comissão lançada.</p>
         ) : (
-          <table style={{ maxWidth: 700 }}>
-            <thead>
-              <tr>
-                <th>Beneficiário</th>
-                <th>%</th>
-                <th>Valor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {commissionSplits.map((split) => (
-                <tr key={split.id}>
-                  <td>
-                    {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
-                    {split.label ? ` (${split.label})` : ""}
-                  </td>
-                  <td>{split.percent}%</td>
-                  <td>{formatCurrency(split.value)}</td>
-                  <td>{split.status}</td>
+          <>
+            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+              Comissão total: {commissionSplits.reduce((sum, s) => sum + s.percent, 0)}% —{" "}
+              {formatCurrency(commissionSplits.reduce((sum, s) => sum + s.value, 0))}
+            </p>
+            {downPaymentAbatement ? (
+              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                Entrada direto ao corretor abateu {formatCurrency(downPaymentAbatement.downPaymentTotal)} da
+                comissão
+                {downPaymentAbatement.commissionExcess
+                  ? ` — excedente de ${formatCurrency(downPaymentAbatement.commissionExcess)} registrado como crédito à SPE`
+                  : ""}
+                .
+              </p>
+            ) : null}
+
+            <table style={{ maxWidth: 800, marginTop: "0.75rem" }}>
+              <thead>
+                <tr>
+                  <th>Beneficiário</th>
+                  <th>%</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Liberada em</th>
+                  <th>Paga em</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {commissionSplits.map((split) => (
+                  <tr key={split.id}>
+                    <td>
+                      {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
+                      {split.label ? ` (${split.label})` : ""}
+                    </td>
+                    <td>{split.percent}%</td>
+                    <td>{formatCurrency(split.value)}</td>
+                    <td>{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
+                    <td>{split.releasedAtLabel ?? "—"}</td>
+                    <td>{split.paidAtLabel ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
         <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.75rem" }}>
-          Regra de liberação por parcela e extrato consolidado por corretor/imobiliária chegam na
-          etapa 3 da Fase A.
+          A comissão libera conforme a regra do empreendimento e vira conta a pagar automaticamente
+          (fornecedor = corretor/imobiliária) — pagar em Contas a pagar marca a comissão como paga
+          também, sem lançamento duplicado. Estorno em caso de distrato chega junto da etapa 6 da
+          Fase A.
         </p>
       </div>
 

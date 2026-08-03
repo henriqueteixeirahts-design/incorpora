@@ -122,7 +122,18 @@ export default async function SaleDetailPage({
             percent: Number(split.percent),
             value: Number(split.value),
             status: split.status,
+            releasedAtLabel: split.releasedAt ? new Date(split.releasedAt).toLocaleDateString("pt-BR") : null,
+            paidAtLabel: split.paidAt ? new Date(split.paidAt).toLocaleDateString("pt-BR") : null,
           }))}
+          downPaymentAbatement={
+            (() => {
+              const event = timelineEvents.find((e) => e.eventType === "contract.down_payment_as_commission");
+              if (!event) return null;
+              const payload = event.payload as { downPaymentTotal?: number; commissionExcess?: number } | null;
+              if (!payload?.downPaymentTotal) return null;
+              return { downPaymentTotal: payload.downPaymentTotal, commissionExcess: payload.commissionExcess ?? null };
+            })()
+          }
           saleTotal={Number(sale.salePrice)}
           proposalBrokerName={sale.proposal.broker?.name ?? null}
           proposalAgencyName={sale.proposal.agency?.name ?? null}

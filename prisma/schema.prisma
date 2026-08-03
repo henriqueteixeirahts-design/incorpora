@@ -935,6 +935,7 @@ model Development {
   reservationRule        ReservationRule?
   proposalEvaluationRule ProposalEvaluationRule?
   documentTemplates      DocumentTemplateDevelopment[]
+  commissionReleaseRule  CommissionReleaseRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -1209,6 +1210,7 @@ model RealEstateAgency {
   reservations    Reservation[]
   waitlistEntries ReservationWaitlistEntry[]
   proposals       Proposal[]
+  supplier        Supplier?
 
   @@map("real_estate_agencies")
 }
@@ -1230,6 +1232,7 @@ model Broker {
   reservations    Reservation[]
   waitlistEntries ReservationWaitlistEntry[]
   proposals       Proposal[]
+  supplier        Supplier?
 
   @@map("brokers")
 }
@@ -1581,14 +1584,20 @@ enum CommissionBeneficiaryType {
 }
 
 enum CommissionStatus {
-  PENDING
+  PENDING // "A liberar" — ainda não bateu o gatilho da regra de liberação
+  RELEASED // "Liberada" — pronta pra ser lançada/paga em Contas a pagar
   INVOICED
-  PAID
-  CANCELLED
+  PAID // "Paga" — Payable vinculado foi pago (mesma ação usada por qualquer conta a pagar)
+  CANCELLED // estorno (distrato — Fase A etapa 6, ainda não construída)
 }
 
 /// Split de comissão da venda (PRD seção 10) — pode ser dividida entre
-/// corretor, imobiliária, coordenador, gerente e campanha.
+/// corretor, imobiliária, coordenador, gerente e campanha. Ciclo de
+/// liberação/pagamento (Fase A, Parte 4.1): PENDING -> RELEASED (regra
+/// configurável por empreendimento, ver CommissionReleaseRule) -> PAID
+/// (via o Payable vinculado sendo pago pelo fluxo normal de Contas a pagar
+/// — não existe uma ação de "pagar comissão" separada, spec 4.2: "sem duplo
+/// lançamento manual").
 model CommissionSplit {
   id              String                    @id @default(uuid()) @db.Uuid
   saleId          String                    @db.Uuid
@@ -1600,11 +1609,38 @@ model CommissionSplit {
   value           Decimal                   @db.Decimal(14, 2)
   dueDate         DateTime?
   status          CommissionStatus          @default(PENDING)
+  releasedAt      DateTime?
+  paidAt          DateTime?
+  payableId       String?                   @unique @db.Uuid
   createdAt       DateTime                  @default(now())
 
-  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  payable Payable? @relation(fields: [payableId], references: [id], onDelete: SetNull)
 
   @@map("commission_splits")
+}
+
+enum CommissionReleaseTrigger {
+  ON_CONTRACT_SIGNATURE // libera tudo na assinatura do contrato
+  ON_DOWN_PAYMENT_RECEIVED // libera quando a parcela de entrada é recebida
+  ON_INSTALLMENTS_PAID_PERCENT // libera quando X% das parcelas da carteira estiverem pagas
+}
+
+/// Regra de liberação de comissão por empreendimento (Fase A, Parte 4.1 —
+/// "regra de liberação configurável"). Mesmo padrão 1:1-por-Development das
+/// outras regras parametrizáveis (ReservationRule, ProposalEvaluationRule):
+/// default sugerido sem linha salva, upsert idempotente quando configurada.
+model CommissionReleaseRule {
+  id                      String                   @id @default(uuid()) @db.Uuid
+  developmentId           String                   @unique @db.Uuid
+  trigger                 CommissionReleaseTrigger @default(ON_CONTRACT_SIGNATURE)
+  installmentsPaidPercent Int                      @default(50) // só usado quando trigger = ON_INSTALLMENTS_PAID_PERCENT
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("commission_release_rules")
 }
 
 // ============================================================================
@@ -1715,6 +1751,10 @@ model Installment {
   paidAmount       Decimal           @default(0) @db.Decimal(14, 2)
   lastCalculatedAt DateTime?
   status           InstallmentStatus @default(PENDING)
+  // Marca a parcela de entrada (Fase A, Parte 4.1 — gatilho de liberação de
+  // comissão "no recebimento da entrada"). Sem isso, teria que casar por
+  // `label === "Entrada"` (frágil, o label é texto livre do fluxo).
+  isDownPayment    Boolean           @default(false)
   createdAt        DateTime          @default(now())
 
   portfolio             ReceivablePortfolio    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
@@ -1849,9 +1889,17 @@ model Supplier {
   email          String?
   phone          String?
   isActive       Boolean  @default(true)
+  // Criado automaticamente (find-or-create) na primeira comissão liberada de
+  // um corretor/imobiliária (Fase A, Parte 4.2 — "fornecedor = corretor/
+  // imobiliária", sem lançamento manual duplicado). Nulos nos fornecedores
+  // "de verdade" (construtora, cartório etc.).
+  brokerId       String?  @unique @db.Uuid
+  agencyId       String?  @unique @db.Uuid
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  broker       Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   payables     Payable[]
 
   @@map("suppliers")
@@ -1935,11 +1983,12 @@ model Payable {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  development  Development?          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  spe          SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
-  supplier     Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  costCenter   CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development     Development?          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  spe             SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
+  supplier        Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  costCenter      CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  commissionSplit CommissionSplit?
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])

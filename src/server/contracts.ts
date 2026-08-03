@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
+import { tryReleaseCommissions } from "@/server/commissions";
 import type { AccessContext } from "@/server/auth-context";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import type { Prisma } from "@/generated/prisma/client";
@@ -227,6 +228,7 @@ export async function confirmSignature(
             label: item.label,
             dueDate: addMonths(signedAt, item.dueOffsetMonths),
             originalValue: item.amount,
+            isDownPayment: item.isDownPayment ?? false,
           })),
         });
       }
@@ -293,6 +295,8 @@ export async function confirmSignature(
       entityType: "Contract",
       entityId: contractId,
     });
+
+    await tryReleaseCommissions(tx, context.organizationId, contractId, context.userId);
 
     return updated;
   });

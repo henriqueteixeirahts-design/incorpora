@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-correction";
 import { simulateAnticipation } from "@/lib/anticipation";
+import { tryReleaseCommissions } from "@/server/commissions";
 import type { AccessContext } from "@/server/auth-context";
 import type { IndexCode, InterestType, Prisma } from "@/generated/prisma/client";
 
@@ -299,6 +300,8 @@ export async function registerInstallmentPayment(
       entityId: installmentId,
       payload: { amount: input.amount, status },
     });
+
+    await tryReleaseCommissions(tx, context.organizationId, installment.portfolio.contract.id, context.userId);
 
     return updated;
   });

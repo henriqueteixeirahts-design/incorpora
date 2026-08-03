@@ -15,6 +15,14 @@ const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
   CAMPAIGN: "Campanha",
 };
 
+const COMMISSION_STATUS_LABELS: Record<string, string> = {
+  PENDING: "A liberar",
+  RELEASED: "Liberada",
+  INVOICED: "Faturada",
+  PAID: "Paga",
+  CANCELLED: "Cancelada",
+};
+
 export type CommissionSplitRow = {
   id: string;
   beneficiaryType: string;
@@ -347,7 +355,7 @@ function CommissionModal({
                 </td>
                 <td>{split.percent}%</td>
                 <td>{formatCurrency(split.value)}</td>
-                <td>{split.status}</td>
+                <td>{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
               </tr>
             ))}
           </tbody>
