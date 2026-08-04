@@ -73,6 +73,18 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
       { key: "aditivo.tipo", label: "Tipo do aditivo" },
     ],
   },
+  {
+    group: "Cessão",
+    tokens: [
+      { key: "cessao.numero", label: "Número da cessão (ex.: CT-2026-0001-CS01)" },
+      { key: "cessao.data", label: "Data da cessão" },
+      { key: "cessao.taxa", label: "Taxa de cessão" },
+      { key: "cedente.nome", label: "Nome do cedente (titular atual)" },
+      { key: "cedente.cpf_cnpj", label: "CPF/CNPJ do cedente" },
+      { key: "cessionario.nome", label: "Nome do cessionário (novo titular)" },
+      { key: "cessionario.cpf_cnpj", label: "CPF/CNPJ do cessionário" },
+    ],
+  },
 ];
 
 export type DocumentVariableContext = {
@@ -117,6 +129,16 @@ export type DocumentVariableContext = {
   penalties: { finePercent: number; monthlyInterestPercent: number };
   /** Só presente quando o documento é gerado a partir de um aditivo (Fase A, Parte 2.2). */
   amendment: { number: string; typeLabel: string } | null;
+  /** Só presente quando o documento é gerado a partir de uma cessão de direitos (Fase A, Parte 2.3). */
+  assignment: {
+    number: string;
+    dateLabel: string;
+    feeLabel: string;
+    previousCustomerName: string;
+    previousCustomerDocument: string;
+    newCustomerName: string;
+    newCustomerDocument: string;
+  } | null;
 };
 
 export type ResolvedVariables = {
@@ -204,6 +226,14 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
 
     "aditivo.numero": ctx.amendment?.number ?? "",
     "aditivo.tipo": ctx.amendment?.typeLabel ?? "",
+
+    "cessao.numero": ctx.assignment?.number ?? "",
+    "cessao.data": ctx.assignment?.dateLabel ?? "",
+    "cessao.taxa": ctx.assignment?.feeLabel ?? "",
+    "cedente.nome": ctx.assignment?.previousCustomerName ?? "",
+    "cedente.cpf_cnpj": ctx.assignment?.previousCustomerDocument ?? "",
+    "cessionario.nome": ctx.assignment?.newCustomerName ?? "",
+    "cessionario.cpf_cnpj": ctx.assignment?.newCustomerDocument ?? "",
   };
 
   const blocks: Record<string, string> = {

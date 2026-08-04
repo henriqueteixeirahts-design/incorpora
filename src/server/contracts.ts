@@ -14,6 +14,7 @@ export function getContractBySale(organizationId: string, saleId: string) {
     where: { saleId, organizationId },
     include: {
       indexRule: true,
+      customer: true,
       portfolio: {
         include: {
           installments: {

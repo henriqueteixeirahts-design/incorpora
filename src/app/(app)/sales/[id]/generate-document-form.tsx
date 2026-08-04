@@ -11,11 +11,13 @@ export function GenerateDocumentForm({
   saleId,
   contractId,
   amendmentId,
+  assignmentId,
   templates,
 }: {
   saleId: string;
   contractId: string;
   amendmentId?: string;
+  assignmentId?: string;
   templates: Option[];
 }) {
   const [state, formAction, pending] = useActionState(generateDocumentAction, initialState);
@@ -29,6 +31,7 @@ export function GenerateDocumentForm({
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
       {amendmentId ? <input type="hidden" name="amendmentId" value={amendmentId} /> : null}
+      {assignmentId ? <input type="hidden" name="assignmentId" value={assignmentId} /> : null}
 
       <select name="documentTemplateId" required defaultValue="">
         <option value="" disabled>

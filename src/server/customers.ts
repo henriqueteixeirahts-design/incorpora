@@ -188,17 +188,20 @@ export async function deleteCustomer(context: AccessContext, customerId: string)
   });
   if (!customer) throw new Error("Cliente não encontrado.");
 
-  const [reservations, proposals, sales, contracts] = await Promise.all([
+  const [reservations, proposals, sales, contracts, assignments] = await Promise.all([
     prisma.reservation.count({ where: { customerId } }),
     prisma.proposal.count({ where: { customerId } }),
     prisma.sale.count({ where: { customerId } }),
     prisma.contract.count({ where: { customerId } }),
+    prisma.contractAssignment.count({
+      where: { OR: [{ previousCustomerId: customerId }, { newCustomerId: customerId }] },
+    }),
   ]);
-  const totalLinks = reservations + proposals + sales + contracts;
+  const totalLinks = reservations + proposals + sales + contracts + assignments;
   if (totalLinks > 0) {
     throw new Error(
       `Não é possível excluir: o cliente tem ${totalLinks} registro(s) vinculado(s) ` +
-        `(reservas, propostas, vendas ou contratos).`,
+        `(reservas, propostas, vendas, contratos ou cessões de direitos).`,
     );
   }
 

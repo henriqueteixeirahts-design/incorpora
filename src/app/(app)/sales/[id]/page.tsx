@@ -6,9 +6,15 @@ import { getContractBySale } from "@/server/contracts";
 import { getSignedContractUrl, getSignedDocumentUrl } from "@/server/storage";
 import { listIndexRules } from "@/server/index-rules";
 import { listApplicableDocumentTemplates } from "@/server/document-templates";
-import { listGeneratedDocuments, listAmendmentGeneratedDocuments } from "@/server/document-generation";
+import {
+  listGeneratedDocuments,
+  listAmendmentGeneratedDocuments,
+  listAssignmentGeneratedDocuments,
+} from "@/server/document-generation";
 import { listSaleTimeline } from "@/server/sale-timeline";
 import { listAmendments, getRemainingBalance } from "@/server/contract-amendments";
+import { listAssignments } from "@/server/contract-assignments";
+import { listCustomers } from "@/server/crm";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { SaleDetailTabs } from "./sale-detail-tabs";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
@@ -70,6 +76,21 @@ export default async function SaleDetailPage({
     amendmentDocuments.map((docs) => Promise.all(docs.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)))),
   );
 
+  const assignments =
+    contract && contract.status === "SIGNED" ? await listAssignments(context.organizationId, contract.id) : [];
+  const assignmentTemplates =
+    contract && contract.status === "SIGNED"
+      ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "ASSIGNMENT")
+      : [];
+  const allCustomers = contract && contract.status === "SIGNED" ? await listCustomers(context.organizationId) : [];
+
+  const assignmentDocuments = await Promise.all(
+    assignments.map((assignment) => listAssignmentGeneratedDocuments(context.organizationId, assignment.id)),
+  );
+  const assignmentDocumentUrls = await Promise.all(
+    assignmentDocuments.map((docs) => Promise.all(docs.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)))),
+  );
+
   const paymentFlow = (sale.proposal.proposedPaymentFlow ??
     sale.proposal.paymentFlow) as unknown as PaymentFlowResult | null;
   const openInstallments = contract?.portfolio?.installments.filter(
@@ -94,7 +115,14 @@ export default async function SaleDetailPage({
           saleId={id}
           indexFreshnessBanner={<IndexFreshnessBanner organizationId={context.organizationId} />}
           contract={
-            contract ? { id: contract.id, status: contract.status, signedDocumentPath: contract.signedDocumentPath } : null
+            contract
+              ? {
+                  id: contract.id,
+                  status: contract.status,
+                  signedDocumentPath: contract.signedDocumentPath,
+                  customerName: contract.customer.name,
+                }
+              : null
           }
           timeline={timelineEvents.map((event) => ({
             id: event.id,
@@ -202,6 +230,28 @@ export default async function SaleDetailPage({
           }))}
           amendmentTemplates={amendmentTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
           remainingBalance={remainingBalance}
+          assignments={assignments.map((assignment, index) => ({
+            id: assignment.id,
+            assignmentNumber: assignment.assignmentNumber,
+            status: assignment.status,
+            notes: assignment.notes,
+            assignmentDateLabel: new Date(assignment.assignmentDate).toLocaleDateString("pt-BR"),
+            feeAmount: assignment.feeAmount ? Number(assignment.feeAmount) : null,
+            createdAtLabel: new Date(assignment.createdAt).toLocaleDateString("pt-BR"),
+            signedAtLabel: assignment.signedAt ? new Date(assignment.signedAt).toLocaleDateString("pt-BR") : null,
+            previousCustomerName: assignment.previousCustomer.name,
+            newCustomerName: assignment.newCustomer.name,
+            generatedDocuments: assignmentDocuments[index].map((doc, docIndex) => ({
+              id: doc.id,
+              fileName: doc.fileName,
+              templateVersion: doc.documentTemplateVersion,
+              uploadedByName: doc.uploadedBy?.fullName ?? "—",
+              createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+              downloadUrl: assignmentDocumentUrls[index][docIndex],
+            })),
+          }))}
+          assignmentTemplates={assignmentTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
+          customers={allCustomers.map((c) => ({ id: c.id, label: `${c.name} (${c.document})` }))}
         />
       </div>
     </>

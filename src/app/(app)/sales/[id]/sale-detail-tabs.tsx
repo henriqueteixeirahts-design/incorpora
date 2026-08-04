@@ -9,6 +9,7 @@ import { RegisterPaymentForm, RecalculatePortfolioButton } from "./payment-form"
 import { AnticipationForm } from "./anticipation-form";
 import { GenerateDocumentForm } from "./generate-document-form";
 import { NewAmendmentForm, SignAmendmentButton, AmendmentDocumentForm } from "./amendment-forms";
+import { NewAssignmentForm, SignAssignmentButton, AssignmentDocumentForm } from "./assignment-forms";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -93,6 +94,25 @@ const AMENDMENT_STATUS_LABELS: Record<string, string> = {
   SIGNED: "Assinado",
 };
 
+export type AssignmentRow = {
+  id: string;
+  assignmentNumber: string;
+  status: string;
+  notes: string | null;
+  assignmentDateLabel: string;
+  feeAmount: number | null;
+  createdAtLabel: string;
+  signedAtLabel: string | null;
+  previousCustomerName: string;
+  newCustomerName: string;
+  generatedDocuments: GeneratedDocumentRow[];
+};
+
+const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Rascunho",
+  SIGNED: "Assinado",
+};
+
 export type CommissionSplitRow = {
   id: string;
   beneficiaryType: string;
@@ -138,11 +158,14 @@ export function SaleDetailTabs({
   amendments,
   amendmentTemplates,
   remainingBalance,
+  assignments,
+  assignmentTemplates,
+  customers,
 }: {
   saleId: string;
   /** Server Component pré-renderizado no page.tsx — não dá pra importar/renderizar Server Component de dentro de um Client Component. */
   indexFreshnessBanner: ReactNode;
-  contract: { id: string; status: string; signedDocumentPath: string | null } | null;
+  contract: { id: string; status: string; signedDocumentPath: string | null; customerName: string } | null;
   timeline: TimelineEventRow[];
   paymentFlowItems: PaymentFlowItemRow[];
   installments: InstallmentRow[];
@@ -179,6 +202,9 @@ export function SaleDetailTabs({
   amendments: AmendmentRow[];
   amendmentTemplates: { id: string; label: string }[];
   remainingBalance: number;
+  assignments: AssignmentRow[];
+  assignmentTemplates: { id: string; label: string }[];
+  customers: { id: string; label: string }[];
 }) {
   const [activeTab, setActiveTab] = useState("resumo");
 
@@ -472,6 +498,97 @@ export function SaleDetailTabs({
                 {canEditContract ? (
                   <div style={{ marginTop: "1rem" }}>
                     <NewAmendmentForm saleId={saleId} contractId={contract.id} remainingBalance={remainingBalance} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {contract.status === "SIGNED" ? (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ fontSize: "1rem" }}>Cessão de direitos</h3>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+                  Transfere a titularidade do contrato pro cessionário. A carteira não é recriada — as
+                  mesmas parcelas continuam, o histórico do cedente é preservado; a taxa de cessão
+                  (se houver) vira uma parcela nova.
+                </p>
+
+                {assignments.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
+                    {assignments.map((assignment) => (
+                      <div
+                        key={assignment.id}
+                        style={{
+                          border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+                          borderRadius: 8,
+                          padding: "0.75rem 1rem",
+                        }}
+                      >
+                        <p>
+                          <strong>{assignment.assignmentNumber}</strong> —{" "}
+                          {ASSIGNMENT_STATUS_LABELS[assignment.status] ?? assignment.status}
+                        </p>
+                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                          {assignment.previousCustomerName} → {assignment.newCustomerName} — cessão em{" "}
+                          {assignment.assignmentDateLabel}
+                          {assignment.feeAmount ? ` · taxa de ${formatCurrency(assignment.feeAmount)}` : ""}
+                        </p>
+                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                          Criado em {assignment.createdAtLabel}
+                          {assignment.signedAtLabel ? ` · assinado em ${assignment.signedAtLabel}` : ""}
+                        </p>
+                        {assignment.notes ? <p style={{ fontSize: "0.85rem" }}>{assignment.notes}</p> : null}
+
+                        {canGenerateDocument ? (
+                          <div style={{ marginTop: "0.5rem" }}>
+                            <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
+                            <AssignmentDocumentForm
+                              saleId={saleId}
+                              contractId={contract.id}
+                              assignmentId={assignment.id}
+                              templates={assignmentTemplates}
+                            />
+                          </div>
+                        ) : null}
+
+                        {assignment.generatedDocuments.length > 0 ? (
+                          <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                            {assignment.generatedDocuments.map((doc) => (
+                              <li key={doc.id}>
+                                {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
+                                {doc.downloadUrl ? (
+                                  <>
+                                    {" "}
+                                    —{" "}
+                                    <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                                      Baixar
+                                    </a>
+                                  </>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+
+                        {canEditContract && assignment.status === "DRAFT" ? (
+                          <div style={{ marginTop: "0.5rem" }}>
+                            <SignAssignmentButton saleId={saleId} assignmentId={assignment.id} />
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhuma cessão criada ainda.</p>
+                )}
+
+                {canEditContract ? (
+                  <div style={{ marginTop: "1rem" }}>
+                    <NewAssignmentForm
+                      saleId={saleId}
+                      contractId={contract.id}
+                      customers={customers}
+                      currentCustomerName={contract.customerName}
+                    />
                   </div>
                 ) : null}
               </div>

@@ -44,16 +44,32 @@ const AMENDMENT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Outro",
 };
 
+function formatCurrency(value: number): string {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 /**
  * Busca todos os dados necessários pra resolver as variáveis de um contrato.
  * Quando `amendmentOverride` é passado (geração do documento de um aditivo),
  * o fluxo/valor total exibidos são os do aditivo (o novo fluxo renegociado),
  * não os do contrato original — e as variáveis `{{aditivo.*}}` resolvem.
+ * Quando `assignmentOverride` é passado (geração do documento de cessão de
+ * direitos), as variáveis `{{cessao.*}}`/`{{cedente.*}}`/`{{cessionario.*}}`
+ * resolvem — o cliente principal (`{{cliente.*}}`) continua sendo o titular
+ * atual do contrato (o cedente, já que a cessão ainda não foi assinada
+ * quando o documento é gerado).
  */
 export async function buildGenerationContext(
   organizationId: string,
   contractId: string,
   amendmentOverride?: { number: string; type: string; proposedPaymentFlow: PaymentFlowResult | null },
+  assignmentOverride?: {
+    number: string;
+    assignmentDate: Date;
+    feeAmount: number | null;
+    previousCustomer: { name: string; document: string };
+    newCustomer: { name: string; document: string };
+  },
 ): Promise<DocumentVariableContext> {
   const contract = await prisma.contract.findFirstOrThrow({
     where: { id: contractId, organizationId },
@@ -154,6 +170,17 @@ export async function buildGenerationContext(
     amendment: amendmentOverride
       ? { number: amendmentOverride.number, typeLabel: AMENDMENT_TYPE_LABELS[amendmentOverride.type] ?? amendmentOverride.type }
       : null,
+    assignment: assignmentOverride
+      ? {
+          number: assignmentOverride.number,
+          dateLabel: assignmentOverride.assignmentDate.toLocaleDateString("pt-BR"),
+          feeLabel: assignmentOverride.feeAmount ? formatCurrency(assignmentOverride.feeAmount) : "Não há",
+          previousCustomerName: assignmentOverride.previousCustomer.name,
+          previousCustomerDocument: assignmentOverride.previousCustomer.document,
+          newCustomerName: assignmentOverride.newCustomer.name,
+          newCustomerDocument: assignmentOverride.newCustomer.document,
+        }
+      : null,
     correction: {
       preHabiteSeIndexName: contract.indexRule?.name ?? null,
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
@@ -189,6 +216,7 @@ export async function previewDocumentGeneration(
   contractId: string,
   documentTemplateId: string,
   amendmentId?: string,
+  assignmentId?: string,
 ): Promise<GenerationPreview> {
   const template = await prisma.documentTemplate.findFirst({
     where: { id: documentTemplateId, organizationId },
@@ -216,7 +244,31 @@ export async function previewDocumentGeneration(
     };
   }
 
-  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride);
+  let assignmentOverride:
+    | {
+        number: string;
+        assignmentDate: Date;
+        feeAmount: number | null;
+        previousCustomer: { name: string; document: string };
+        newCustomer: { name: string; document: string };
+      }
+    | undefined;
+  if (assignmentId) {
+    const assignment = await prisma.contractAssignment.findFirst({
+      where: { id: assignmentId, organizationId, contractId },
+      include: { previousCustomer: true, newCustomer: true },
+    });
+    if (!assignment) throw new Error("Cessão inválida.");
+    assignmentOverride = {
+      number: assignment.assignmentNumber,
+      assignmentDate: assignment.assignmentDate,
+      feeAmount: assignment.feeAmount ? Number(assignment.feeAmount) : null,
+      previousCustomer: { name: assignment.previousCustomer.name, document: assignment.previousCustomer.document },
+      newCustomer: { name: assignment.newCustomer.name, document: assignment.newCustomer.document },
+    };
+  }
+
+  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride, assignmentOverride);
   const resolved = resolveDocumentVariables(ctx);
   const { text, missing } = substituteTemplate(template.content, resolved);
 
@@ -249,14 +301,17 @@ export async function recordGeneratedDocument(
     storagePath: string;
     sizeBytes: number;
     amendmentId?: string;
+    assignmentId?: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
+    const entityType = params.amendmentId ? "ContractAmendment" : params.assignmentId ? "ContractAssignment" : "Contract";
+    const entityId = params.amendmentId ?? params.assignmentId ?? params.contractId;
     const document = await tx.document.create({
       data: {
         organizationId: context.organizationId,
-        entityType: params.amendmentId ? "ContractAmendment" : "Contract",
-        entityId: params.amendmentId ?? params.contractId,
+        entityType,
+        entityId,
         category: "CONTRACT",
         fileName: params.fileName,
         fileUrl: params.storagePath,
@@ -292,6 +347,14 @@ export function listGeneratedDocuments(organizationId: string, contractId: strin
 export function listAmendmentGeneratedDocuments(organizationId: string, amendmentId: string) {
   return prisma.document.findMany({
     where: { organizationId, entityType: "ContractAmendment", entityId: amendmentId, documentTemplateId: { not: null } },
+    include: { uploadedBy: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export function listAssignmentGeneratedDocuments(organizationId: string, assignmentId: string) {
+  return prisma.document.findMany({
+    where: { organizationId, entityType: "ContractAssignment", entityId: assignmentId, documentTemplateId: { not: null } },
     include: { uploadedBy: true },
     orderBy: { createdAt: "desc" },
   });

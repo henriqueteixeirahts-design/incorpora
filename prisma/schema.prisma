@@ -68,6 +68,7 @@ model Organization {
   permutantes          Permutante[]
   documentTemplates    DocumentTemplate[]
   contractAmendments   ContractAmendment[]
+  contractAssignments  ContractAssignment[]
 
   @@map("organizations")
 }
@@ -1174,6 +1175,8 @@ model Customer {
   sales           Sale[]
   contracts       Contract[]
   contacts        CustomerContact[]
+  contractAssignmentsAsPreviousOwner ContractAssignment[] @relation("ContractAssignmentPreviousCustomer")
+  contractAssignmentsAsNewOwner      ContractAssignment[] @relation("ContractAssignmentNewCustomer")
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -1706,8 +1709,9 @@ model Contract {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   indexRule    IndexRule?   @relation(fields: [indexRuleId], references: [id], onDelete: SetNull)
 
-  portfolio  ReceivablePortfolio?
-  amendments ContractAmendment[]
+  portfolio   ReceivablePortfolio?
+  amendments  ContractAmendment[]
+  assignments ContractAssignment[]
 
   @@unique([organizationId, contractNumber])
   @@map("contracts")
@@ -1752,6 +1756,47 @@ model ContractAmendment {
   @@unique([contractId, sequenceNumber])
   @@unique([organizationId, amendmentNumber])
   @@map("contract_amendments")
+}
+
+enum ContractAssignmentStatus {
+  DRAFT
+  SIGNED
+}
+
+/// Cessão de direitos (Fase A, Parte 2.3) — transferência da titularidade
+/// do contrato vigente pro cliente cessionário. Numeração sequencial
+/// vinculada (`CT-2026-0001-CS01`). Ao assinar: `Contract.customerId` passa
+/// a apontar pro novo titular (o cedente permanece intacto em
+/// `Sale.customerId` — histórico da venda original nunca muda), a carteira
+/// não é recriada (as parcelas continuam as mesmas, só o titular do
+/// contrato muda a partir da data da cessão), e uma taxa de cessão opcional
+/// vira uma parcela nova na carteira existente (não existe um lançamento
+/// financeiro avulso genérico no sistema — reaproveita `Installment`).
+model ContractAssignment {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  organizationId     String                   @db.Uuid
+  contractId         String                   @db.Uuid
+  sequenceNumber     Int // 1, 2, 3... por contrato
+  assignmentNumber   String // "CT-2026-0001-CS01"
+  previousCustomerId String                   @db.Uuid
+  newCustomerId      String                   @db.Uuid
+  status             ContractAssignmentStatus @default(DRAFT)
+  assignmentDate     DateTime // data efetiva da mudança de titularidade / vencimento da taxa
+  feeAmount          Decimal?                 @db.Decimal(14, 2)
+  notes              String?
+  signedAt           DateTime?
+  signedDocumentPath String? // caminho no bucket "contracts" do Supabase Storage, mesmo padrão do Contract
+  createdByUserId    String?                  @db.Uuid
+  createdAt          DateTime                 @default(now())
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract         Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  previousCustomer Customer     @relation("ContractAssignmentPreviousCustomer", fields: [previousCustomerId], references: [id])
+  newCustomer      Customer     @relation("ContractAssignmentNewCustomer", fields: [newCustomerId], references: [id])
+
+  @@unique([contractId, sequenceNumber])
+  @@unique([organizationId, assignmentNumber])
+  @@map("contract_assignments")
 }
 
 /// Carteira de recebíveis de um contrato — criada automaticamente na

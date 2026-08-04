@@ -55,6 +55,7 @@ const BASE_CTX: DocumentVariableContext = {
   commission: { percent: 6, totalValue: 30000 },
   penalties: { finePercent: 2, monthlyInterestPercent: 1 },
   amendment: null,
+  assignment: null,
 };
 
 describe("resolveDocumentVariables", () => {

@@ -13,11 +13,22 @@ import {
 import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
 import { renderDocumentPdf } from "@/lib/document-pdf";
 import { createAmendment, signAmendment } from "@/server/contract-amendments";
+import { createAssignment, signAssignment } from "@/server/contract-assignments";
 import type { ContractAmendmentType, InterestType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
 export type GenerateDocumentState = { error?: string; missing?: string[]; missingTemplateName?: string };
 export type AmendmentFormState = { error?: string; success?: boolean };
+export type AssignmentFormState = { error?: string; success?: boolean };
+
+/** input[type=date] devolve "AAAA-MM-DD" sem hora — `new Date(str)` interpretaria
+ * isso como meia-noite UTC, que exibe um dia a menos em `toLocaleDateString("pt-BR")`
+ * pra qualquer servidor rodando num fuso a oeste de UTC. Constrói a data local
+ * direto dos componentes pra evitar esse desvio de fuso. */
+function parseDateOnly(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
 export type AnticipationState = {
   error?: string;
   result?: Awaited<ReturnType<typeof simulateInstallmentAnticipation>>;
@@ -177,10 +188,17 @@ export async function generateDocumentAction(
   const contractId = String(formData.get("contractId") ?? "");
   const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
   const amendmentId = String(formData.get("amendmentId") ?? "").trim() || undefined;
+  const assignmentId = String(formData.get("assignmentId") ?? "").trim() || undefined;
   if (!contractId || !documentTemplateId) return { error: "Selecione um modelo." };
 
   try {
-    const preview = await previewDocumentGeneration(context.organizationId, contractId, documentTemplateId, amendmentId);
+    const preview = await previewDocumentGeneration(
+      context.organizationId,
+      contractId,
+      documentTemplateId,
+      amendmentId,
+      assignmentId,
+    );
     if (preview.status === "MISSING_DATA") {
       return { missing: preview.missing, missingTemplateName: preview.templateName };
     }
@@ -193,7 +211,9 @@ export async function generateDocumentAction(
 
     const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;
     const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
-    const storagePath = await uploadEntityDocument(file, amendmentId ? "ContractAmendment" : "Contract", amendmentId ?? contractId);
+    const entityType = amendmentId ? "ContractAmendment" : assignmentId ? "ContractAssignment" : "Contract";
+    const entityId = amendmentId ?? assignmentId ?? contractId;
+    const storagePath = await uploadEntityDocument(file, entityType, entityId);
 
     await recordGeneratedDocument(context, {
       contractId,
@@ -203,6 +223,7 @@ export async function generateDocumentAction(
       storagePath,
       sizeBytes: pdfBuffer.length,
       amendmentId,
+      assignmentId,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao gerar documento." };
@@ -257,6 +278,51 @@ export async function signAmendmentAction(formData: FormData) {
   if (!amendmentId) return;
 
   await signAmendment(context, amendmentId);
+  revalidatePath(`/sales/${saleId}`);
+}
+
+export async function createAssignmentAction(
+  _prevState: AssignmentFormState,
+  formData: FormData,
+): Promise<AssignmentFormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return { error: "Sem permissão." };
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const newCustomerId = String(formData.get("newCustomerId") ?? "");
+  const assignmentDateRaw = String(formData.get("assignmentDate") ?? "");
+  const feeAmountRaw = formData.get("feeAmount");
+  const notes = String(formData.get("notes") ?? "").trim() || undefined;
+
+  if (!contractId || !newCustomerId || !assignmentDateRaw) {
+    return { error: "Selecione o cessionário e a data da cessão." };
+  }
+
+  try {
+    await createAssignment(context, contractId, {
+      newCustomerId,
+      assignmentDate: parseDateOnly(assignmentDateRaw),
+      feeAmount: feeAmountRaw ? Number(feeAmountRaw) : undefined,
+      notes,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao criar cessão." };
+  }
+
+  revalidatePath(`/sales/${saleId}`);
+  return { success: true };
+}
+
+export async function signAssignmentAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return;
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const assignmentId = String(formData.get("assignmentId") ?? "");
+  if (!assignmentId) return;
+
+  await signAssignment(context, assignmentId);
   revalidatePath(`/sales/${saleId}`);
 }
 
