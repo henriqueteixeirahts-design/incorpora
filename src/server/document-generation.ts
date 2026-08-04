@@ -57,7 +57,9 @@ function formatCurrency(value: number): string {
  * direitos), as variáveis `{{cessao.*}}`/`{{cedente.*}}`/`{{cessionario.*}}`
  * resolvem — o cliente principal (`{{cliente.*}}`) continua sendo o titular
  * atual do contrato (o cedente, já que a cessão ainda não foi assinada
- * quando o documento é gerado).
+ * quando o documento é gerado). Quando `distratoOverride` é passado
+ * (geração do documento de distrato), as variáveis `{{distrato.*}}`
+ * resolvem com o demonstrativo do acerto.
  */
 export async function buildGenerationContext(
   organizationId: string,
@@ -69,6 +71,16 @@ export async function buildGenerationContext(
     feeAmount: number | null;
     previousCustomer: { name: string; document: string };
     newCustomer: { name: string; document: string };
+  },
+  distratoOverride?: {
+    number: string;
+    totalPaid: number;
+    retentionPercent: number;
+    retentionAmount: number;
+    brokerageDeductionAmount: number | null;
+    occupancyFeeAmount: number | null;
+    refundAmount: number;
+    refundTerms: string | null;
   },
 ): Promise<DocumentVariableContext> {
   const contract = await prisma.contract.findFirstOrThrow({
@@ -181,6 +193,22 @@ export async function buildGenerationContext(
           newCustomerDocument: assignmentOverride.newCustomer.document,
         }
       : null,
+    distrato: distratoOverride
+      ? {
+          number: distratoOverride.number,
+          totalPaidLabel: formatCurrency(distratoOverride.totalPaid),
+          retentionPercentLabel: `${distratoOverride.retentionPercent}%`,
+          retentionAmountLabel: formatCurrency(distratoOverride.retentionAmount),
+          brokerageDeductionLabel: distratoOverride.brokerageDeductionAmount
+            ? formatCurrency(distratoOverride.brokerageDeductionAmount)
+            : "Não há",
+          occupancyFeeLabel: distratoOverride.occupancyFeeAmount
+            ? formatCurrency(distratoOverride.occupancyFeeAmount)
+            : "Não há",
+          refundAmountLabel: formatCurrency(distratoOverride.refundAmount),
+          refundTermsLabel: distratoOverride.refundTerms ?? "",
+        }
+      : null,
     correction: {
       preHabiteSeIndexName: contract.indexRule?.name ?? null,
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
@@ -217,6 +245,7 @@ export async function previewDocumentGeneration(
   documentTemplateId: string,
   amendmentId?: string,
   assignmentId?: string,
+  distratoId?: string,
 ): Promise<GenerationPreview> {
   const template = await prisma.documentTemplate.findFirst({
     where: { id: documentTemplateId, organizationId },
@@ -268,7 +297,36 @@ export async function previewDocumentGeneration(
     };
   }
 
-  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride, assignmentOverride);
+  let distratoOverride:
+    | {
+        number: string;
+        totalPaid: number;
+        retentionPercent: number;
+        retentionAmount: number;
+        brokerageDeductionAmount: number | null;
+        occupancyFeeAmount: number | null;
+        refundAmount: number;
+        refundTerms: string | null;
+      }
+    | undefined;
+  if (distratoId) {
+    const distrato = await prisma.contractDistrato.findFirst({
+      where: { id: distratoId, organizationId, contractId },
+    });
+    if (!distrato) throw new Error("Distrato inválido.");
+    distratoOverride = {
+      number: distrato.distratoNumber,
+      totalPaid: Number(distrato.totalPaid),
+      retentionPercent: Number(distrato.retentionPercent),
+      retentionAmount: Number(distrato.retentionAmount),
+      brokerageDeductionAmount: distrato.brokerageDeductionAmount ? Number(distrato.brokerageDeductionAmount) : null,
+      occupancyFeeAmount: distrato.occupancyFeeAmount ? Number(distrato.occupancyFeeAmount) : null,
+      refundAmount: Number(distrato.refundAmount),
+      refundTerms: distrato.refundTerms,
+    };
+  }
+
+  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride, assignmentOverride, distratoOverride);
   const resolved = resolveDocumentVariables(ctx);
   const { text, missing } = substituteTemplate(template.content, resolved);
 
@@ -302,11 +360,18 @@ export async function recordGeneratedDocument(
     sizeBytes: number;
     amendmentId?: string;
     assignmentId?: string;
+    distratoId?: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
-    const entityType = params.amendmentId ? "ContractAmendment" : params.assignmentId ? "ContractAssignment" : "Contract";
-    const entityId = params.amendmentId ?? params.assignmentId ?? params.contractId;
+    const entityType = params.amendmentId
+      ? "ContractAmendment"
+      : params.assignmentId
+        ? "ContractAssignment"
+        : params.distratoId
+          ? "ContractDistrato"
+          : "Contract";
+    const entityId = params.amendmentId ?? params.assignmentId ?? params.distratoId ?? params.contractId;
     const document = await tx.document.create({
       data: {
         organizationId: context.organizationId,
@@ -355,6 +420,14 @@ export function listAmendmentGeneratedDocuments(organizationId: string, amendmen
 export function listAssignmentGeneratedDocuments(organizationId: string, assignmentId: string) {
   return prisma.document.findMany({
     where: { organizationId, entityType: "ContractAssignment", entityId: assignmentId, documentTemplateId: { not: null } },
+    include: { uploadedBy: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export function listDistratoGeneratedDocuments(organizationId: string, distratoId: string) {
+  return prisma.document.findMany({
+    where: { organizationId, entityType: "ContractDistrato", entityId: distratoId, documentTemplateId: { not: null } },
     include: { uploadedBy: true },
     orderBy: { createdAt: "desc" },
   });

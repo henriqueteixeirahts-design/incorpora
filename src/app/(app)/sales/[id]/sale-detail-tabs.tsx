@@ -10,6 +10,7 @@ import { AnticipationForm } from "./anticipation-form";
 import { GenerateDocumentForm } from "./generate-document-form";
 import { NewAmendmentForm, SignAmendmentButton, AmendmentDocumentForm } from "./amendment-forms";
 import { NewAssignmentForm, SignAssignmentButton, AssignmentDocumentForm } from "./assignment-forms";
+import { NewDistratoForm, SignDistratoButton, DistratoDocumentForm } from "./distrato-forms";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -113,6 +114,30 @@ const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
   SIGNED: "Assinado",
 };
 
+export type DistratoRow = {
+  id: string;
+  distratoNumber: string;
+  status: string;
+  totalPaid: number;
+  retentionPercent: number;
+  retentionAmount: number;
+  brokerageDeductionAmount: number | null;
+  occupancyFeeAmount: number | null;
+  refundAmount: number;
+  refundDueDateLabel: string;
+  refundTerms: string | null;
+  reason: string | null;
+  createdAtLabel: string;
+  signedAtLabel: string | null;
+  refundPayableId: string | null;
+  generatedDocuments: GeneratedDocumentRow[];
+};
+
+const DISTRATO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Rascunho",
+  SIGNED: "Assinado",
+};
+
 export type CommissionSplitRow = {
   id: string;
   beneficiaryType: string;
@@ -161,6 +186,9 @@ export function SaleDetailTabs({
   assignments,
   assignmentTemplates,
   customers,
+  distrato,
+  distratoTemplates,
+  distratoRetentionPercent,
 }: {
   saleId: string;
   /** Server Component pré-renderizado no page.tsx — não dá pra importar/renderizar Server Component de dentro de um Client Component. */
@@ -205,6 +233,9 @@ export function SaleDetailTabs({
   assignments: AssignmentRow[];
   assignmentTemplates: { id: string; label: string }[];
   customers: { id: string; label: string }[];
+  distrato: DistratoRow | null;
+  distratoTemplates: { id: string; label: string }[];
+  distratoRetentionPercent: number;
 }) {
   const [activeTab, setActiveTab] = useState("resumo");
 
@@ -337,6 +368,7 @@ export function SaleDetailTabs({
           <>
             <p>
               <strong>{contractNumber}</strong> — {CONTRACT_STATUS_LABELS[contract.status] ?? contract.status}
+              {contract.status === "CANCELLED" && distrato ? ` (distrato ${distrato.distratoNumber})` : ""}
             </p>
             <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
               Gerado em {contractIssuedAtLabel}
@@ -593,6 +625,116 @@ export function SaleDetailTabs({
                 ) : null}
               </div>
             ) : null}
+
+            {contract.status === "SIGNED" || distrato ? (
+              <div style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ fontSize: "1rem" }}>Distrato</h3>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
+                  Rescisão conforme Lei 13.786/18 — retenção da incorporadora de {distratoRetentionPercent}% do
+                  total pago (configurável por empreendimento). Ao assinar: contrato encerrado, unidade volta a
+                  Disponível, parcelas futuras canceladas (histórico preservado) e devolução lançada em Contas a
+                  pagar.
+                </p>
+
+                {distrato ? (
+                  <div
+                    style={{
+                      border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+                      borderRadius: 8,
+                      padding: "0.75rem 1rem",
+                      marginTop: "0.75rem",
+                    }}
+                  >
+                    <p>
+                      <strong>{distrato.distratoNumber}</strong> — {DISTRATO_STATUS_LABELS[distrato.status] ?? distrato.status}
+                    </p>
+                    <table style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Total pago pelo cliente</td>
+                          <td>{formatCurrency(distrato.totalPaid)}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Retenção ({distrato.retentionPercent}%)</td>
+                          <td>-{formatCurrency(distrato.retentionAmount)}</td>
+                        </tr>
+                        {distrato.brokerageDeductionAmount ? (
+                          <tr>
+                            <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Dedução — corretagem</td>
+                            <td>-{formatCurrency(distrato.brokerageDeductionAmount)}</td>
+                          </tr>
+                        ) : null}
+                        {distrato.occupancyFeeAmount ? (
+                          <tr>
+                            <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Dedução — fruição/ocupação</td>
+                            <td>-{formatCurrency(distrato.occupancyFeeAmount)}</td>
+                          </tr>
+                        ) : null}
+                        <tr>
+                          <td style={{ paddingRight: "1rem", fontWeight: 500 }}>Valor a devolver</td>
+                          <td style={{ fontWeight: 500 }}>{formatCurrency(distrato.refundAmount)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p style={{ fontSize: "0.85rem", opacity: 0.8, marginTop: "0.5rem" }}>
+                      Prazo de devolução: {distrato.refundDueDateLabel}
+                      {distrato.refundTerms ? ` · ${distrato.refundTerms}` : ""}
+                      {distrato.refundPayableId ? " · lançado em Contas a pagar" : ""}
+                    </p>
+                    {distrato.reason ? <p style={{ fontSize: "0.85rem" }}>{distrato.reason}</p> : null}
+                    <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                      Criado em {distrato.createdAtLabel}
+                      {distrato.signedAtLabel ? ` · assinado em ${distrato.signedAtLabel}` : ""}
+                    </p>
+
+                    {canGenerateDocument ? (
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
+                        <DistratoDocumentForm
+                          saleId={saleId}
+                          contractId={contract.id}
+                          distratoId={distrato.id}
+                          templates={distratoTemplates}
+                        />
+                      </div>
+                    ) : null}
+
+                    {distrato.generatedDocuments.length > 0 ? (
+                      <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                        {distrato.generatedDocuments.map((doc) => (
+                          <li key={doc.id}>
+                            {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
+                            {doc.downloadUrl ? (
+                              <>
+                                {" "}
+                                —{" "}
+                                <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                                  Baixar
+                                </a>
+                              </>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    {canEditContract && distrato.status === "DRAFT" ? (
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <SignDistratoButton saleId={saleId} distratoId={distrato.id} />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhum distrato iniciado.</p>
+                )}
+
+                {canEditContract && contract.status === "SIGNED" && !distrato ? (
+                  <div style={{ marginTop: "1rem" }}>
+                    <NewDistratoForm saleId={saleId} contractId={contract.id} retentionPercent={distratoRetentionPercent} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -649,8 +791,8 @@ export function SaleDetailTabs({
         <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.75rem" }}>
           A comissão libera conforme a regra do empreendimento e vira conta a pagar automaticamente
           (fornecedor = corretor/imobiliária) — pagar em Contas a pagar marca a comissão como paga
-          também, sem lançamento duplicado. Estorno em caso de distrato chega junto da etapa 6 da
-          Fase A.
+          também, sem lançamento duplicado. Em caso de distrato, comissões ainda não pagas são
+          estornadas (cancelada) conforme a regra do empreendimento — as já pagas não são mexidas.
         </p>
       </div>
 

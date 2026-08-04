@@ -10,10 +10,13 @@ import {
   listGeneratedDocuments,
   listAmendmentGeneratedDocuments,
   listAssignmentGeneratedDocuments,
+  listDistratoGeneratedDocuments,
 } from "@/server/document-generation";
 import { listSaleTimeline } from "@/server/sale-timeline";
 import { listAmendments, getRemainingBalance } from "@/server/contract-amendments";
 import { listAssignments } from "@/server/contract-assignments";
+import { getDistratoByContract } from "@/server/contract-distratos";
+import { getEffectiveDistratoRule } from "@/server/distrato-rules";
 import { listCustomers } from "@/server/crm";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { SaleDetailTabs } from "./sale-detail-tabs";
@@ -89,6 +92,16 @@ export default async function SaleDetailPage({
   );
   const assignmentDocumentUrls = await Promise.all(
     assignmentDocuments.map((docs) => Promise.all(docs.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)))),
+  );
+
+  const distrato = contract ? await getDistratoByContract(context.organizationId, contract.id) : null;
+  const distratoTemplates = contract
+    ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "RESCISSION")
+    : [];
+  const distratoRule = contract ? await getEffectiveDistratoRule(sale.developmentId) : null;
+  const distratoDocuments = distrato ? await listDistratoGeneratedDocuments(context.organizationId, distrato.id) : [];
+  const distratoDocumentUrls = await Promise.all(
+    distratoDocuments.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)),
   );
 
   const paymentFlow = (sale.proposal.proposedPaymentFlow ??
@@ -252,6 +265,37 @@ export default async function SaleDetailPage({
           }))}
           assignmentTemplates={assignmentTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
           customers={allCustomers.map((c) => ({ id: c.id, label: `${c.name} (${c.document})` }))}
+          distrato={
+            distrato
+              ? {
+                  id: distrato.id,
+                  distratoNumber: distrato.distratoNumber,
+                  status: distrato.status,
+                  totalPaid: Number(distrato.totalPaid),
+                  retentionPercent: Number(distrato.retentionPercent),
+                  retentionAmount: Number(distrato.retentionAmount),
+                  brokerageDeductionAmount: distrato.brokerageDeductionAmount ? Number(distrato.brokerageDeductionAmount) : null,
+                  occupancyFeeAmount: distrato.occupancyFeeAmount ? Number(distrato.occupancyFeeAmount) : null,
+                  refundAmount: Number(distrato.refundAmount),
+                  refundDueDateLabel: new Date(distrato.refundDueDate).toLocaleDateString("pt-BR"),
+                  refundTerms: distrato.refundTerms,
+                  reason: distrato.reason,
+                  createdAtLabel: new Date(distrato.createdAt).toLocaleDateString("pt-BR"),
+                  signedAtLabel: distrato.signedAt ? new Date(distrato.signedAt).toLocaleDateString("pt-BR") : null,
+                  refundPayableId: distrato.refundPayableId,
+                  generatedDocuments: distratoDocuments.map((doc, docIndex) => ({
+                    id: doc.id,
+                    fileName: doc.fileName,
+                    templateVersion: doc.documentTemplateVersion,
+                    uploadedByName: doc.uploadedBy?.fullName ?? "—",
+                    createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+                    downloadUrl: distratoDocumentUrls[docIndex],
+                  })),
+                }
+              : null
+          }
+          distratoTemplates={distratoTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
+          distratoRetentionPercent={distratoRule?.retentionPercent ?? 25}
         />
       </div>
     </>

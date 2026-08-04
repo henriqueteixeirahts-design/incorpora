@@ -85,6 +85,19 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
       { key: "cessionario.cpf_cnpj", label: "CPF/CNPJ do cessionário" },
     ],
   },
+  {
+    group: "Distrato",
+    tokens: [
+      { key: "distrato.numero", label: "Número do distrato (ex.: CT-2026-0001-DT01)" },
+      { key: "distrato.total_pago", label: "Total pago pelo cliente" },
+      { key: "distrato.percentual_retencao", label: "% de retenção da incorporadora" },
+      { key: "distrato.valor_retencao", label: "Valor retido pela incorporadora" },
+      { key: "distrato.deducao_corretagem", label: "Dedução — comissão de corretagem" },
+      { key: "distrato.deducao_fruicao", label: "Dedução — taxa de fruição/ocupação" },
+      { key: "distrato.valor_devolucao", label: "Valor a devolver ao cliente" },
+      { key: "distrato.prazo_devolucao", label: "Prazo/forma de devolução" },
+    ],
+  },
 ];
 
 export type DocumentVariableContext = {
@@ -138,6 +151,17 @@ export type DocumentVariableContext = {
     previousCustomerDocument: string;
     newCustomerName: string;
     newCustomerDocument: string;
+  } | null;
+  /** Só presente quando o documento é gerado a partir de um distrato (Fase A, Parte 2.4). */
+  distrato: {
+    number: string;
+    totalPaidLabel: string;
+    retentionPercentLabel: string;
+    retentionAmountLabel: string;
+    brokerageDeductionLabel: string;
+    occupancyFeeLabel: string;
+    refundAmountLabel: string;
+    refundTermsLabel: string;
   } | null;
 };
 
@@ -234,6 +258,15 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
     "cedente.cpf_cnpj": ctx.assignment?.previousCustomerDocument ?? "",
     "cessionario.nome": ctx.assignment?.newCustomerName ?? "",
     "cessionario.cpf_cnpj": ctx.assignment?.newCustomerDocument ?? "",
+
+    "distrato.numero": ctx.distrato?.number ?? "",
+    "distrato.total_pago": ctx.distrato?.totalPaidLabel ?? "",
+    "distrato.percentual_retencao": ctx.distrato?.retentionPercentLabel ?? "",
+    "distrato.valor_retencao": ctx.distrato?.retentionAmountLabel ?? "",
+    "distrato.deducao_corretagem": ctx.distrato?.brokerageDeductionLabel ?? "",
+    "distrato.deducao_fruicao": ctx.distrato?.occupancyFeeLabel ?? "",
+    "distrato.valor_devolucao": ctx.distrato?.refundAmountLabel ?? "",
+    "distrato.prazo_devolucao": ctx.distrato?.refundTermsLabel ?? "",
   };
 
   const blocks: Record<string, string> = {

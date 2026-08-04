@@ -14,12 +14,14 @@ import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/doc
 import { renderDocumentPdf } from "@/lib/document-pdf";
 import { createAmendment, signAmendment } from "@/server/contract-amendments";
 import { createAssignment, signAssignment } from "@/server/contract-assignments";
+import { createDistrato, signDistrato } from "@/server/contract-distratos";
 import type { ContractAmendmentType, InterestType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
 export type GenerateDocumentState = { error?: string; missing?: string[]; missingTemplateName?: string };
 export type AmendmentFormState = { error?: string; success?: boolean };
 export type AssignmentFormState = { error?: string; success?: boolean };
+export type DistratoFormState = { error?: string; success?: boolean };
 
 /** input[type=date] devolve "AAAA-MM-DD" sem hora — `new Date(str)` interpretaria
  * isso como meia-noite UTC, que exibe um dia a menos em `toLocaleDateString("pt-BR")`
@@ -189,6 +191,7 @@ export async function generateDocumentAction(
   const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
   const amendmentId = String(formData.get("amendmentId") ?? "").trim() || undefined;
   const assignmentId = String(formData.get("assignmentId") ?? "").trim() || undefined;
+  const distratoId = String(formData.get("distratoId") ?? "").trim() || undefined;
   if (!contractId || !documentTemplateId) return { error: "Selecione um modelo." };
 
   try {
@@ -198,6 +201,7 @@ export async function generateDocumentAction(
       documentTemplateId,
       amendmentId,
       assignmentId,
+      distratoId,
     );
     if (preview.status === "MISSING_DATA") {
       return { missing: preview.missing, missingTemplateName: preview.templateName };
@@ -211,8 +215,8 @@ export async function generateDocumentAction(
 
     const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;
     const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
-    const entityType = amendmentId ? "ContractAmendment" : assignmentId ? "ContractAssignment" : "Contract";
-    const entityId = amendmentId ?? assignmentId ?? contractId;
+    const entityType = amendmentId ? "ContractAmendment" : assignmentId ? "ContractAssignment" : distratoId ? "ContractDistrato" : "Contract";
+    const entityId = amendmentId ?? assignmentId ?? distratoId ?? contractId;
     const storagePath = await uploadEntityDocument(file, entityType, entityId);
 
     await recordGeneratedDocument(context, {
@@ -224,6 +228,7 @@ export async function generateDocumentAction(
       sizeBytes: pdfBuffer.length,
       amendmentId,
       assignmentId,
+      distratoId,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao gerar documento." };
@@ -323,6 +328,53 @@ export async function signAssignmentAction(formData: FormData) {
   if (!assignmentId) return;
 
   await signAssignment(context, assignmentId);
+  revalidatePath(`/sales/${saleId}`);
+}
+
+export async function createDistratoAction(
+  _prevState: DistratoFormState,
+  formData: FormData,
+): Promise<DistratoFormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return { error: "Sem permissão." };
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const refundDueDateRaw = String(formData.get("refundDueDate") ?? "");
+  const brokerageDeductionAmountRaw = formData.get("brokerageDeductionAmount");
+  const occupancyFeeAmountRaw = formData.get("occupancyFeeAmount");
+  const refundTerms = String(formData.get("refundTerms") ?? "").trim() || undefined;
+  const reason = String(formData.get("reason") ?? "").trim() || undefined;
+
+  if (!contractId || !refundDueDateRaw) {
+    return { error: "Informe o prazo de devolução." };
+  }
+
+  try {
+    await createDistrato(context, contractId, {
+      refundDueDate: parseDateOnly(refundDueDateRaw),
+      brokerageDeductionAmount: brokerageDeductionAmountRaw ? Number(brokerageDeductionAmountRaw) : undefined,
+      occupancyFeeAmount: occupancyFeeAmountRaw ? Number(occupancyFeeAmountRaw) : undefined,
+      refundTerms,
+      reason,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao calcular o distrato." };
+  }
+
+  revalidatePath(`/sales/${saleId}`);
+  return { success: true };
+}
+
+export async function signDistratoAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return;
+
+  const saleId = String(formData.get("saleId") ?? "");
+  const distratoId = String(formData.get("distratoId") ?? "");
+  if (!distratoId) return;
+
+  await signDistrato(context, distratoId);
   revalidatePath(`/sales/${saleId}`);
 }
 

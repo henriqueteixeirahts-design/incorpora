@@ -69,6 +69,7 @@ model Organization {
   documentTemplates    DocumentTemplate[]
   contractAmendments   ContractAmendment[]
   contractAssignments  ContractAssignment[]
+  contractDistratos    ContractDistrato[]
 
   @@map("organizations")
 }
@@ -938,6 +939,7 @@ model Development {
   proposalEvaluationRule ProposalEvaluationRule?
   documentTemplates      DocumentTemplateDevelopment[]
   commissionReleaseRule  CommissionReleaseRule?
+  distratoRule           DistratoRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -1168,15 +1170,16 @@ model Customer {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reservations    Reservation[]
-  waitlistEntries ReservationWaitlistEntry[]
-  proposals       Proposal[]
-  sales           Sale[]
-  contracts       Contract[]
-  contacts        CustomerContact[]
-  contractAssignmentsAsPreviousOwner ContractAssignment[] @relation("ContractAssignmentPreviousCustomer")
-  contractAssignmentsAsNewOwner      ContractAssignment[] @relation("ContractAssignmentNewCustomer")
+  organization                       Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reservations                       Reservation[]
+  waitlistEntries                    ReservationWaitlistEntry[]
+  proposals                          Proposal[]
+  sales                              Sale[]
+  contracts                          Contract[]
+  contacts                           CustomerContact[]
+  contractAssignmentsAsPreviousOwner ContractAssignment[]       @relation("ContractAssignmentPreviousCustomer")
+  contractAssignmentsAsNewOwner      ContractAssignment[]       @relation("ContractAssignmentNewCustomer")
+  supplierAsRefundPayee              Supplier?
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -1647,6 +1650,26 @@ model CommissionReleaseRule {
   @@map("commission_release_rules")
 }
 
+/// Regra de distrato por empreendimento (Fase A, Parte 2.4 — Lei 13.786/18:
+/// retenção configurável, até 25% do valor pago, ou até 50% com patrimônio
+/// de afetação instituído). Mesmo padrão 1:1-por-Development das outras
+/// regras parametrizáveis: default sugerido sem linha salva, upsert
+/// idempotente quando configurada. O teto legal é validado no momento de
+/// salvar a regra (contra `Development.hasPropertyAffectation`), não
+/// travado no schema — o negócio pode mudar de patrimônio de afetação.
+model DistratoRule {
+  id                          String   @id @default(uuid()) @db.Uuid
+  developmentId               String   @unique @db.Uuid
+  retentionPercent            Decimal  @default(25) @db.Decimal(5, 2)
+  reverseCommissionOnDistrato Boolean  @default(true) // estorna (CANCELLED) splits ainda não pagos ao distratar
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("distrato_rules")
+}
+
 // ============================================================================
 // FASE 8 — CONTRATOS E CARTEIRA INICIAL
 // ============================================================================
@@ -1712,6 +1735,7 @@ model Contract {
   portfolio   ReceivablePortfolio?
   amendments  ContractAmendment[]
   assignments ContractAssignment[]
+  distrato    ContractDistrato?
 
   @@unique([organizationId, contractNumber])
   @@map("contracts")
@@ -1797,6 +1821,50 @@ model ContractAssignment {
   @@unique([contractId, sequenceNumber])
   @@unique([organizationId, assignmentNumber])
   @@map("contract_assignments")
+}
+
+enum ContractDistratoStatus {
+  DRAFT
+  SIGNED
+}
+
+/// Distrato (Fase A, Parte 2.4 — Lei 13.786/18) — rescisão do contrato com
+/// devolução calculada. Só um por contrato (rescindir é terminal — não
+/// existe "segundo distrato" do mesmo contrato), por isso `contractId` é
+/// 1:1 direto, diferente da numeração sequencial de aditivo/cessão. Os
+/// campos numéricos (`totalPaid`/`retentionAmount`/`refundAmount`) guardam
+/// um snapshot calculado na criação do rascunho (pra mostrar o demonstrativo
+/// antes de assinar) — `signDistrato` RECALCULA na hora de assinar, contra o
+/// estado real da carteira naquele momento, e sobrescreve antes de aplicar
+/// os efeitos (nunca confia num snapshot que pode ter ficado desatualizado
+/// entre o rascunho e a assinatura).
+model ContractDistrato {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  organizationId           String                 @db.Uuid
+  contractId               String                 @unique @db.Uuid
+  distratoNumber           String // "CT-2026-0001-DT01"
+  status                   ContractDistratoStatus @default(DRAFT)
+  totalPaid                Decimal                @db.Decimal(14, 2)
+  retentionPercent         Decimal                @db.Decimal(5, 2)
+  retentionAmount          Decimal                @db.Decimal(14, 2)
+  brokerageDeductionAmount Decimal?               @db.Decimal(14, 2)
+  occupancyFeeAmount       Decimal?               @db.Decimal(14, 2)
+  refundAmount             Decimal                @db.Decimal(14, 2)
+  refundDueDate            DateTime
+  refundTerms              String? // prazo/forma da devolução, campo livre pro acordo (spec 2.4)
+  refundPayableId          String?                @unique @db.Uuid
+  reason                   String?
+  signedAt                 DateTime?
+  signedDocumentPath       String?
+  createdByUserId          String?                @db.Uuid
+  createdAt                DateTime               @default(now())
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract      Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  refundPayable Payable?     @relation(fields: [refundPayableId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, distratoNumber])
+  @@map("contract_distratos")
 }
 
 /// Carteira de recebíveis de um contrato — criada automaticamente na
@@ -1979,15 +2047,19 @@ model Supplier {
   isActive       Boolean  @default(true)
   // Criado automaticamente (find-or-create) na primeira comissão liberada de
   // um corretor/imobiliária (Fase A, Parte 4.2 — "fornecedor = corretor/
-  // imobiliária", sem lançamento manual duplicado). Nulos nos fornecedores
-  // "de verdade" (construtora, cartório etc.).
+  // imobiliária", sem lançamento manual duplicado), ou no primeiro distrato
+  // de um cliente (Fase A, Parte 2.4 — devolução lançada como conta a
+  // pagar, mesmo padrão de find-or-create). Nulos nos fornecedores "de
+  // verdade" (construtora, cartório etc.).
   brokerId       String?  @unique @db.Uuid
   agencyId       String?  @unique @db.Uuid
+  customerId     String?  @unique @db.Uuid
   createdAt      DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   broker       Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
   agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
   payables     Payable[]
 
   @@map("suppliers")
@@ -2077,6 +2149,7 @@ model Payable {
   supplier        Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   costCenter      CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   commissionSplit CommissionSplit?
+  distrato        ContractDistrato?
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])
