@@ -7,6 +7,7 @@ import { getCustomerFinancialPosition } from "@/server/customer-statement";
 import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
 import { uploadEntityDocument } from "@/server/storage";
 import { renderStatementPdf, type StatementInstallmentRow } from "@/lib/document-pdf";
+import { logCollectionContact } from "@/server/collection-log";
 
 export type FormState = { error?: string };
 export type SettlementState = {
@@ -14,6 +15,7 @@ export type SettlementState = {
   result?: Awaited<ReturnType<typeof simulateFullSettlement>>;
 };
 export type GenerateStatementState = { error?: string; missing?: string[]; missingTemplateName?: string; success?: boolean };
+export type LogContactState = { error?: string; success?: boolean };
 
 /** input[type=date] devolve "AAAA-MM-DD" sem hora — ver nota em sales/[id]/actions.ts. */
 function parseDateOnly(value: string): Date {
@@ -158,6 +160,38 @@ export async function generateStatementPdfAction(
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao gerar o extrato." };
+  }
+
+  revalidatePath(`/customers/${customerId}/statement`);
+  return { success: true };
+}
+
+export async function logCollectionContactAction(
+  _prevState: LogContactState,
+  formData: FormData,
+): Promise<LogContactState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "installment", "CREATE")) return { error: "Sem permissão." };
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const occurredAtRaw = String(formData.get("occurredAt") ?? "");
+  const channel = String(formData.get("channel") ?? "").trim();
+  const summary = String(formData.get("summary") ?? "").trim();
+  const nextStepNote = String(formData.get("nextStepNote") ?? "").trim() || undefined;
+
+  if (!customerId || !occurredAtRaw || !channel || !summary) {
+    return { error: "Preencha data, canal e resumo do contato." };
+  }
+
+  try {
+    await logCollectionContact(context, customerId, {
+      occurredAt: parseDateOnly(occurredAtRaw),
+      channel,
+      summary,
+      nextStepNote,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao registrar o contato." };
   }
 
   revalidatePath(`/customers/${customerId}/statement`);

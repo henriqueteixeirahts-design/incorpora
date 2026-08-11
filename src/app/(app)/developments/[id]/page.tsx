@@ -49,6 +49,7 @@ export default async function DevelopmentDetailPage({
         <Link href={`/developments/${id}/proposal-evaluation-rules`}>Avaliação de propostas →</Link>
         <Link href={`/developments/${id}/commission-release-rule`}>Liberação de comissão →</Link>
         <Link href={`/developments/${id}/distrato-rule`}>Regra de distrato →</Link>
+        <Link href={`/developments/${id}/collection-rule`}>Régua de cobrança →</Link>
       </p>
 
       <section style={{ marginTop: "2rem" }}>

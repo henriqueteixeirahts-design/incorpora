@@ -6,14 +6,37 @@ import {
   registerStatementPaymentAction,
   simulateFullSettlementAction,
   generateStatementPdfAction,
+  logCollectionContactAction,
   type FormState,
   type SettlementState,
   type GenerateStatementState,
+  type LogContactState,
 } from "./actions";
 
 const registerInitialState: FormState = {};
 const settlementInitialState: SettlementState = {};
 const generateInitialState: GenerateStatementState = {};
+const logContactInitialState: LogContactState = {};
+
+export type CollectionHistoryRow = {
+  id: string;
+  occurredAtLabel: string;
+  channel: string;
+  summary: string;
+  nextStepNote: string | null;
+};
+
+export type CollectionStageInfo = {
+  worstDaysOverdue: number;
+  currentStep: { offsetDays: number; actionLabel: string } | null;
+  nextStep: { offsetDays: number; actionLabel: string } | null;
+} | null;
+
+function stepLabel(step: { offsetDays: number; actionLabel: string } | null) {
+  if (!step) return "—";
+  const dayLabel = step.offsetDays < 0 ? `D${step.offsetDays}` : `D+${step.offsetDays}`;
+  return `${dayLabel} — ${step.actionLabel}`;
+}
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -270,16 +293,100 @@ function ContractSection({
   );
 }
 
+function LogContactForm({ customerId }: { customerId: string }) {
+  const [state, formAction, pending] = useActionState(logCollectionContactAction, logContactInitialState);
+  return (
+    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 420 }}>
+      <input type="hidden" name="customerId" value={customerId} />
+
+      <label htmlFor="cl-date">Data do contato</label>
+      <input id="cl-date" name="occurredAt" type="date" required />
+
+      <label htmlFor="cl-channel">Canal</label>
+      <input id="cl-channel" name="channel" type="text" placeholder="Ligação, WhatsApp, E-mail..." required />
+
+      <label htmlFor="cl-summary">Resumo</label>
+      <textarea id="cl-summary" name="summary" rows={2} required />
+
+      <label htmlFor="cl-next">Próximo passo</label>
+      <input id="cl-next" name="nextStepNote" type="text" />
+
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Contato registrado.</p> : null}
+
+      <button type="submit" disabled={pending}>
+        {pending ? "Salvando..." : "Registrar contato"}
+      </button>
+    </form>
+  );
+}
+
+function CollectionHistorySection({
+  customerId,
+  history,
+  stage,
+  canRegister,
+}: {
+  customerId: string;
+  history: CollectionHistoryRow[];
+  stage: CollectionStageInfo;
+  canRegister: boolean;
+}) {
+  return (
+    <section
+      style={{
+        marginTop: "2rem",
+        borderTop: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
+        paddingTop: "1rem",
+      }}
+    >
+      <h2 style={{ fontSize: "1.1rem" }}>Histórico de cobrança</h2>
+
+      {stage ? (
+        <p style={{ fontSize: "0.85rem", opacity: 0.8, marginTop: "0.25rem" }}>
+          {stage.worstDaysOverdue} dia(s) em atraso (pior parcela) — etapa atual: {stepLabel(stage.currentStep)} ·
+          próxima ação sugerida: {stepLabel(stage.nextStep)}
+        </p>
+      ) : (
+        <p style={{ fontSize: "0.85rem", opacity: 0.7, marginTop: "0.25rem" }}>Sem parcelas em atraso no momento.</p>
+      )}
+
+      {history.length === 0 ? (
+        <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.75rem" }}>Nenhum contato registrado ainda.</p>
+      ) : (
+        <ul style={{ marginTop: "0.75rem", paddingLeft: "1.1rem", fontSize: "0.85rem", lineHeight: 1.6 }}>
+          {history.map((log) => (
+            <li key={log.id}>
+              {log.occurredAtLabel} — {log.channel}: {log.summary}
+              {log.nextStepNote ? ` (próximo passo: ${log.nextStepNote})` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canRegister ? (
+        <div style={{ marginTop: "1rem" }}>
+          <LogContactForm customerId={customerId} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function StatementView({
   position,
   templatesByDevelopmentId,
   canRegisterPayment,
   canGenerateDocument,
+  collectionHistory,
+  collectionStage,
 }: {
   position: CustomerFinancialPosition;
   templatesByDevelopmentId: Record<string, { id: string; label: string }[]>;
   canRegisterPayment: boolean;
   canGenerateDocument: boolean;
+  collectionHistory: CollectionHistoryRow[];
+  collectionStage: CollectionStageInfo;
 }) {
   return (
     <>
@@ -321,6 +428,13 @@ export function StatementView({
           />
         ))
       )}
+
+      <CollectionHistorySection
+        customerId={position.customerId}
+        history={collectionHistory}
+        stage={collectionStage}
+        canRegister={canRegisterPayment}
+      />
     </>
   );
 }

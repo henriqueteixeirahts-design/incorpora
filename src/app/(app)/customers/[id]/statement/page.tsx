@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getCustomerFinancialPosition } from "@/server/customer-statement";
 import { listApplicableDocumentTemplates } from "@/server/document-templates";
+import { listCollectionHistory } from "@/server/collection-log";
+import { getCustomerCollectionStage } from "@/server/aging";
 import { StatementView } from "./statement-view";
 
 export default async function CustomerStatementPage({
@@ -24,6 +26,11 @@ export default async function CustomerStatementPage({
     templatesByDevelopmentId[developmentId] = templates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }));
   }
 
+  const [collectionHistory, collectionStage] = await Promise.all([
+    listCollectionHistory(context.organizationId, id),
+    getCustomerCollectionStage(context.organizationId, id),
+  ]);
+
   return (
     <>
       <p style={{ marginBottom: "0.25rem" }}>
@@ -38,6 +45,22 @@ export default async function CustomerStatementPage({
         canRegisterPayment={hasPermission(context, "installment", "CREATE")}
         canGenerateDocument={
           hasPermission(context, "document_template", "VIEW") && hasPermission(context, "document", "CREATE")
+        }
+        collectionHistory={collectionHistory.map((log) => ({
+          id: log.id,
+          occurredAtLabel: new Date(log.occurredAt).toLocaleDateString("pt-BR"),
+          channel: log.channel,
+          summary: log.summary,
+          nextStepNote: log.nextStepNote,
+        }))}
+        collectionStage={
+          collectionStage
+            ? {
+                worstDaysOverdue: collectionStage.worstDaysOverdue,
+                currentStep: collectionStage.currentStep,
+                nextStep: collectionStage.nextStep,
+              }
+            : null
         }
       />
     </>

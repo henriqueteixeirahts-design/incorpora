@@ -41,35 +41,36 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  spes                 SpecialPurposeEntity[]
-  developments         Development[]
-  roles                Role[]
-  accessGrants         AccessGrant[]
-  auditEvents          AuditEvent[]
-  developmentEvents    DevelopmentEvent[]
-  documents            Document[]
-  notifications        Notification[]
-  settings             Setting[]
-  customers            Customer[]
-  brokers              Broker[]
-  agencies             RealEstateAgency[]
-  reservations         Reservation[]
-  proposals            Proposal[]
-  sales                Sale[]
-  contracts            Contract[]
-  receivablePortfolios ReceivablePortfolio[]
-  indexRules           IndexRule[]
-  suppliers            Supplier[]
-  costCenters          CostCenter[]
-  payables             Payable[]
-  bankAccounts         BankAccount[]
-  jobRuns              JobRun[]
-  auditRuns            AuditRun[]
-  permutantes          Permutante[]
-  documentTemplates    DocumentTemplate[]
-  contractAmendments   ContractAmendment[]
-  contractAssignments  ContractAssignment[]
-  contractDistratos    ContractDistrato[]
+  spes                  SpecialPurposeEntity[]
+  developments          Development[]
+  roles                 Role[]
+  accessGrants          AccessGrant[]
+  auditEvents           AuditEvent[]
+  developmentEvents     DevelopmentEvent[]
+  documents             Document[]
+  notifications         Notification[]
+  settings              Setting[]
+  customers             Customer[]
+  brokers               Broker[]
+  agencies              RealEstateAgency[]
+  reservations          Reservation[]
+  proposals             Proposal[]
+  sales                 Sale[]
+  contracts             Contract[]
+  receivablePortfolios  ReceivablePortfolio[]
+  indexRules            IndexRule[]
+  suppliers             Supplier[]
+  costCenters           CostCenter[]
+  payables              Payable[]
+  bankAccounts          BankAccount[]
+  jobRuns               JobRun[]
+  auditRuns             AuditRun[]
+  permutantes           Permutante[]
+  documentTemplates     DocumentTemplate[]
+  contractAmendments    ContractAmendment[]
+  contractAssignments   ContractAssignment[]
+  contractDistratos     ContractDistrato[]
+  collectionContactLogs CollectionContactLog[]
 
   @@map("organizations")
 }
@@ -941,6 +942,7 @@ model Development {
   documentTemplates      DocumentTemplateDevelopment[]
   commissionReleaseRule  CommissionReleaseRule?
   distratoRule           DistratoRule?
+  collectionRule         CollectionRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -1181,6 +1183,7 @@ model Customer {
   contractAssignmentsAsPreviousOwner ContractAssignment[]       @relation("ContractAssignmentPreviousCustomer")
   contractAssignmentsAsNewOwner      ContractAssignment[]       @relation("ContractAssignmentNewCustomer")
   supplierAsRefundPayee              Supplier?
+  collectionContactLogs              CollectionContactLog[]
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -1669,6 +1672,70 @@ model DistratoRule {
   development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("distrato_rules")
+}
+
+/// Régua de cobrança (Fase B, Parte 3.2) — configuração por empreendimento,
+/// mesmo padrão 1:1-por-Development das outras regras parametrizáveis.
+/// Etapa assistida (não automática): as `CollectionRuleStep` só descrevem
+/// prazo × ação sugerida; quem "avança" na régua é calculado na hora, a
+/// partir dos dias em atraso — não existe um campo persistido de "etapa
+/// atual" em lugar nenhum. Quando a automação da Fase 2 chegar (e-mail/
+/// WhatsApp disparado sozinho), a mesma régua configurada aqui vira a fonte
+/// dos gatilhos — por isso as etapas já ficam com posição/prazo/ação como
+/// campos de primeira classe, não texto livre.
+model CollectionRule {
+  id            String   @id @default(uuid()) @db.Uuid
+  developmentId String   @unique @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  development Development          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  steps       CollectionRuleStep[]
+
+  @@map("collection_rules")
+}
+
+/// Uma etapa da régua — `offsetDays` é relativo ao vencimento da parcela
+/// (negativo = antes de vencer, ex.: -5 = "D-5"; positivo = dias em
+/// atraso, ex.: 15 = "D+15"). `sequence` define a ordem de exibição/
+/// avaliação (sempre crescente com `offsetDays` na prática, mas guardado
+/// à parte pra não depender de reordenar por valor quando o usuário edita).
+model CollectionRuleStep {
+  id               String @id @default(uuid()) @db.Uuid
+  collectionRuleId String @db.Uuid
+  sequence         Int
+  offsetDays       Int
+  actionLabel      String
+
+  collectionRule CollectionRule @relation(fields: [collectionRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionRuleId, sequence])
+  @@map("collection_rule_steps")
+}
+
+/// Histórico de cobrança (Fase B, Parte 3.2) — registro manual de contato
+/// feito com o cliente ("o usuário registra o contato feito: data, canal,
+/// resumo, próximo passo"). Por CLIENTE (não por contrato/parcela) — a
+/// régua e o painel de cobrança são pensados no nível do cliente ("em qual
+/// etapa da régua ele está"), e o mesmo histórico aparece tanto no painel
+/// de cobrança quanto numa aba própria do extrato do cliente (Fase B,
+/// Parte 1 + 3.2).
+model CollectionContactLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  customerId      String   @db.Uuid
+  occurredAt      DateTime
+  channel         String // texto livre por ora: "Ligação", "WhatsApp", "E-mail", "Presencial"...
+  summary         String
+  nextStepNote    String?
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, customerId])
+  @@map("collection_contact_logs")
 }
 
 // ============================================================================
