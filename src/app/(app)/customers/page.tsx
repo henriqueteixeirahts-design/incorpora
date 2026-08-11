@@ -33,6 +33,7 @@ export default async function CustomersPage({
   const canCreate = hasPermission(context, "customer", "CREATE");
   const canEdit = hasPermission(context, "customer", "EDIT");
   const canDelete = hasPermission(context, "customer", "DELETE");
+  const canViewStatement = hasPermission(context, "installment", "VIEW");
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -58,6 +59,7 @@ export default async function CustomersPage({
         canCreate={canCreate}
         canEdit={canEdit}
         canDelete={canDelete}
+        canViewStatement={canViewStatement}
       />
     </>
   );

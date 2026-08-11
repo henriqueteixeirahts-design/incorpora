@@ -679,6 +679,7 @@ enum DocumentTemplateType {
   ASSIGNMENT // cessão de direitos
   RESCISSION // distrato
   AMENDMENT // aditivo contratual
+  STATEMENT // extrato/demonstrativo (Fase B, Parte 1)
   OTHER // procuração, declaração, livre
 }
 

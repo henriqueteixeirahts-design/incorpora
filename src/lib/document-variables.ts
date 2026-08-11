@@ -98,6 +98,17 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
       { key: "distrato.prazo_devolucao", label: "Prazo/forma de devolução" },
     ],
   },
+  {
+    group: "Extrato",
+    tokens: [
+      { key: "extrato.data_referencia", label: "Data de referência da posição" },
+      { key: "extrato.situacao", label: "Situação (Em dia / Em atraso / Renegociado / Quitado)" },
+      { key: "extrato.valor_contratado", label: "Valor contratado" },
+      { key: "extrato.total_pago", label: "Total pago (corrigido)" },
+      { key: "extrato.saldo_devedor", label: "Saldo devedor atual (corrigido)" },
+      { key: "extrato.percentual_quitado", label: "% quitado" },
+    ],
+  },
 ];
 
 export type DocumentVariableContext = {
@@ -162,6 +173,15 @@ export type DocumentVariableContext = {
     occupancyFeeLabel: string;
     refundAmountLabel: string;
     refundTermsLabel: string;
+  } | null;
+  /** Só presente quando o documento é gerado a partir do extrato do cliente (Fase B, Parte 1.2). */
+  statement: {
+    asOfDateLabel: string;
+    situationLabel: string;
+    contractedValueLabel: string;
+    totalPaidLabel: string;
+    outstandingBalanceLabel: string;
+    percentPaidLabel: string;
   } | null;
 };
 
@@ -267,6 +287,13 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
     "distrato.deducao_fruicao": ctx.distrato?.occupancyFeeLabel ?? "",
     "distrato.valor_devolucao": ctx.distrato?.refundAmountLabel ?? "",
     "distrato.prazo_devolucao": ctx.distrato?.refundTermsLabel ?? "",
+
+    "extrato.data_referencia": ctx.statement?.asOfDateLabel ?? "",
+    "extrato.situacao": ctx.statement?.situationLabel ?? "",
+    "extrato.valor_contratado": ctx.statement?.contractedValueLabel ?? "",
+    "extrato.total_pago": ctx.statement?.totalPaidLabel ?? "",
+    "extrato.saldo_devedor": ctx.statement?.outstandingBalanceLabel ?? "",
+    "extrato.percentual_quitado": ctx.statement?.percentPaidLabel ?? "",
   };
 
   const blocks: Record<string, string> = {

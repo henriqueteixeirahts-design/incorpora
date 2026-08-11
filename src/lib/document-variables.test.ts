@@ -57,6 +57,7 @@ const BASE_CTX: DocumentVariableContext = {
   amendment: null,
   assignment: null,
   distrato: null,
+  statement: null,
 };
 
 describe("resolveDocumentVariables", () => {

@@ -14,6 +14,7 @@ const TYPE_LABELS: Record<string, string> = {
   ASSIGNMENT: "Cessão de direitos",
   RESCISSION: "Distrato",
   AMENDMENT: "Aditivo contratual",
+  STATEMENT: "Extrato/Demonstrativo",
   OTHER: "Procuração / declaração / outros",
 };
 

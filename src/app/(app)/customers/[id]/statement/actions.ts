@@ -1,0 +1,165 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireAccessContext, hasPermission } from "@/server/auth-context";
+import { registerInstallmentPayment, simulateFullSettlement } from "@/server/receivables";
+import { getCustomerFinancialPosition } from "@/server/customer-statement";
+import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
+import { uploadEntityDocument } from "@/server/storage";
+import { renderStatementPdf, type StatementInstallmentRow } from "@/lib/document-pdf";
+
+export type FormState = { error?: string };
+export type SettlementState = {
+  error?: string;
+  result?: Awaited<ReturnType<typeof simulateFullSettlement>>;
+};
+export type GenerateStatementState = { error?: string; missing?: string[]; missingTemplateName?: string; success?: boolean };
+
+/** input[type=date] devolve "AAAA-MM-DD" sem hora — ver nota em sales/[id]/actions.ts. */
+function parseDateOnly(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export async function registerStatementPaymentAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "installment", "CREATE")) return { error: "Sem permissão." };
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const installmentId = String(formData.get("installmentId") ?? "");
+  const amount = Number(formData.get("amount"));
+  const paidAtRaw = String(formData.get("paidAt") ?? "");
+  const method = String(formData.get("method") ?? "").trim() || undefined;
+
+  if (!installmentId || Number.isNaN(amount) || !paidAtRaw) {
+    return { error: "Preencha parcela, valor e data do recebimento." };
+  }
+
+  try {
+    await registerInstallmentPayment(context, installmentId, { amount, paidAt: parseDateOnly(paidAtRaw), method });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao registrar recebimento." };
+  }
+
+  revalidatePath(`/customers/${customerId}/statement`);
+  return {};
+}
+
+export async function simulateFullSettlementAction(
+  _prevState: SettlementState,
+  formData: FormData,
+): Promise<SettlementState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "installment", "VIEW")) return { error: "Sem permissão." };
+
+  const contractId = String(formData.get("contractId") ?? "");
+  const targetDateRaw = String(formData.get("targetDate") ?? "");
+  if (!contractId || !targetDateRaw) return { error: "Informe a data de quitação." };
+
+  try {
+    const result = await simulateFullSettlement(context.organizationId, contractId, parseDateOnly(targetDateRaw));
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao simular quitação." };
+  }
+}
+
+export async function generateStatementPdfAction(
+  _prevState: GenerateStatementState,
+  formData: FormData,
+): Promise<GenerateStatementState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document_template", "VIEW")) return { error: "Sem permissão." };
+  if (!hasPermission(context, "document", "CREATE")) return { error: "Sem permissão." };
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
+  if (!customerId || !contractId || !documentTemplateId) return { error: "Selecione um modelo." };
+
+  try {
+    const position = await getCustomerFinancialPosition(context.organizationId, customerId);
+    if (!position) return { error: "Cliente inválido." };
+    const contractStatement = position.contracts.find((c) => c.contractId === contractId);
+    if (!contractStatement) return { error: "Contrato inválido." };
+
+    const preview = await previewDocumentGeneration(
+      context.organizationId,
+      contractId,
+      documentTemplateId,
+      undefined,
+      undefined,
+      undefined,
+      {
+        asOfDateLabel: position.asOfDate.toLocaleDateString("pt-BR"),
+        situationLabel: contractStatement.situationLabel,
+        contractedValueLabel: formatCurrency(contractStatement.contractedValue),
+        totalPaidLabel: formatCurrency(contractStatement.totalPaid),
+        outstandingBalanceLabel: formatCurrency(contractStatement.outstandingBalance),
+        percentPaidLabel: `${contractStatement.percentPaid}%`,
+      },
+    );
+    if (preview.status === "MISSING_DATA") {
+      return { missing: preview.missing, missingTemplateName: preview.templateName };
+    }
+    const headerText = preview.text;
+    const templateName = preview.templateName;
+    const templateVersion = preview.templateVersion;
+    const resolvedTemplateId = preview.documentTemplateId;
+
+    const installmentRows: StatementInstallmentRow[] = contractStatement.installments.map((i) => ({
+      label: i.label,
+      dueDateLabel: new Date(i.dueDate).toLocaleDateString("pt-BR"),
+      originalValueLabel: formatCurrency(i.originalValue),
+      correctedValueLabel: formatCurrency(i.resultValue),
+      situationLabel: i.situationLabel,
+      paymentLabel:
+        i.payments.length > 0
+          ? i.payments.map((p) => `${new Date(p.paidAt).toLocaleDateString("pt-BR")} — ${formatCurrency(p.amount)}${p.method ? ` — ${p.method}` : ""}`).join("; ")
+          : "—",
+    }));
+
+    const pdfBuffer = await renderStatementPdf({
+      title: `Extrato — ${contractStatement.contractNumber}`,
+      headerText,
+      footer: `Extrato — ${templateName}${templateVersion ? ` v${templateVersion}` : ""} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+      contracts: [
+        {
+          contractNumber: contractStatement.contractNumber,
+          developmentUnit: `${contractStatement.developmentName} — ${contractStatement.unitNumber}`,
+          situationLabel: contractStatement.situationLabel,
+          contractedValueLabel: formatCurrency(contractStatement.contractedValue),
+          totalPaidLabel: formatCurrency(contractStatement.totalPaid),
+          outstandingBalanceLabel: formatCurrency(contractStatement.outstandingBalance),
+          percentPaidLabel: `${contractStatement.percentPaid}%`,
+          installments: installmentRows,
+        },
+      ],
+    });
+
+    const fileName = `extrato-${contractStatement.contractNumber.replace(/[^a-zA-Z0-9]+/g, "-")}-${Date.now()}.pdf`;
+    const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
+    const storagePath = await uploadEntityDocument(file, "Contract", contractId);
+
+    await recordGeneratedDocument(context, {
+      contractId,
+      documentTemplateId: resolvedTemplateId,
+      templateVersion,
+      fileName,
+      storagePath,
+      sizeBytes: pdfBuffer.length,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao gerar o extrato." };
+  }
+
+  revalidatePath(`/customers/${customerId}/statement`);
+  return { success: true };
+}

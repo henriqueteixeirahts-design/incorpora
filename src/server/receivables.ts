@@ -111,7 +111,7 @@ type DevelopmentWithPostHabiteSe = {
   postHabiteSeIndexRule: { values: { referenceMonth: Date; ratePercent: Prisma.Decimal }[] } | null;
 };
 
-function buildCorrectionPhases(contract: ContractWithIndexRule, development: DevelopmentWithPostHabiteSe) {
+export function buildCorrectionPhases(contract: ContractWithIndexRule, development: DevelopmentWithPostHabiteSe) {
   const preHabiteSe: CorrectionPhaseConfig = {
     indexValues: (contract.indexRule?.values ?? []).map((v) => ({
       referenceMonth: v.referenceMonth,
@@ -408,6 +408,114 @@ export async function simulateInstallmentAnticipation(
     postHabiteSe,
     discountPercent,
   });
+}
+
+/**
+ * Posição "ao vivo" de uma parcela pro extrato do cliente (Fase B, Parte
+ * 1.2) — cálculo puro, NUNCA persiste em `FinancialCalculation` (a função
+ * `calculateInstallment` já não grava nada sozinha; aqui é onde
+ * garantimos que também não chamamos `recalculateInstallment`, que grava).
+ * Parcela paga: congela no valor já calculado no momento do recebimento
+ * (`lastCalculatedAt` — quando `registerInstallmentPayment` chamou o
+ * recálculo de verdade, esse sim persistido) — "na data do pagamento, se
+ * paga", como pede a spec. Parcela cancelada: nunca corrigiu de verdade,
+ * mostra só o valor nominal. Parcela em aberto: calcula na data de
+ * referência pedida (hoje, por padrão, ou uma data futura pra simulação).
+ */
+export function getInstallmentLivePosition(
+  installment: {
+    status: string;
+    originalValue: number;
+    correctedValue: number | null;
+    lastCalculatedAt: Date | null;
+    dueDate: Date;
+  },
+  contract: ContractWithIndexRule & {
+    signedAt: Date | null;
+    issuedAt: Date;
+    latePaymentFinePercent: Prisma.Decimal | number;
+    latePaymentMonthlyInterestPercent: Prisma.Decimal | number;
+  },
+  development: DevelopmentWithPostHabiteSe,
+  asOfDate: Date,
+) {
+  if (installment.status === "CANCELLED") {
+    return {
+      resultValue: installment.originalValue,
+      correctedValue: installment.originalValue,
+      fineAmount: 0,
+      overdueInterestAmount: 0,
+      daysOverdue: 0,
+      details: null as ReturnType<typeof calculateInstallment>["details"] | null,
+    };
+  }
+
+  const baseMonth = contract.signedAt ?? contract.issuedAt;
+  const { habiteSeDate, preHabiteSe, postHabiteSe } = buildCorrectionPhases(contract, development);
+
+  const effectiveAsOfDate = installment.status === "PAID" ? (installment.lastCalculatedAt ?? installment.dueDate) : asOfDate;
+
+  const result = calculateInstallment({
+    originalValue: installment.originalValue,
+    baseMonth,
+    dueDate: installment.dueDate,
+    asOfDate: effectiveAsOfDate,
+    habiteSeDate,
+    preHabiteSe,
+    postHabiteSe,
+    latePaymentFinePercent: Number(contract.latePaymentFinePercent ?? 0),
+    latePaymentMonthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent ?? 0),
+  });
+
+  return {
+    resultValue: result.resultValue,
+    correctedValue: result.correctedValue,
+    fineAmount: result.fineAmount,
+    overdueInterestAmount: result.overdueInterestAmount,
+    daysOverdue: result.daysOverdue,
+    details: result.details,
+  };
+}
+
+/**
+ * "Simular quitação total na data X" (Fase B, Parte 1.2) — soma a posição
+ * ao vivo (índice + juros + multa/mora, se a data cair após o vencimento)
+ * de todas as parcelas ainda em aberto de um contrato, numa data de
+ * referência escolhida. Puro/leitura — não persiste nada.
+ */
+export async function simulateFullSettlement(organizationId: string, contractId: string, targetDate: Date) {
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, organizationId },
+    include: {
+      indexRule: { include: { values: true } },
+      development: { include: { postHabiteSeIndexRule: { include: { values: true } } } },
+      portfolio: { include: { installments: true } },
+    },
+  });
+  if (!contract) throw new Error("Contrato inválido.");
+
+  const openInstallments = (contract.portfolio?.installments ?? []).filter(
+    (i) => i.status !== "PAID" && i.status !== "CANCELLED",
+  );
+
+  const items = openInstallments.map((installment) => {
+    const position = getInstallmentLivePosition(
+      {
+        status: installment.status,
+        originalValue: Number(installment.originalValue),
+        correctedValue: installment.correctedValue ? Number(installment.correctedValue) : null,
+        lastCalculatedAt: installment.lastCalculatedAt,
+        dueDate: installment.dueDate,
+      },
+      contract,
+      contract.development,
+      targetDate,
+    );
+    return { installmentId: installment.id, label: installment.label, dueDate: installment.dueDate, ...position };
+  });
+
+  const total = items.reduce((sum, item) => sum + item.resultValue, 0);
+  return { targetDate, items, total: Math.round(total * 100) / 100 };
 }
 
 export type { IndexCode };

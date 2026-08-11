@@ -36,6 +36,7 @@ export function CustomersManager({
   canCreate,
   canEdit,
   canDelete,
+  canViewStatement,
 }: {
   customers: CustomerRow[];
   total: number;
@@ -47,6 +48,7 @@ export function CustomersManager({
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canViewStatement: boolean;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -132,13 +134,14 @@ export function CustomersManager({
               </th>
             ))}
             <th>Contato</th>
+            {canViewStatement ? <th>Extrato</th> : null}
             {canEdit || canDelete ? <th aria-label="Ações" /> : null}
           </tr>
         </thead>
         <tbody>
           {customers.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ opacity: 0.7 }}>
+              <td colSpan={6} style={{ opacity: 0.7 }}>
                 {search ? "Nenhum cliente encontrado para essa busca." : "Nenhum cliente cadastrado."}
               </td>
             </tr>
@@ -149,6 +152,11 @@ export function CustomersManager({
               <td>{customer.typeLabel}</td>
               <td>{customer.document}</td>
               <td>{[customer.email, customer.phone].filter(Boolean).join(" · ") || "—"}</td>
+              {canViewStatement ? (
+                <td>
+                  <Link href={`/customers/${customer.id}/statement`}>Ver extrato</Link>
+                </td>
+              ) : null}
               {canEdit || canDelete ? (
                 <td>
                   <div className="row-actions">

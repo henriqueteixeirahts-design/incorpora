@@ -82,6 +82,14 @@ export async function buildGenerationContext(
     refundAmount: number;
     refundTerms: string | null;
   },
+  statementOverride?: {
+    asOfDateLabel: string;
+    situationLabel: string;
+    contractedValueLabel: string;
+    totalPaidLabel: string;
+    outstandingBalanceLabel: string;
+    percentPaidLabel: string;
+  },
 ): Promise<DocumentVariableContext> {
   const contract = await prisma.contract.findFirstOrThrow({
     where: { id: contractId, organizationId },
@@ -209,6 +217,7 @@ export async function buildGenerationContext(
           refundTermsLabel: distratoOverride.refundTerms ?? "",
         }
       : null,
+    statement: statementOverride ?? null,
     correction: {
       preHabiteSeIndexName: contract.indexRule?.name ?? null,
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
@@ -246,6 +255,14 @@ export async function previewDocumentGeneration(
   amendmentId?: string,
   assignmentId?: string,
   distratoId?: string,
+  statementOverride?: {
+    asOfDateLabel: string;
+    situationLabel: string;
+    contractedValueLabel: string;
+    totalPaidLabel: string;
+    outstandingBalanceLabel: string;
+    percentPaidLabel: string;
+  },
 ): Promise<GenerationPreview> {
   const template = await prisma.documentTemplate.findFirst({
     where: { id: documentTemplateId, organizationId },
@@ -326,7 +343,14 @@ export async function previewDocumentGeneration(
     };
   }
 
-  const ctx = await buildGenerationContext(organizationId, contractId, amendmentOverride, assignmentOverride, distratoOverride);
+  const ctx = await buildGenerationContext(
+    organizationId,
+    contractId,
+    amendmentOverride,
+    assignmentOverride,
+    distratoOverride,
+    statementOverride,
+  );
   const resolved = resolveDocumentVariables(ctx);
   const { text, missing } = substituteTemplate(template.content, resolved);
 
