@@ -90,6 +90,16 @@ export async function buildGenerationContext(
     outstandingBalanceLabel: string;
     percentPaidLabel: string;
   },
+  renegotiationOverride?: {
+    number: string;
+    dateLabel: string;
+    consolidatedPrincipal: number;
+    consolidatedCharges: number;
+    discountPercent: number;
+    discountAmount: number;
+    downPayment: number | null;
+    finalValue: number;
+  },
 ): Promise<DocumentVariableContext> {
   const contract = await prisma.contract.findFirstOrThrow({
     where: { id: contractId, organizationId },
@@ -218,6 +228,18 @@ export async function buildGenerationContext(
         }
       : null,
     statement: statementOverride ?? null,
+    renegotiation: renegotiationOverride
+      ? {
+          number: renegotiationOverride.number,
+          dateLabel: renegotiationOverride.dateLabel,
+          consolidatedPrincipalLabel: formatCurrency(renegotiationOverride.consolidatedPrincipal),
+          consolidatedChargesLabel: formatCurrency(renegotiationOverride.consolidatedCharges),
+          discountPercentLabel: `${renegotiationOverride.discountPercent}%`,
+          discountAmountLabel: formatCurrency(renegotiationOverride.discountAmount),
+          downPaymentLabel: renegotiationOverride.downPayment ? formatCurrency(renegotiationOverride.downPayment) : "Não há",
+          finalValueLabel: formatCurrency(renegotiationOverride.finalValue),
+        }
+      : null,
     correction: {
       preHabiteSeIndexName: contract.indexRule?.name ?? null,
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
@@ -263,6 +285,7 @@ export async function previewDocumentGeneration(
     outstandingBalanceLabel: string;
     percentPaidLabel: string;
   },
+  renegotiationId?: string,
 ): Promise<GenerationPreview> {
   const template = await prisma.documentTemplate.findFirst({
     where: { id: documentTemplateId, organizationId },
@@ -343,6 +366,35 @@ export async function previewDocumentGeneration(
     };
   }
 
+  let renegotiationOverride:
+    | {
+        number: string;
+        dateLabel: string;
+        consolidatedPrincipal: number;
+        consolidatedCharges: number;
+        discountPercent: number;
+        discountAmount: number;
+        downPayment: number | null;
+        finalValue: number;
+      }
+    | undefined;
+  if (renegotiationId) {
+    const agreement = await prisma.renegotiationAgreement.findFirst({
+      where: { id: renegotiationId, organizationId, contractId },
+    });
+    if (!agreement) throw new Error("Acordo de renegociação inválido.");
+    renegotiationOverride = {
+      number: agreement.agreementNumber,
+      dateLabel: agreement.agreementDate.toLocaleDateString("pt-BR"),
+      consolidatedPrincipal: Number(agreement.consolidatedPrincipal),
+      consolidatedCharges: Number(agreement.consolidatedCharges),
+      discountPercent: Number(agreement.chargesDiscountPercent),
+      discountAmount: Number(agreement.chargesDiscountAmount),
+      downPayment: agreement.downPayment ? Number(agreement.downPayment) : null,
+      finalValue: Number(agreement.finalValue),
+    };
+  }
+
   const ctx = await buildGenerationContext(
     organizationId,
     contractId,
@@ -350,6 +402,7 @@ export async function previewDocumentGeneration(
     assignmentOverride,
     distratoOverride,
     statementOverride,
+    renegotiationOverride,
   );
   const resolved = resolveDocumentVariables(ctx);
   const { text, missing } = substituteTemplate(template.content, resolved);
@@ -385,6 +438,7 @@ export async function recordGeneratedDocument(
     amendmentId?: string;
     assignmentId?: string;
     distratoId?: string;
+    renegotiationId?: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
@@ -394,8 +448,10 @@ export async function recordGeneratedDocument(
         ? "ContractAssignment"
         : params.distratoId
           ? "ContractDistrato"
-          : "Contract";
-    const entityId = params.amendmentId ?? params.assignmentId ?? params.distratoId ?? params.contractId;
+          : params.renegotiationId
+            ? "RenegotiationAgreement"
+            : "Contract";
+    const entityId = params.amendmentId ?? params.assignmentId ?? params.distratoId ?? params.renegotiationId ?? params.contractId;
     const document = await tx.document.create({
       data: {
         organizationId: context.organizationId,
@@ -452,6 +508,14 @@ export function listAssignmentGeneratedDocuments(organizationId: string, assignm
 export function listDistratoGeneratedDocuments(organizationId: string, distratoId: string) {
   return prisma.document.findMany({
     where: { organizationId, entityType: "ContractDistrato", entityId: distratoId, documentTemplateId: { not: null } },
+    include: { uploadedBy: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export function listRenegotiationGeneratedDocuments(organizationId: string, agreementId: string) {
+  return prisma.document.findMany({
+    where: { organizationId, entityType: "RenegotiationAgreement", entityId: agreementId, documentTemplateId: { not: null } },
     include: { uploadedBy: true },
     orderBy: { createdAt: "desc" },
   });

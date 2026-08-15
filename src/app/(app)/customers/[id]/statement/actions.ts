@@ -6,8 +6,10 @@ import { registerInstallmentPayment, simulateFullSettlement } from "@/server/rec
 import { getCustomerFinancialPosition } from "@/server/customer-statement";
 import { previewDocumentGeneration, recordGeneratedDocument } from "@/server/document-generation";
 import { uploadEntityDocument } from "@/server/storage";
-import { renderStatementPdf, type StatementInstallmentRow } from "@/lib/document-pdf";
+import { renderStatementPdf, renderDocumentPdf, type StatementInstallmentRow } from "@/lib/document-pdf";
 import { logCollectionContact } from "@/server/collection-log";
+import { createRenegotiationAgreement, decideRenegotiationApproval, signRenegotiationAgreement } from "@/server/renegotiations";
+import type { ApprovalLevel } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
 export type SettlementState = {
@@ -16,6 +18,7 @@ export type SettlementState = {
 };
 export type GenerateStatementState = { error?: string; missing?: string[]; missingTemplateName?: string; success?: boolean };
 export type LogContactState = { error?: string; success?: boolean };
+export type RenegotiationFormState = { error?: string; success?: boolean };
 
 /** input[type=date] devolve "AAAA-MM-DD" sem hora — ver nota em sales/[id]/actions.ts. */
 function parseDateOnly(value: string): Date {
@@ -192,6 +195,128 @@ export async function logCollectionContactAction(
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao registrar o contato." };
+  }
+
+  revalidatePath(`/customers/${customerId}/statement`);
+  return { success: true };
+}
+
+export async function createRenegotiationAction(
+  _prevState: RenegotiationFormState,
+  formData: FormData,
+): Promise<RenegotiationFormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return { error: "Sem permissão." };
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const installmentIds = formData.getAll("installmentIds").map(String);
+  const agreementDateRaw = String(formData.get("agreementDate") ?? "");
+  const chargesDiscountPercent = Number(formData.get("chargesDiscountPercent") ?? 0);
+  const downPaymentRaw = formData.get("downPayment");
+  const monthlyInstallments = Number(formData.get("monthlyInstallments") ?? 0);
+  const applyFutureCorrection = formData.get("applyFutureCorrection") === "on";
+  const reason = String(formData.get("reason") ?? "").trim() || undefined;
+
+  if (!contractId || installmentIds.length === 0 || !agreementDateRaw) {
+    return { error: "Selecione ao menos uma parcela e a data do acordo." };
+  }
+
+  try {
+    await createRenegotiationAgreement(context, contractId, {
+      installmentIds,
+      agreementDate: parseDateOnly(agreementDateRaw),
+      chargesDiscountPercent,
+      downPayment: downPaymentRaw ? Number(downPaymentRaw) : undefined,
+      monthlyInstallments,
+      applyFutureCorrection,
+      reason,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao criar o acordo." };
+  }
+
+  revalidatePath(`/customers/${customerId}/statement`);
+  return { success: true };
+}
+
+export async function decideRenegotiationApprovalAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return;
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const agreementId = String(formData.get("agreementId") ?? "");
+  const level = String(formData.get("level") ?? "") as ApprovalLevel;
+  const decision = String(formData.get("decision") ?? "") as "APPROVED" | "REJECTED";
+  const comment = String(formData.get("comment") ?? "").trim() || undefined;
+  if (!agreementId || !level || (decision !== "APPROVED" && decision !== "REJECTED")) return;
+
+  await decideRenegotiationApproval(context, agreementId, level, decision, comment);
+  revalidatePath(`/customers/${customerId}/statement`);
+}
+
+export async function signRenegotiationAction(formData: FormData) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "contract", "EDIT")) return;
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const agreementId = String(formData.get("agreementId") ?? "");
+  if (!agreementId) return;
+
+  await signRenegotiationAgreement(context, agreementId);
+  revalidatePath(`/customers/${customerId}/statement`);
+}
+
+export async function generateRenegotiationPdfAction(
+  _prevState: GenerateStatementState,
+  formData: FormData,
+): Promise<GenerateStatementState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document_template", "VIEW")) return { error: "Sem permissão." };
+  if (!hasPermission(context, "document", "CREATE")) return { error: "Sem permissão." };
+
+  const customerId = String(formData.get("customerId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  const agreementId = String(formData.get("agreementId") ?? "");
+  const documentTemplateId = String(formData.get("documentTemplateId") ?? "");
+  if (!customerId || !contractId || !agreementId || !documentTemplateId) return { error: "Selecione um modelo." };
+
+  try {
+    const preview = await previewDocumentGeneration(
+      context.organizationId,
+      contractId,
+      documentTemplateId,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      agreementId,
+    );
+    if (preview.status === "MISSING_DATA") {
+      return { missing: preview.missing, missingTemplateName: preview.templateName };
+    }
+
+    const pdfBuffer = await renderDocumentPdf({
+      title: preview.templateName,
+      text: preview.text,
+      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+    });
+
+    const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;
+    const file = new File([new Uint8Array(pdfBuffer)], fileName, { type: "application/pdf" });
+    const storagePath = await uploadEntityDocument(file, "RenegotiationAgreement", agreementId);
+
+    await recordGeneratedDocument(context, {
+      contractId,
+      documentTemplateId: preview.documentTemplateId,
+      templateVersion: preview.templateVersion,
+      fileName,
+      storagePath,
+      sizeBytes: pdfBuffer.length,
+      renegotiationId: agreementId,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao gerar o documento." };
   }
 
   revalidatePath(`/customers/${customerId}/statement`);

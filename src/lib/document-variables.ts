@@ -109,6 +109,19 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
       { key: "extrato.percentual_quitado", label: "% quitado" },
     ],
   },
+  {
+    group: "Renegociação",
+    tokens: [
+      { key: "renegociacao.numero", label: "Número do acordo (ex.: CT-2026-0001-RN01)" },
+      { key: "renegociacao.data", label: "Data do acordo" },
+      { key: "renegociacao.principal_consolidado", label: "Principal consolidado (corrigido)" },
+      { key: "renegociacao.encargos_consolidados", label: "Encargos consolidados (multa+mora)" },
+      { key: "renegociacao.percentual_desconto", label: "% de desconto sobre encargos" },
+      { key: "renegociacao.valor_desconto", label: "Valor do desconto" },
+      { key: "renegociacao.entrada", label: "Entrada do acordo" },
+      { key: "renegociacao.valor_final", label: "Valor final renegociado" },
+    ],
+  },
 ];
 
 export type DocumentVariableContext = {
@@ -182,6 +195,17 @@ export type DocumentVariableContext = {
     totalPaidLabel: string;
     outstandingBalanceLabel: string;
     percentPaidLabel: string;
+  } | null;
+  /** Só presente quando o documento é gerado a partir de um acordo de renegociação (Fase B, Parte 2.2). */
+  renegotiation: {
+    number: string;
+    dateLabel: string;
+    consolidatedPrincipalLabel: string;
+    consolidatedChargesLabel: string;
+    discountPercentLabel: string;
+    discountAmountLabel: string;
+    downPaymentLabel: string;
+    finalValueLabel: string;
   } | null;
 };
 
@@ -294,6 +318,15 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
     "extrato.total_pago": ctx.statement?.totalPaidLabel ?? "",
     "extrato.saldo_devedor": ctx.statement?.outstandingBalanceLabel ?? "",
     "extrato.percentual_quitado": ctx.statement?.percentPaidLabel ?? "",
+
+    "renegociacao.numero": ctx.renegotiation?.number ?? "",
+    "renegociacao.data": ctx.renegotiation?.dateLabel ?? "",
+    "renegociacao.principal_consolidado": ctx.renegotiation?.consolidatedPrincipalLabel ?? "",
+    "renegociacao.encargos_consolidados": ctx.renegotiation?.consolidatedChargesLabel ?? "",
+    "renegociacao.percentual_desconto": ctx.renegotiation?.discountPercentLabel ?? "",
+    "renegociacao.valor_desconto": ctx.renegotiation?.discountAmountLabel ?? "",
+    "renegociacao.entrada": ctx.renegotiation?.downPaymentLabel ?? "",
+    "renegociacao.valor_final": ctx.renegotiation?.finalValueLabel ?? "",
   };
 
   const blocks: Record<string, string> = {

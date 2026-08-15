@@ -429,6 +429,7 @@ export function getInstallmentLivePosition(
     correctedValue: number | null;
     lastCalculatedAt: Date | null;
     dueDate: Date;
+    correctionExempt?: boolean;
   },
   contract: ContractWithIndexRule & {
     signedAt: Date | null;
@@ -455,14 +456,18 @@ export function getInstallmentLivePosition(
 
   const effectiveAsOfDate = installment.status === "PAID" ? (installment.lastCalculatedAt ?? installment.dueDate) : asOfDate;
 
+  // Parcela nascida de um acordo de renegociação "sem correção futura"
+  // (Fase B, Parte 2.2) — não aplica índice/juros contratuais, mas
+  // continua acumulando multa/mora normalmente se vencer (isso não é
+  // "correção", é penalidade por atraso).
   const result = calculateInstallment({
     originalValue: installment.originalValue,
     baseMonth,
     dueDate: installment.dueDate,
     asOfDate: effectiveAsOfDate,
     habiteSeDate,
-    preHabiteSe,
-    postHabiteSe,
+    preHabiteSe: installment.correctionExempt ? { indexValues: [], monthlyInterestPercent: 0 } : preHabiteSe,
+    postHabiteSe: installment.correctionExempt ? null : postHabiteSe,
     latePaymentFinePercent: Number(contract.latePaymentFinePercent ?? 0),
     latePaymentMonthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent ?? 0),
   });

@@ -41,36 +41,37 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  spes                  SpecialPurposeEntity[]
-  developments          Development[]
-  roles                 Role[]
-  accessGrants          AccessGrant[]
-  auditEvents           AuditEvent[]
-  developmentEvents     DevelopmentEvent[]
-  documents             Document[]
-  notifications         Notification[]
-  settings              Setting[]
-  customers             Customer[]
-  brokers               Broker[]
-  agencies              RealEstateAgency[]
-  reservations          Reservation[]
-  proposals             Proposal[]
-  sales                 Sale[]
-  contracts             Contract[]
-  receivablePortfolios  ReceivablePortfolio[]
-  indexRules            IndexRule[]
-  suppliers             Supplier[]
-  costCenters           CostCenter[]
-  payables              Payable[]
-  bankAccounts          BankAccount[]
-  jobRuns               JobRun[]
-  auditRuns             AuditRun[]
-  permutantes           Permutante[]
-  documentTemplates     DocumentTemplate[]
-  contractAmendments    ContractAmendment[]
-  contractAssignments   ContractAssignment[]
-  contractDistratos     ContractDistrato[]
-  collectionContactLogs CollectionContactLog[]
+  spes                    SpecialPurposeEntity[]
+  developments            Development[]
+  roles                   Role[]
+  accessGrants            AccessGrant[]
+  auditEvents             AuditEvent[]
+  developmentEvents       DevelopmentEvent[]
+  documents               Document[]
+  notifications           Notification[]
+  settings                Setting[]
+  customers               Customer[]
+  brokers                 Broker[]
+  agencies                RealEstateAgency[]
+  reservations            Reservation[]
+  proposals               Proposal[]
+  sales                   Sale[]
+  contracts               Contract[]
+  receivablePortfolios    ReceivablePortfolio[]
+  indexRules              IndexRule[]
+  suppliers               Supplier[]
+  costCenters             CostCenter[]
+  payables                Payable[]
+  bankAccounts            BankAccount[]
+  jobRuns                 JobRun[]
+  auditRuns               AuditRun[]
+  permutantes             Permutante[]
+  documentTemplates       DocumentTemplate[]
+  contractAmendments      ContractAmendment[]
+  contractAssignments     ContractAssignment[]
+  contractDistratos       ContractDistrato[]
+  collectionContactLogs   CollectionContactLog[]
+  renegotiationAgreements RenegotiationAgreement[]
 
   @@map("organizations")
 }
@@ -943,6 +944,7 @@ model Development {
   commissionReleaseRule  CommissionReleaseRule?
   distratoRule           DistratoRule?
   collectionRule         CollectionRule?
+  renegotiationRule      RenegotiationRule?
 
   @@index([organizationId])
   @@index([speId])
@@ -1738,6 +1740,105 @@ model CollectionContactLog {
   @@map("collection_contact_logs")
 }
 
+/// Regra de renegociação de parcelas por empreendimento (Fase B, Parte 2.2,
+/// passo 4 — "mesma infraestrutura de aprovação existente"). Mesmo padrão
+/// de `ProposalEvaluationRule`: uma faixa de tolerância sem alçada
+/// (`maxDiscountOnChargesPercent`) e um teto rígido de prazo
+/// (`maxTermMonths`, sem bypass por alçada — acima disso o acordo é
+/// rejeitado, não aprovado por alguém). Acima da tolerância de desconto,
+/// o acordo precisa de aprovação nos níveis listados em `approvalLevels`
+/// (mesmo `ApprovalLevel`/`ApprovalDecision` já usados nas propostas).
+model RenegotiationRule {
+  id                          String          @id @default(uuid()) @db.Uuid
+  developmentId               String          @unique @db.Uuid
+  maxDiscountOnChargesPercent Decimal         @default(20) @db.Decimal(5, 2)
+  maxTermMonths               Int             @default(24)
+  brokenDealGraceDays         Int             @default(15)
+  reactivateOriginalOnBreak   Boolean         @default(false)
+  approvalLevels              ApprovalLevel[] @default([SALES_MANAGER])
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+
+  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("renegotiation_rules")
+}
+
+enum RenegotiationAgreementStatus {
+  DRAFT // criado, sem aprovação pendente (dentro da tolerância) ou já aprovado — assinável
+  PENDING_APPROVAL // desconto acima da tolerância, aguardando alçada
+  SIGNED // efeitos aplicados: parcelas originais viraram Renegociada, novas parcelas criadas
+  BROKEN // uma parcela do acordo venceu sem pagamento além do prazo de tolerância configurado
+  REJECTED // alguma etapa de alçada reprovou — terminal, é preciso criar um novo acordo
+}
+
+/// Acordo de renegociação de parcelas (Fase B, Parte 2) — diferente do
+/// aditivo de renegociação de fluxo (Fase A, `ContractAmendment`, que
+/// redesenha o fluxo FUTURO inteiro): aqui o acordo consolida dívida
+/// vencida/a vencer JÁ EXISTENTE (parcelas selecionadas pelo usuário no
+/// extrato), com desconto sobre os encargos (multa+mora — nunca sobre o
+/// principal corrigido) e reparcelamento. `consolidatedPrincipal`/
+/// `consolidatedCharges` são o snapshot calculado (ao vivo, sem persistir
+/// `FinancialCalculation`) na `agreementDate` — a mesma lógica de
+/// `getInstallmentLivePosition` das etapas 1 e 2. Ao assinar: parcelas de
+/// origem viram CANCELLED (nunca apagadas — a UI mostra como
+/// "Renegociada", com link pra este acordo) e as novas nascem vinculadas
+/// por `destinationAgreementId`, numeração de `Installment.sequence`
+/// continuando do maior já usado no contrato (mesmo padrão da etapa 4 da
+/// Fase A).
+model RenegotiationAgreement {
+  id                     String                       @id @default(uuid()) @db.Uuid
+  organizationId         String                       @db.Uuid
+  contractId             String                       @db.Uuid
+  sequenceNumber         Int
+  agreementNumber        String // "CT-2026-0001-RN01"
+  status                 RenegotiationAgreementStatus @default(DRAFT)
+  agreementDate          DateTime
+  consolidatedPrincipal  Decimal                      @db.Decimal(14, 2)
+  consolidatedCharges    Decimal                      @db.Decimal(14, 2)
+  chargesDiscountPercent Decimal                      @db.Decimal(5, 2)
+  chargesDiscountAmount  Decimal                      @db.Decimal(14, 2)
+  downPayment            Decimal?                     @db.Decimal(14, 2)
+  finalValue             Decimal                      @db.Decimal(14, 2)
+  applyFutureCorrection  Boolean                      @default(true)
+  proposedPaymentFlow    Json?
+  reason                 String?
+  brokenAt               DateTime?
+  reactivatedOriginal    Boolean                      @default(false)
+  signedAt               DateTime?
+  signedDocumentPath     String?
+  createdByUserId        String?                      @db.Uuid
+  createdAt              DateTime                     @default(now())
+
+  organization            Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract                Contract                @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  approvals               RenegotiationApproval[]
+  originInstallments      Installment[]           @relation("RenegotiationOrigin")
+  destinationInstallments Installment[]           @relation("RenegotiationDestination")
+
+  @@unique([contractId, sequenceNumber])
+  @@unique([organizationId, agreementNumber])
+  @@map("renegotiation_agreements")
+}
+
+/// Etapa de alçada de um acordo de renegociação — mesmo formato de
+/// `ProposalApproval`, reaproveitando `ApprovalLevel`/`ApprovalDecision`.
+model RenegotiationApproval {
+  id             String           @id @default(uuid()) @db.Uuid
+  agreementId    String           @db.Uuid
+  level          ApprovalLevel
+  approverUserId String?          @db.Uuid
+  decision       ApprovalDecision @default(PENDING)
+  comment        String?
+  decidedAt      DateTime?
+  createdAt      DateTime         @default(now())
+
+  agreement RenegotiationAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@unique([agreementId, level])
+  @@map("renegotiation_approvals")
+}
+
 // ============================================================================
 // FASE 8 — CONTRATOS E CARTEIRA INICIAL
 // ============================================================================
@@ -1800,10 +1901,11 @@ model Contract {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   indexRule    IndexRule?   @relation(fields: [indexRuleId], references: [id], onDelete: SetNull)
 
-  portfolio   ReceivablePortfolio?
-  amendments  ContractAmendment[]
-  assignments ContractAssignment[]
-  distrato    ContractDistrato?
+  portfolio               ReceivablePortfolio?
+  amendments              ContractAmendment[]
+  assignments             ContractAssignment[]
+  distrato                ContractDistrato?
+  renegotiationAgreements RenegotiationAgreement[]
 
   @@unique([organizationId, contractNumber])
   @@map("contracts")
@@ -1965,25 +2067,37 @@ enum InstallmentStatus {
 /// são um cache do último cálculo (Fase 9-10); o histórico completo e
 /// auditável de cada cálculo fica em FinancialCalculation.
 model Installment {
-  id               String            @id @default(uuid()) @db.Uuid
-  portfolioId      String            @db.Uuid
-  sequence         Int
-  label            String
-  dueDate          DateTime
-  originalValue    Decimal           @db.Decimal(14, 2)
-  correctedValue   Decimal?          @db.Decimal(14, 2)
-  paidAmount       Decimal           @default(0) @db.Decimal(14, 2)
-  lastCalculatedAt DateTime?
-  status           InstallmentStatus @default(PENDING)
+  id                     String            @id @default(uuid()) @db.Uuid
+  portfolioId            String            @db.Uuid
+  sequence               Int
+  label                  String
+  dueDate                DateTime
+  originalValue          Decimal           @db.Decimal(14, 2)
+  correctedValue         Decimal?          @db.Decimal(14, 2)
+  paidAmount             Decimal           @default(0) @db.Decimal(14, 2)
+  lastCalculatedAt       DateTime?
+  status                 InstallmentStatus @default(PENDING)
   // Marca a parcela de entrada (Fase A, Parte 4.1 — gatilho de liberação de
   // comissão "no recebimento da entrada"). Sem isso, teria que casar por
   // `label === "Entrada"` (frágil, o label é texto livre do fluxo).
-  isDownPayment    Boolean           @default(false)
-  createdAt        DateTime          @default(now())
+  isDownPayment          Boolean           @default(false)
+  // Fase B, Parte 2 (renegociação de parcelas) — quando uma parcela original
+  // vira "Renegociada" (CANCELLED aqui, nunca apagada), `originAgreementId`
+  // aponta pro acordo que a consumiu; quando uma parcela nova é criada por
+  // um acordo, `destinationAgreementId` aponta pra ele. `correctionExempt`
+  // só é setado nas parcelas de destino quando o acordo escolheu "sem
+  // correção futura" — a parcela não aplica índice/juros contratuais na
+  // correção ao vivo, mas ainda acumula multa/mora normalmente se vencer.
+  originAgreementId      String?           @db.Uuid
+  destinationAgreementId String?           @db.Uuid
+  correctionExempt       Boolean           @default(false)
+  createdAt              DateTime          @default(now())
 
-  portfolio             ReceivablePortfolio    @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolio             ReceivablePortfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   payments              InstallmentPayment[]
   financialCalculations FinancialCalculation[]
+  originAgreement       RenegotiationAgreement? @relation("RenegotiationOrigin", fields: [originAgreementId], references: [id], onDelete: SetNull)
+  destinationAgreement  RenegotiationAgreement? @relation("RenegotiationDestination", fields: [destinationAgreementId], references: [id], onDelete: SetNull)
 
   @@unique([portfolioId, sequence])
   @@map("installments")

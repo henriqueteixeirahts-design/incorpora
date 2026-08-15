@@ -12,6 +12,7 @@ import {
   type GenerateStatementState,
   type LogContactState,
 } from "./actions";
+import { RenegotiationSection, type RenegotiationRow, type OpenInstallmentOption } from "./renegotiation-forms";
 
 const registerInitialState: FormState = {};
 const settlementInitialState: SettlementState = {};
@@ -217,13 +218,22 @@ function ContractSection({
   templates,
   canRegisterPayment,
   canGenerateDocument,
+  canEditContract,
+  renegotiations,
+  renegotiationTemplates,
 }: {
   customerId: string;
   contract: ContractStatement;
   templates: { id: string; label: string }[];
   canRegisterPayment: boolean;
   canGenerateDocument: boolean;
+  canEditContract: boolean;
+  renegotiations: RenegotiationRow[];
+  renegotiationTemplates: { id: string; label: string }[];
 }) {
+  const openInstallments: OpenInstallmentOption[] = contract.installments
+    .filter((i) => i.status === "PENDING" || i.status === "OVERDUE")
+    .map((i) => ({ id: i.id, label: i.label, dueDateLabel: formatDate(i.dueDate), resultValue: i.resultValue }));
   return (
     <section style={{ marginTop: "2rem", borderTop: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)", paddingTop: "1rem" }}>
       <h2 style={{ fontSize: "1.1rem" }}>
@@ -289,6 +299,16 @@ function ContractSection({
           <GenerateStatementForm customerId={customerId} contractId={contract.contractId} templates={templates} />
         </div>
       ) : null}
+
+      <RenegotiationSection
+        customerId={customerId}
+        contractId={contract.contractId}
+        agreements={renegotiations}
+        openInstallments={openInstallments}
+        templates={renegotiationTemplates}
+        canEdit={canEditContract}
+        canGenerateDocument={canGenerateDocument}
+      />
     </section>
   );
 }
@@ -378,15 +398,21 @@ export function StatementView({
   templatesByDevelopmentId,
   canRegisterPayment,
   canGenerateDocument,
+  canEditContract,
   collectionHistory,
   collectionStage,
+  renegotiationsByContractId,
+  renegotiationTemplatesByDevelopmentId,
 }: {
   position: CustomerFinancialPosition;
   templatesByDevelopmentId: Record<string, { id: string; label: string }[]>;
   canRegisterPayment: boolean;
   canGenerateDocument: boolean;
+  canEditContract: boolean;
   collectionHistory: CollectionHistoryRow[];
   collectionStage: CollectionStageInfo;
+  renegotiationsByContractId: Record<string, RenegotiationRow[]>;
+  renegotiationTemplatesByDevelopmentId: Record<string, { id: string; label: string }[]>;
 }) {
   return (
     <>
@@ -425,6 +451,9 @@ export function StatementView({
             templates={templatesByDevelopmentId[contract.developmentId] ?? []}
             canRegisterPayment={canRegisterPayment}
             canGenerateDocument={canGenerateDocument}
+            canEditContract={canEditContract}
+            renegotiations={renegotiationsByContractId[contract.contractId] ?? []}
+            renegotiationTemplates={renegotiationTemplatesByDevelopmentId[contract.developmentId] ?? []}
           />
         ))
       )}

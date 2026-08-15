@@ -117,6 +117,7 @@ export async function getCustomerFinancialPosition(
           correctedValue: installment.correctedValue ? Number(installment.correctedValue) : null,
           lastCalculatedAt: installment.lastCalculatedAt,
           dueDate: installment.dueDate,
+          correctionExempt: installment.correctionExempt,
         },
         contract,
         contract.development,
