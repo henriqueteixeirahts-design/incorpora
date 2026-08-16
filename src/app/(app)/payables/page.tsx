@@ -1,9 +1,10 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { listPayablesPaged, type PayableSortField } from "@/server/payables";
+import { listPayablesPaged, countPendingApproval, type PayableSortField } from "@/server/payables";
 import { listSuppliers, listCostCenters } from "@/server/finance-setup";
 import { listDevelopments } from "@/server/developments";
 import { listSpes } from "@/server/spes";
 import { PayablesManager } from "./payables-manager";
+import type { PayableCategory, PayableStatus } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 20;
 
@@ -19,19 +20,36 @@ export default async function PayablesPage({
   const sortBy = (params.sort as PayableSortField) ?? "dueDate";
   const sortDir = params.dir === "desc" ? "desc" : "asc";
   const page = Math.max(1, Number(params.page) || 1);
+  const pendingApprovalOnly = params.pending === "1";
 
-  const [{ items, total }, suppliers, costCenters, developments, spes] = await Promise.all([
+  const filters = {
+    developmentId: params.developmentId || undefined,
+    speId: params.speId || undefined,
+    supplierId: params.supplierId || undefined,
+    costCenterId: params.costCenterId || undefined,
+    category: (params.category as PayableCategory) || undefined,
+    status: (params.status as PayableStatus) || undefined,
+    dueDateFrom: params.dueDateFrom ? new Date(params.dueDateFrom) : undefined,
+    dueDateTo: params.dueDateTo ? new Date(params.dueDateTo) : undefined,
+    minAmount: params.minAmount ? Number(params.minAmount) : undefined,
+    maxAmount: params.maxAmount ? Number(params.maxAmount) : undefined,
+    pendingApprovalOnly,
+  };
+
+  const [{ items, total }, suppliers, costCenters, developments, spes, pendingCount] = await Promise.all([
     listPayablesPaged(context.organizationId, {
       search,
       sortBy,
       sortDir,
       page,
       pageSize: PAGE_SIZE,
+      ...filters,
     }),
     listSuppliers(context.organizationId),
     listCostCenters(context.organizationId),
     listDevelopments(context.organizationId),
     listSpes(context.organizationId),
+    countPendingApproval(context.organizationId),
   ]);
 
   const canCreate = hasPermission(context, "payable", "CREATE");
@@ -40,9 +58,21 @@ export default async function PayablesPage({
   const canCancel = hasPermission(context, "payable", "CANCEL");
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const exportQs = new URLSearchParams();
+  if (search) exportQs.set("q", search);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value && key !== "page" && key !== "sort" && key !== "dir") exportQs.set(key, value);
+  });
+
   return (
     <>
       <h1>Contas a pagar</h1>
+      {canApprove && pendingCount > 0 ? (
+        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+          {pendingCount} conta{pendingCount === 1 ? "" : "s"} pendente{pendingCount === 1 ? "" : "s"} de
+          aprovação/avanço no fluxo.
+        </p>
+      ) : null}
 
       <PayablesManager
         payables={items.map((p) => ({
@@ -68,6 +98,20 @@ export default async function PayablesPage({
         canEdit={canEdit}
         canApprove={canApprove}
         canCancel={canCancel}
+        filters={{
+          developmentId: params.developmentId ?? "",
+          speId: params.speId ?? "",
+          supplierId: params.supplierId ?? "",
+          costCenterId: params.costCenterId ?? "",
+          category: params.category ?? "",
+          status: params.status ?? "",
+          dueDateFrom: params.dueDateFrom ?? "",
+          dueDateTo: params.dueDateTo ?? "",
+          minAmount: params.minAmount ?? "",
+          maxAmount: params.maxAmount ?? "",
+        }}
+        pendingApprovalOnly={pendingApprovalOnly}
+        exportHref={`/api/payables/export${exportQs.toString() ? `?${exportQs.toString()}` : ""}`}
       />
     </>
   );

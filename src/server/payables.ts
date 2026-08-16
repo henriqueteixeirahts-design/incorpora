@@ -23,20 +23,76 @@ export function listPayables(organizationId: string, developmentId?: string) {
 
 export type PayableSortField = "dueDate" | "amount" | "description" | "status";
 
-export async function listPayablesPaged(
-  organizationId: string,
-  params: { search?: string; sortBy?: PayableSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
-) {
+// Status ainda em algum ponto do fluxo Lançada → Conciliada — usado tanto
+// pelo filtro "minhas pendências de aprovação" quanto pra contar o painel.
+export const PENDING_APPROVAL_STATUSES: PayableStatus[] = [
+  "ENTERED",
+  "REVIEWED",
+  "APPROVED",
+  "SCHEDULED",
+  "PAID",
+];
+
+export type ListPayablesFilters = {
+  search?: string;
+  sortBy?: PayableSortField;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+  developmentId?: string;
+  speId?: string;
+  supplierId?: string;
+  costCenterId?: string;
+  category?: PayableCategory;
+  status?: PayableStatus;
+  dueDateFrom?: Date;
+  dueDateTo?: Date;
+  minAmount?: number;
+  maxAmount?: number;
+  pendingApprovalOnly?: boolean;
+};
+
+function payablesWhere(organizationId: string, params: ListPayablesFilters): Prisma.PayableWhereInput {
+  const search = params.search?.trim();
+  return {
+    organizationId,
+    ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
+    ...(params.developmentId ? { developmentId: params.developmentId } : {}),
+    ...(params.speId ? { speId: params.speId } : {}),
+    ...(params.supplierId ? { supplierId: params.supplierId } : {}),
+    ...(params.costCenterId ? { costCenterId: params.costCenterId } : {}),
+    ...(params.category ? { category: params.category } : {}),
+    ...(params.pendingApprovalOnly
+      ? { status: { in: PENDING_APPROVAL_STATUSES } }
+      : params.status
+        ? { status: params.status }
+        : {}),
+    ...(params.dueDateFrom || params.dueDateTo
+      ? {
+          dueDate: {
+            ...(params.dueDateFrom ? { gte: params.dueDateFrom } : {}),
+            ...(params.dueDateTo ? { lte: params.dueDateTo } : {}),
+          },
+        }
+      : {}),
+    ...(params.minAmount !== undefined || params.maxAmount !== undefined
+      ? {
+          amount: {
+            ...(params.minAmount !== undefined ? { gte: params.minAmount } : {}),
+            ...(params.maxAmount !== undefined ? { lte: params.maxAmount } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+export async function listPayablesPaged(organizationId: string, params: ListPayablesFilters) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;
   const sortBy = params.sortBy ?? "dueDate";
   const sortDir = params.sortDir ?? "asc";
-  const search = params.search?.trim();
 
-  const where: Prisma.PayableWhereInput = {
-    organizationId,
-    ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
-  };
+  const where = payablesWhere(organizationId, params);
 
   const [items, total] = await Promise.all([
     prisma.payable.findMany({
@@ -52,10 +108,34 @@ export async function listPayablesPaged(
   return { items, total, page, pageSize };
 }
 
+/** Todos os itens que batem no filtro, sem paginar — pra exportação CSV. */
+export function listPayablesForExport(organizationId: string, params: ListPayablesFilters) {
+  const where = payablesWhere(organizationId, params);
+  const sortBy = params.sortBy ?? "dueDate";
+  const sortDir = params.sortDir ?? "asc";
+  return prisma.payable.findMany({
+    where,
+    include: { development: true, spe: true, supplier: true, costCenter: true },
+    orderBy: { [sortBy]: sortDir },
+  });
+}
+
+export function countPendingApproval(organizationId: string) {
+  return prisma.payable.count({
+    where: { organizationId, status: { in: PENDING_APPROVAL_STATUSES } },
+  });
+}
+
 export async function getPayableDetail(organizationId: string, payableId: string) {
   const payable = await prisma.payable.findFirst({
     where: { id: payableId, organizationId },
-    include: { development: true, spe: true, supplier: true, costCenter: true },
+    include: {
+      development: true,
+      spe: true,
+      supplier: true,
+      costCenter: true,
+      items: { orderBy: { sequence: "asc" } },
+    },
   });
   if (!payable) return null;
 
@@ -70,8 +150,45 @@ export async function getPayableDetail(organizationId: string, payableId: string
     })),
   );
 
-  return { ...payable, documents: documentsWithUrl };
+  const approvalHistory = await getPayableApprovalHistory(organizationId, payableId);
+
+  return { ...payable, documents: documentsWithUrl, approvalHistory };
 }
+
+/**
+ * "Quem aprovou cada etapa" (spec 4.1) — reaproveita o `AuditEvent` que já é
+ * gravado a cada avanço de status (`advancePayableStatus`), em vez de criar
+ * uma tabela de aprovações nova: cada conta a pagar só tem um fluxo
+ * sequencial linear (não é por alçada como Proposta/Renegociação), então o
+ * histórico de "quem mexeu e quando" já é o suficiente.
+ */
+export async function getPayableApprovalHistory(organizationId: string, payableId: string) {
+  const events = await prisma.auditEvent.findMany({
+    where: { organizationId, entityType: ENTITY_TYPE, entityId: payableId, action: "update" },
+    include: { actor: { select: { fullName: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return events
+    .filter((event) => {
+      const before = event.beforeData as { status?: string } | null;
+      const after = event.afterData as { status?: string } | null;
+      return before?.status && after?.status && before.status !== after.status;
+    })
+    .map((event) => {
+      const before = event.beforeData as { status: string };
+      const after = event.afterData as { status: string };
+      return {
+        id: event.id,
+        fromStatus: before.status,
+        toStatus: after.status,
+        actorName: event.actor?.fullName ?? "—",
+        occurredAt: event.createdAt,
+      };
+    });
+}
+
+export type PayableItemInput = { description: string; amount: number };
 
 export type CreatePayableInput = {
   developmentId?: string;
@@ -87,7 +204,23 @@ export type CreatePayableInput = {
   bankAccount?: string;
   fiscalDocument?: string;
   notes?: string;
+  items?: PayableItemInput[];
 };
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+/** Itens são um detalhamento opcional — quando presentes, a soma tem que bater exato com o valor total (centavo a centavo). */
+function assertItemsMatchAmount(amount: number, items: PayableItemInput[] | undefined) {
+  if (!items || items.length === 0) return;
+  const sum = round2(items.reduce((acc, item) => acc + item.amount, 0));
+  if (sum !== round2(amount)) {
+    throw new Error(
+      `A soma dos itens (${sum.toFixed(2)}) precisa bater exato com o valor total (${amount.toFixed(2)}).`,
+    );
+  }
+}
 
 async function assertPayableRelationsOwned(
   tx: Prisma.TransactionClient,
@@ -121,14 +254,20 @@ async function assertPayableRelationsOwned(
 }
 
 export async function createPayable(context: AccessContext, input: CreatePayableInput) {
+  const { items, ...data } = input;
+  assertItemsMatchAmount(data.amount, items);
+
   return prisma.$transaction(async (tx) => {
-    await assertPayableRelationsOwned(tx, context, input);
+    await assertPayableRelationsOwned(tx, context, data);
 
     const payable = await tx.payable.create({
       data: {
         organizationId: context.organizationId,
         createdByUserId: context.userId,
-        ...input,
+        ...data,
+        ...(items && items.length > 0
+          ? { items: { create: items.map((item, index) => ({ ...item, sequence: index + 1 })) } }
+          : {}),
       },
     });
 
@@ -170,6 +309,9 @@ export async function updatePayable(
   payableId: string,
   input: UpdatePayableInput,
 ) {
+  const { items, ...data } = input;
+  assertItemsMatchAmount(data.amount, items);
+
   return prisma.$transaction(async (tx) => {
     const before = await tx.payable.findFirst({
       where: { id: payableId, organizationId: context.organizationId },
@@ -179,9 +321,18 @@ export async function updatePayable(
       throw new Error("Só é possível editar contas com status Lançada.");
     }
 
-    await assertPayableRelationsOwned(tx, context, input);
+    await assertPayableRelationsOwned(tx, context, data);
 
-    const payable = await tx.payable.update({ where: { id: payableId }, data: input });
+    await tx.payableItem.deleteMany({ where: { payableId } });
+    const payable = await tx.payable.update({
+      where: { id: payableId },
+      data: {
+        ...data,
+        ...(items && items.length > 0
+          ? { items: { create: items.map((item, index) => ({ ...item, sequence: index + 1 })) } }
+          : {}),
+      },
+    });
 
     await recordAuditEvent(tx, {
       organizationId: context.organizationId,

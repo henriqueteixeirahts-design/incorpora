@@ -5,6 +5,7 @@ import Link from "next/link";
 import { EditIcon, SortIcon } from "@/components/icons";
 import { advancePayableStatusAction, cancelPayableAction, getPayableDetailAction } from "./actions";
 import { PayableModal, type PayableDetail } from "./payable-modal";
+import { PayablesFiltersForm, type PayableFiltersValue } from "./payables-filters-form";
 import type { PayableSortField } from "@/server/payables";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,6 +67,9 @@ export function PayablesManager({
   canEdit,
   canApprove,
   canCancel,
+  filters,
+  pendingApprovalOnly,
+  exportHref,
 }: {
   payables: PayableRow[];
   developments: Option[];
@@ -82,22 +86,33 @@ export function PayablesManager({
   canEdit: boolean;
   canApprove: boolean;
   canCancel: boolean;
+  filters: PayableFiltersValue;
+  pendingApprovalOnly: boolean;
+  exportHref: string;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  function sortLink(field: PayableSortField) {
-    const nextDir = sortBy === field && sortDir === "asc" ? "desc" : "asc";
+  function baseParams() {
     const qs = new URLSearchParams();
     if (search) qs.set("q", search);
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) qs.set(key, value);
+    });
+    if (pendingApprovalOnly) qs.set("pending", "1");
+    return qs;
+  }
+
+  function sortLink(field: PayableSortField) {
+    const nextDir = sortBy === field && sortDir === "asc" ? "desc" : "asc";
+    const qs = baseParams();
     qs.set("sort", field);
     qs.set("dir", nextDir);
     return `/payables?${qs.toString()}`;
   }
 
   function pageLink(targetPage: number) {
-    const qs = new URLSearchParams();
-    if (search) qs.set("q", search);
+    const qs = baseParams();
     qs.set("sort", sortBy);
     qs.set("dir", sortDir);
     qs.set("page", String(targetPage));
@@ -117,6 +132,10 @@ export function PayablesManager({
         <form className="list-search" action="/payables" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
+          {pendingApprovalOnly ? <input type="hidden" name="pending" value="1" /> : null}
+          {Object.entries(filters).map(([key, value]) =>
+            value ? <input key={key} type="hidden" name={key} value={value} /> : null,
+          )}
           <input type="search" name="q" placeholder="Buscar por descrição" defaultValue={search} />
           <button type="submit" className="secondary">
             Buscar
@@ -126,6 +145,9 @@ export function PayablesManager({
           <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
             {total} conta{total === 1 ? "" : "s"} a pagar
           </p>
+          <a className="secondary" href={exportHref}>
+            Exportar
+          </a>
           {canCreate ? (
             <button type="button" onClick={() => setModal({ mode: "create" })}>
               + Nova conta a pagar
@@ -133,6 +155,17 @@ export function PayablesManager({
           ) : null}
         </div>
       </div>
+
+      <PayablesFiltersForm
+        developments={developments}
+        spes={spes}
+        suppliers={suppliers}
+        costCenters={costCenters}
+        current={filters}
+        search={search}
+        canApprove={canApprove}
+        pendingApprovalOnly={pendingApprovalOnly}
+      />
 
       <table className="data-table">
         <thead>

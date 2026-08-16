@@ -644,6 +644,7 @@ enum DocumentCategory {
   AFFECTATION_DEED // termo de afetação / averbação na matrícula
   RET_OPTION_TERM // termo de opção pelo RET (protocolo Receita Federal)
   PERMIT_LICENSE // alvarás e licenças
+  FISCAL_DOCUMENT // nota fiscal / boleto / recibo de uma conta a pagar
 }
 
 /// Documento genérico, anexável a qualquer entidade via (entityType, entityId).
@@ -2332,8 +2333,25 @@ model Payable {
   costCenter      CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   commissionSplit CommissionSplit?
   distrato        ContractDistrato?
+  items           PayableItem[]
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])
   @@map("payables")
+}
+
+/// Itens/composição de uma conta a pagar (Fase B, Parte 4.1) — detalhamento
+/// opcional do valor total; quando presentes, a soma tem que bater exato com
+/// `Payable.amount` (validado no servidor, não só na UI).
+model PayableItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  payableId   String  @db.Uuid
+  description String
+  amount      Decimal @db.Decimal(14, 2)
+  sequence    Int
+
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@map("payable_items")
 }

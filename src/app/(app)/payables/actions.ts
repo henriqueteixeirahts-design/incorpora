@@ -11,10 +11,30 @@ import {
   uploadPayableDocument,
   deletePayableDocument,
   type CreatePayableInput,
+  type PayableItemInput,
 } from "@/server/payables";
 import type { PayableCategory, DocumentCategory } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean; payableId?: string };
+
+/** Itens vêm serializados em JSON num único campo (linhas dinâmicas no cliente) — mais simples que indexar campos soltos no FormData. */
+function parseItems(raw: string): PayableItemInput[] | { error: string } {
+  if (!raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { error: "Itens inválidos." };
+    const items: PayableItemInput[] = [];
+    for (const entry of parsed) {
+      const description = String(entry?.description ?? "").trim();
+      const amount = Number(entry?.amount);
+      if (!description || Number.isNaN(amount)) return { error: "Cada item precisa de descrição e valor." };
+      items.push({ description, amount });
+    }
+    return items;
+  } catch {
+    return { error: "Itens inválidos." };
+  }
+}
 
 function parsePayableInput(formData: FormData): CreatePayableInput | { error: string } {
   const developmentId = String(formData.get("developmentId") ?? "").trim() || undefined;
@@ -30,10 +50,14 @@ function parsePayableInput(formData: FormData): CreatePayableInput | { error: st
   const bankAccount = String(formData.get("bankAccount") ?? "").trim() || undefined;
   const fiscalDocument = String(formData.get("fiscalDocument") ?? "").trim() || undefined;
   const notes = String(formData.get("notes") ?? "").trim() || undefined;
+  const itemsRaw = String(formData.get("itemsJson") ?? "");
 
   if (!category || !description || !competenceDateRaw || !dueDateRaw || Number.isNaN(amount)) {
     return { error: "Preencha categoria, descrição, competência, vencimento e valor." };
   }
+
+  const items = parseItems(itemsRaw);
+  if ("error" in items) return items;
 
   return {
     developmentId,
@@ -49,6 +73,7 @@ function parsePayableInput(formData: FormData): CreatePayableInput | { error: st
     bankAccount,
     fiscalDocument,
     notes,
+    items,
   };
 }
 
