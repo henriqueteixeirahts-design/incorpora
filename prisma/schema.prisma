@@ -73,6 +73,7 @@ model Organization {
   collectionContactLogs   CollectionContactLog[]
   renegotiationAgreements RenegotiationAgreement[]
   allocationTemplates     AllocationTemplate[]
+  receivables             Receivable[]
 
   @@map("organizations")
 }
@@ -232,6 +233,7 @@ model SpecialPurposeEntity {
   partners     SpePartner[]
   investors    SpeInvestor[]
   lands        SpeLand[]
+  receivables  Receivable[]
 
   @@unique([organizationId, document])
   @@map("special_purpose_entities")
@@ -949,6 +951,7 @@ model Development {
   renegotiationRule      RenegotiationRule?
   payableAllocations     PayableAllocation[]
   allocationTemplateDestinations AllocationTemplateDestination[]
+  receivables            Receivable[]
 
   @@index([organizationId])
   @@index([speId])
@@ -1190,6 +1193,7 @@ model Customer {
   contractAssignmentsAsNewOwner      ContractAssignment[]       @relation("ContractAssignmentNewCustomer")
   supplierAsRefundPayee              Supplier?
   collectionContactLogs              CollectionContactLog[]
+  receivables                        Receivable[]
 
   @@unique([organizationId, document])
   @@map("customers")
@@ -1991,6 +1995,7 @@ model ContractAssignment {
   contract         Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
   previousCustomer Customer     @relation("ContractAssignmentPreviousCustomer", fields: [previousCustomerId], references: [id])
   newCustomer      Customer     @relation("ContractAssignmentNewCustomer", fields: [newCustomerId], references: [id])
+  receivable       Receivable?
 
   @@unique([contractId, sequenceNumber])
   @@unique([organizationId, assignmentNumber])
@@ -2412,4 +2417,55 @@ model AllocationTemplateDestination {
 
   @@index([templateId])
   @@map("allocation_template_destinations")
+}
+
+enum ReceivableCategory {
+  ASSIGNMENT_FEE // taxa de cessão
+  SPACE_RENTAL // aluguel de espaço (estande, área comum...)
+  REFUND // reembolso
+  YIELD // rendimento
+  OTHER
+}
+
+enum ReceivableStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+/// Recebível avulso (Fase B, Parte 4.3) — entrada que não nasce de venda
+/// (taxa de cessão, aluguel de espaço, reembolso, rendimento). Deliberadamente
+/// SEM motor de correção monetária (a spec pede "não mistura com o motor de
+/// correção") e sem depender de `ReceivablePortfolio`/`Installment` — espelha
+/// o padrão já usado em `Payable` (origem, categoria, empreendimento/SPE
+/// opcional, vencimento, valor), o par estrutural mais próximo do que a spec
+/// pede, em vez de forçar mais uma parcela na carteira de vendas.
+model Receivable {
+  id                   String             @id @default(uuid()) @db.Uuid
+  organizationId       String             @db.Uuid
+  developmentId        String?            @db.Uuid
+  speId                String?            @db.Uuid
+  customerId           String?            @db.Uuid // cliente/pagador, opcional
+  category             ReceivableCategory
+  origin               String // descrição da origem (ex.: "Taxa de cessão CT-2026-0001-CS01")
+  dueDate              DateTime
+  amount               Decimal            @db.Decimal(14, 2)
+  status               ReceivableStatus   @default(PENDING)
+  receivedAt           DateTime?
+  receivedAmount       Decimal?           @db.Decimal(14, 2)
+  notes                String?
+  contractAssignmentId String?            @unique @db.Uuid // origem automática (taxa de cessão) — rastreabilidade, nunca criado manualmente pra esse caso
+  createdByUserId      String?            @db.Uuid
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development         Development?       @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+  spe                 SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
+  customer            Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contractAssignment  ContractAssignment? @relation(fields: [contractAssignmentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([organizationId, developmentId])
+  @@map("receivables")
 }

@@ -238,13 +238,12 @@ describe("Assinar cessão — titularidade, carteira e histórico (rigor centavo
     expect(assignmentAfter.newCustomerId).toBe(cessionario.id);
   });
 
-  it("taxa de cessão vira parcela nova na carteira, com sequence e total corretos", async () => {
+  it("taxa de cessão vira recebível avulso (não mais parcela na carteira do imóvel — Fase B, Parte 4.3)", async () => {
     const { contract } = await setUpSignedContract("CS302");
     const portfolioBefore = await prisma.receivablePortfolio.findFirstOrThrow({
       where: { contractId: contract.id },
       include: { installments: true },
     });
-    const maxSequenceBefore = portfolioBefore.installments.reduce((max, i) => Math.max(max, i.sequence), 0);
     const totalBefore = Number(portfolioBefore.totalValue);
 
     const cessionario = await createCustomer(context, { type: "INDIVIDUAL", name: "Cessionário CS302", document: nextDocument() });
@@ -255,17 +254,24 @@ describe("Assinar cessão — titularidade, carteira e histórico (rigor centavo
     });
     await signAssignment(context, assignment.id);
 
+    // A carteira do imóvel não ganha nenhuma parcela nova nem muda de total —
+    // a taxa de cessão não é mais uma Installment.
     const portfolioAfter = await prisma.receivablePortfolio.findFirstOrThrow({
       where: { contractId: contract.id },
       include: { installments: true },
     });
-    expect(portfolioAfter.installments).toHaveLength(portfolioBefore.installments.length + 1);
-    const feeInstallment = portfolioAfter.installments.find((i) => i.sequence === maxSequenceBefore + 1)!;
-    expect(feeInstallment).toBeDefined();
-    expect(Number(feeInstallment.originalValue)).toBe(3500);
-    expect(feeInstallment.status).toBe("PENDING");
-    expect(feeInstallment.dueDate.toISOString().slice(0, 10)).toBe("2026-04-01");
-    expect(Number(portfolioAfter.totalValue)).toBe(totalBefore + 3500);
+    expect(portfolioAfter.installments).toHaveLength(portfolioBefore.installments.length);
+    expect(Number(portfolioAfter.totalValue)).toBe(totalBefore);
+
+    // Em vez disso, é um Receivable avulso, cobrado do cessionário, sem
+    // motor de correção (fora da carteira, nunca acumula juros/multa).
+    const receivable = await prisma.receivable.findUniqueOrThrow({ where: { contractAssignmentId: assignment.id } });
+    expect(receivable.category).toBe("ASSIGNMENT_FEE");
+    expect(Number(receivable.amount)).toBe(3500);
+    expect(receivable.status).toBe("PENDING");
+    expect(receivable.customerId).toBe(cessionario.id);
+    expect(receivable.developmentId).toBe(contract.developmentId);
+    expect(receivable.dueDate.toISOString().slice(0, 10)).toBe("2026-04-01");
   });
 });
 

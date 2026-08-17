@@ -22,6 +22,11 @@ export type ListCustomersParams = {
   pageSize?: number;
 };
 
+/** Lista simples pra selects (ex.: pagador de recebível avulso) — sem paginação, mesmo padrão de `listSuppliers`. */
+export function listCustomers(organizationId: string) {
+  return prisma.customer.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+
 export async function listCustomersPaged(organizationId: string, params: ListCustomersParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;

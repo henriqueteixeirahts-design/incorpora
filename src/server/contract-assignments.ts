@@ -3,12 +3,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
+import { createAssignmentFeeReceivable } from "@/server/receivables-avulsos";
 import type { AccessContext } from "@/server/auth-context";
 import type { Prisma } from "@/generated/prisma/client";
-
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
-}
 
 async function nextAssignmentSequence(tx: Prisma.TransactionClient, contractId: string) {
   const count = await tx.contractAssignment.count({ where: { contractId } });
@@ -96,16 +93,18 @@ export async function createAssignment(context: AccessContext, contractId: strin
  * cessionário. A carteira em si não é recriada nem recalculada — as
  * mesmas parcelas continuam existindo (o extrato do cedente "se encerra"
  * no sentido de que ele deixa de ser o titular a partir daqui; o histórico
- * de parcelas/pagamentos já lançados nunca é alterado ou apagado). Quando
- * há taxa de cessão, ela vira uma parcela nova na carteira existente —
- * não existe um lançamento financeiro avulso genérico no sistema além de
- * `Installment`.
+ * de parcelas/pagamentos já lançados nunca é alterado ou apagado). Quando há
+ * taxa de cessão, ela vira um recebível avulso (Fase B, Parte 4.3) cobrado
+ * do cessionário — NÃO uma parcela na carteira do imóvel: a taxa não é
+ * receita da venda e não deve acumular juros/multa contratuais como se
+ * fosse parcela de venda (pendência registrada desde a Fase A etapa 5,
+ * fechada aqui).
  */
 export async function signAssignment(context: AccessContext, assignmentId: string, signedDocumentPath?: string) {
   return prisma.$transaction(async (tx) => {
     const assignment = await tx.contractAssignment.findFirst({
       where: { id: assignmentId, organizationId: context.organizationId },
-      include: { contract: { include: { portfolio: { include: { installments: true } } } } },
+      include: { contract: { include: { development: { select: { speId: true } } } } },
     });
     if (!assignment) throw new Error("Cessão inválida.");
     if (assignment.status === "SIGNED") throw new Error("Cessão já assinada.");
@@ -125,21 +124,17 @@ export async function signAssignment(context: AccessContext, assignmentId: strin
       data: { customerId: assignment.newCustomerId },
     });
 
-    const portfolio = assignment.contract.portfolio;
-    if (portfolio && assignment.feeAmount && Number(assignment.feeAmount) > 0) {
-      const maxSequence = portfolio.installments.reduce((max, i) => Math.max(max, i.sequence), 0);
-      await tx.installment.create({
-        data: {
-          portfolioId: portfolio.id,
-          sequence: maxSequence + 1,
-          label: `Taxa de cessão (${assignment.assignmentNumber})`,
-          dueDate: assignment.assignmentDate,
-          originalValue: assignment.feeAmount,
-        },
-      });
-      await tx.receivablePortfolio.update({
-        where: { id: portfolio.id },
-        data: { totalValue: round2(Number(portfolio.totalValue) + Number(assignment.feeAmount)) },
+    if (assignment.feeAmount && Number(assignment.feeAmount) > 0) {
+      await createAssignmentFeeReceivable(tx, {
+        organizationId: context.organizationId,
+        developmentId: assignment.contract.developmentId,
+        speId: assignment.contract.development.speId,
+        customerId: assignment.newCustomerId,
+        origin: `Taxa de cessão (${assignment.assignmentNumber})`,
+        dueDate: assignment.assignmentDate,
+        amount: Number(assignment.feeAmount),
+        contractAssignmentId: assignment.id,
+        actorUserId: context.userId,
       });
     }
 

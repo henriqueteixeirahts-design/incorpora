@@ -5,8 +5,8 @@ import { resolvePayableDestinations } from "@/server/payable-allocations";
 
 export type CashFlowMonth = {
   month: string; // "YYYY-MM"
-  receivablesForecast: number; // parcelas com vencimento no mês (carteira)
-  receivablesRealized: number; // recebimentos efetivos lançados no mês
+  receivablesForecast: number; // parcelas da carteira + recebíveis avulsos com vencimento no mês
+  receivablesRealized: number; // recebimentos efetivos lançados no mês (carteira + avulsos)
   payablesForecast: number; // contas a pagar com vencimento no mês
   payablesRealized: number; // pagamentos efetivos lançados no mês
   netForecast: number;
@@ -14,10 +14,11 @@ export type CashFlowMonth = {
 };
 
 /**
- * Fluxo de caixa consolidado: soma a carteira a receber (Installment) já
- * existente desde a Sprint 6-7 com as contas a pagar desta sprint, sem
- * duplicar dados — cada fonte é somada por mês de vencimento (previsto) e
- * por mês do lançamento efetivo (realizado).
+ * Fluxo de caixa consolidado: soma a carteira a receber (Installment,
+ * Sprint 6-7) + recebíveis avulsos (Fase B, Parte 4.3) + contas a pagar
+ * (com rateio aplicado, Parte 4.2), sem duplicar dados — cada fonte é
+ * somada por mês de vencimento (previsto) e por mês do lançamento efetivo
+ * (realizado).
  */
 export async function getCashFlow(
   organizationId: string,
@@ -30,7 +31,7 @@ export async function getCashFlow(
   const rangeStart = new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
   const rangeEnd = new Date(today.getFullYear(), today.getMonth() + monthsForward + 1, 0);
 
-  const [installments, payments, payables] = await Promise.all([
+  const [installments, payments, payables, receivablesAvulsos] = await Promise.all([
     prisma.installment.findMany({
       where: {
         status: { not: "CANCELLED" },
@@ -69,6 +70,15 @@ export async function getCashFlow(
         developmentId: true,
         allocations: { select: { developmentId: true, amount: true } },
       },
+    }),
+    prisma.receivable.findMany({
+      where: {
+        organizationId,
+        status: { not: "CANCELLED" },
+        dueDate: { gte: rangeStart, lte: rangeEnd },
+        ...(options.developmentId ? { developmentId: options.developmentId } : {}),
+      },
+      select: { dueDate: true, amount: true, receivedAt: true, receivedAmount: true, status: true },
     }),
   ]);
 
@@ -109,6 +119,15 @@ export async function getCashFlow(
     if (payable.paidAt && payable.paidAmount) {
       const realizedBucket = buckets.get(monthKey(payable.paidAt));
       if (realizedBucket) realizedBucket.payablesRealized += allocatedAmount;
+    }
+  }
+  for (const receivable of receivablesAvulsos) {
+    const forecastBucket = buckets.get(monthKey(receivable.dueDate));
+    if (forecastBucket) forecastBucket.receivablesForecast += Number(receivable.amount);
+
+    if (receivable.receivedAt && receivable.receivedAmount) {
+      const realizedBucket = buckets.get(monthKey(receivable.receivedAt));
+      if (realizedBucket) realizedBucket.receivablesRealized += Number(receivable.receivedAmount);
     }
   }
 

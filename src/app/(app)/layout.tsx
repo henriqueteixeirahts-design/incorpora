@@ -58,6 +58,9 @@ export default async function AppLayout({
         <Link href="/payables" className="app-nav-link">
           Contas a pagar
         </Link>
+        <Link href="/receivables/avulsos" className="app-nav-link">
+          Recebíveis avulsos
+        </Link>
         <Link href="/cash-flow" className="app-nav-link">
           Fluxo de caixa
         </Link>
