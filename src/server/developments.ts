@@ -165,15 +165,16 @@ export async function deleteDevelopment(context: AccessContext, developmentId: s
   });
   if (!development) throw new Error("Empreendimento não encontrado.");
 
-  const [units, costCenters, payables] = await Promise.all([
+  const [units, costCenters, payables, payableAllocations] = await Promise.all([
     prisma.unit.count({ where: { developmentId } }),
     prisma.costCenter.count({ where: { developmentId } }),
     prisma.payable.count({ where: { developmentId } }),
+    prisma.payableAllocation.count({ where: { developmentId } }),
   ]);
-  const totalLinks = units + costCenters + payables;
+  const totalLinks = units + costCenters + payables + payableAllocations;
   if (totalLinks > 0) {
     throw new Error(
-      `Não é possível excluir: o empreendimento tem ${totalLinks} registro(s) vinculado(s) (unidades, centros de custo ou contas a pagar).`,
+      `Não é possível excluir: o empreendimento tem ${totalLinks} registro(s) vinculado(s) (unidades, centros de custo, contas a pagar ou rateios de despesa).`,
     );
   }
 

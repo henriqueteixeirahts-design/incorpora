@@ -13,6 +13,14 @@ import {
   type CreatePayableInput,
   type PayableItemInput,
 } from "@/server/payables";
+import {
+  setPayableAllocations,
+  listAllocationTemplates,
+  createAllocationTemplate,
+  deleteAllocationTemplate,
+  computeAllocationAmountsFromPercent,
+  type AllocationDestinationInput,
+} from "@/server/payable-allocations";
 import type { PayableCategory, DocumentCategory } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean; payableId?: string };
@@ -179,4 +187,78 @@ export async function deletePayableDocumentAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao remover anexo." };
   }
+}
+
+// --- Rateio de despesa entre empreendimentos (Fase B, Parte 4.2) ---
+
+export async function setPayableAllocationsAction(
+  payableId: string,
+  destinations: AllocationDestinationInput[],
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "payable", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await setPayableAllocations(context, payableId, destinations);
+    revalidatePath("/payables");
+    return { success: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao configurar o rateio." };
+  }
+}
+
+export async function listAllocationTemplatesAction() {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "payable", "VIEW")) return [];
+  return listAllocationTemplates(context.organizationId);
+}
+
+export async function createAllocationTemplateAction(
+  name: string,
+  destinations: { developmentId: string | null; percent: number }[],
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "payable", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await createAllocationTemplate(context, { name, destinations });
+    revalidatePath("/payables");
+    return { success: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar modelo de rateio." };
+  }
+}
+
+export async function deleteAllocationTemplateAction(
+  templateId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "payable", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteAllocationTemplate(context, templateId);
+    revalidatePath("/payables");
+    return { success: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover modelo de rateio." };
+  }
+}
+
+/** Aplica um modelo salvo contra o valor total da conta — cálculo no servidor pra garantir soma exata (mesmo rigor centavo a centavo dos itens). */
+export async function applyAllocationTemplateAction(
+  templateId: string,
+  amount: number,
+): Promise<{ error?: string; destinations?: AllocationDestinationInput[] }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "payable", "VIEW")) return { error: "Sem permissão." };
+
+  const templates = await listAllocationTemplates(context.organizationId);
+  const template = templates.find((t) => t.id === templateId);
+  if (!template) return { error: "Modelo de rateio não encontrado." };
+
+  const destinations = computeAllocationAmountsFromPercent(
+    amount,
+    template.destinations.map((d) => ({ developmentId: d.developmentId, percent: Number(d.percent) })),
+  );
+  return { destinations };
 }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { resolvePayableDestinations } from "@/server/payable-allocations";
 
 export type CashFlowMonth = {
   month: string; // "YYYY-MM"
@@ -56,11 +57,18 @@ export async function getCashFlow(
     prisma.payable.findMany({
       where: {
         organizationId,
-        developmentId: options.developmentId,
         status: { not: "CANCELLED" },
         dueDate: { gte: rangeStart, lte: rangeEnd },
       },
-      select: { dueDate: true, amount: true, paidAt: true, paidAmount: true, status: true },
+      select: {
+        dueDate: true,
+        amount: true,
+        paidAt: true,
+        paidAmount: true,
+        status: true,
+        developmentId: true,
+        allocations: { select: { developmentId: true, amount: true } },
+      },
     }),
   ]);
 
@@ -88,12 +96,19 @@ export async function getCashFlow(
     if (bucket) bucket.receivablesRealized += Number(payment.amount);
   }
   for (const payable of payables) {
+    const destinations = resolvePayableDestinations(payable);
+    const relevant = options.developmentId
+      ? destinations.filter((d) => d.developmentId === options.developmentId)
+      : destinations;
+    if (relevant.length === 0) continue;
+    const allocatedAmount = relevant.reduce((acc, d) => acc + d.amount, 0);
+
     const forecastBucket = buckets.get(monthKey(payable.dueDate));
-    if (forecastBucket) forecastBucket.payablesForecast += Number(payable.amount);
+    if (forecastBucket) forecastBucket.payablesForecast += allocatedAmount;
 
     if (payable.paidAt && payable.paidAmount) {
       const realizedBucket = buckets.get(monthKey(payable.paidAt));
-      if (realizedBucket) realizedBucket.payablesRealized += Number(payable.paidAmount);
+      if (realizedBucket) realizedBucket.payablesRealized += allocatedAmount;
     }
   }
 

@@ -72,6 +72,7 @@ model Organization {
   contractDistratos       ContractDistrato[]
   collectionContactLogs   CollectionContactLog[]
   renegotiationAgreements RenegotiationAgreement[]
+  allocationTemplates     AllocationTemplate[]
 
   @@map("organizations")
 }
@@ -946,6 +947,8 @@ model Development {
   distratoRule           DistratoRule?
   collectionRule         CollectionRule?
   renegotiationRule      RenegotiationRule?
+  payableAllocations     PayableAllocation[]
+  allocationTemplateDestinations AllocationTemplateDestination[]
 
   @@index([organizationId])
   @@index([speId])
@@ -2334,6 +2337,7 @@ model Payable {
   commissionSplit CommissionSplit?
   distrato        ContractDistrato?
   items           PayableItem[]
+  allocations     PayableAllocation[]
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])
@@ -2354,4 +2358,58 @@ model PayableItem {
 
   @@index([payableId])
   @@map("payable_items")
+}
+
+/// Rateio de uma conta a pagar entre N destinos (Fase B, Parte 4.2) —
+/// `developmentId` nulo = destino "Organização". Ausência de linhas aqui pra
+/// uma Payable = despesa 100% no `Payable.developmentId` (ou Organização, se
+/// nulo) — mantém toda conta lançada antes desta etapa válida sem migração
+/// de dados, exatamente como pedido na spec ("rateio de 100% num destino
+/// só"). `percent` fica nulo quando o destino foi lançado em valor fixo;
+/// `amount` é sempre o valor final calculado, pra toda agregação (relatórios,
+/// fluxo de caixa) somar direto sem recalcular percentual.
+model PayableAllocation {
+  id            String   @id @default(uuid()) @db.Uuid
+  payableId     String   @db.Uuid
+  developmentId String?  @db.Uuid
+  percent       Decimal? @db.Decimal(5, 2)
+  amount        Decimal  @db.Decimal(14, 2)
+  sequence      Int
+
+  payable     Payable      @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  development Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@index([payableId])
+  @@index([developmentId])
+  @@map("payable_allocations")
+}
+
+/// Modelo de rateio salvo pra reuso (ex.: "Administrativo 50/30/20") — só
+/// percentuais por destino; aplicar contra uma Payable recalcula os valores
+/// em cima do valor total daquela conta.
+model AllocationTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  destinations AllocationTemplateDestination[]
+
+  @@unique([organizationId, name])
+  @@map("allocation_templates")
+}
+
+model AllocationTemplateDestination {
+  id            String  @id @default(uuid()) @db.Uuid
+  templateId    String  @db.Uuid
+  developmentId String? @db.Uuid
+  percent       Decimal @db.Decimal(5, 2)
+  sequence      Int
+
+  template    AllocationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  development Development?       @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("allocation_template_destinations")
 }

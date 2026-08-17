@@ -10,11 +10,21 @@ import {
   getPayableDetailAction,
   uploadPayableDocumentAction,
   deletePayableDocumentAction,
+  setPayableAllocationsAction,
+  createAllocationTemplateAction,
+  applyAllocationTemplateAction,
   type FormState,
 } from "./actions";
 import type { Option } from "./payables-manager";
+import type { AllocationDestinationInput } from "@/server/payable-allocations";
 
 export type PayableDetail = NonNullable<Awaited<ReturnType<typeof getPayableDetailAction>>>;
+
+export type AllocationTemplateOption = {
+  id: string;
+  name: string;
+  destinations: { developmentId: string | null; developmentName: string | null; percent: number }[];
+};
 
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "CONSTRUCTION", label: "Construtora" },
@@ -76,6 +86,7 @@ export function PayableModal({
   spes,
   suppliers,
   costCenters,
+  allocationTemplates,
   onClose,
   onCreated,
 }: {
@@ -85,6 +96,7 @@ export function PayableModal({
   spes: Option[];
   suppliers: Option[];
   costCenters: Option[];
+  allocationTemplates: AllocationTemplateOption[];
   onClose: () => void;
   onCreated: (payable: PayableDetail) => void;
 }) {
@@ -125,6 +137,12 @@ export function PayableModal({
 
   const tabs: TabDef[] = [
     { id: "dados", label: "Dados" },
+    {
+      id: "rateio",
+      label: "Rateio",
+      disabled: dependentTabsDisabled,
+      disabledHint: "Salve a conta primeiro.",
+    },
     { id: "itens", label: "Itens" },
     { id: "pagamento", label: "Pagamento" },
     {
@@ -335,6 +353,17 @@ export function PayableModal({
 
         {state.error ? <p className="error-text">{state.error}</p> : null}
       </form>
+
+      <div hidden={activeTab !== "rateio"}>
+        {isEditing ? (
+          <AllocationsTab
+            payable={payable!}
+            developments={developments}
+            allocationTemplates={allocationTemplates}
+            onUpdated={onCreated}
+          />
+        ) : null}
+      </div>
 
       <div hidden={activeTab !== "anexos"}>
         {isEditing ? <DocumentsTab payable={payable!} onUpdated={onCreated} /> : null}
@@ -578,6 +607,328 @@ function ApprovalHistory({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+type AllocationRow = { developmentId: string | null; percent: string; amount: string };
+
+function formatMoney(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function AllocationsTab({
+  payable,
+  developments,
+  allocationTemplates,
+  onUpdated,
+}: {
+  payable: PayableDetail;
+  developments: Option[];
+  allocationTemplates: AllocationTemplateOption[];
+  onUpdated: (payable: PayableDetail) => void;
+}) {
+  const total = Number(payable.amount);
+  const isLocked = payable.status !== "ENTERED";
+  const hasAllocations = payable.allocations.length > 0;
+
+  const [editing, setEditing] = useState(hasAllocations);
+  const [rows, setRows] = useState<AllocationRow[]>(
+    payable.allocations.map((a) => ({
+      developmentId: a.developmentId,
+      percent: a.percent !== null ? String(a.percent) : "",
+      amount: String(a.amount),
+    })),
+  );
+  const [templateId, setTemplateId] = useState("");
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const sum = rows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
+
+  async function refresh() {
+    const detail = await getPayableDetailAction(payable.id);
+    if (detail) onUpdated(detail);
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, { developmentId: null, percent: "", amount: "" }]);
+  }
+
+  function removeRow(index: number) {
+    setRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateRow(index: number, patch: Partial<AllocationRow>) {
+    setRows((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        const next = { ...row, ...patch };
+        // Digitar o percentual recalcula o valor automaticamente — o usuário
+        // ainda pode sobrescrever o valor à mão depois (modo "valor fixo").
+        if (patch.percent !== undefined) {
+          const pct = Number(patch.percent);
+          next.amount = Number.isNaN(pct) ? next.amount : String(Math.round(total * pct) / 100);
+        }
+        return next;
+      }),
+    );
+  }
+
+  async function handleApplyTemplate(id: string) {
+    setTemplateId(id);
+    if (!id) return;
+    setBusy(true);
+    setError(null);
+    const result = await applyAllocationTemplateAction(id, total);
+    setBusy(false);
+    if (result.error || !result.destinations) {
+      setError(result.error ?? "Falha ao aplicar modelo.");
+      return;
+    }
+    setRows(
+      result.destinations.map((d) => ({
+        developmentId: d.developmentId,
+        percent: d.percent !== null && d.percent !== undefined ? String(d.percent) : "",
+        amount: String(d.amount),
+      })),
+    );
+  }
+
+  async function handleSave() {
+    setError(null);
+    const destinations: AllocationDestinationInput[] = rows.map((row) => ({
+      developmentId: row.developmentId,
+      percent: row.percent.trim() ? Number(row.percent) : null,
+      amount: Number(row.amount),
+    }));
+
+    setBusy(true);
+    const result = await setPayableAllocationsAction(payable.id, destinations);
+    if (result.error) {
+      setBusy(false);
+      setError(result.error);
+      return;
+    }
+
+    if (saveAsTemplate && templateName.trim()) {
+      const percentDestinations = rows.map((row) => ({
+        developmentId: row.developmentId,
+        percent: row.percent.trim() ? Number(row.percent) : Math.round((Number(row.amount) / total) * 10000) / 100,
+      }));
+      const templateResult = await createAllocationTemplateAction(templateName.trim(), percentDestinations);
+      if (templateResult.error) {
+        setBusy(false);
+        setError(`Rateio salvo, mas o modelo não foi salvo: ${templateResult.error}`);
+        await refresh();
+        return;
+      }
+    }
+
+    setBusy(false);
+    setEditing(false);
+    await refresh();
+  }
+
+  async function handleRemove() {
+    if (!confirm("Remover o rateio? A conta volta a ser 100% no empreendimento único.")) return;
+    setBusy(true);
+    const result = await setPayableAllocationsAction(payable.id, []);
+    setBusy(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setRows([]);
+    setEditing(false);
+    await refresh();
+  }
+
+  if (!editing) {
+    return (
+      <div className="field-section">
+        <h3>Rateio</h3>
+        {hasAllocations ? (
+          <>
+            <table className="data-table" style={{ marginBottom: "0.75rem" }}>
+              <thead>
+                <tr>
+                  <th>Destino</th>
+                  <th>%</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payable.allocations.map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.development?.name ?? "Organização"}</td>
+                    <td>{a.percent !== null ? `${a.percent}%` : "—"}</td>
+                    <td>{formatMoney(Number(a.amount))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p className="field-hint">Sem rateio configurado — 100% em {payable.development?.name ?? "Organização"}.</p>
+        )}
+        {!isLocked ? (
+          <div className="row-actions">
+            <button type="button" className="secondary" onClick={() => setEditing(true)}>
+              {hasAllocations ? "Editar rateio" : "Configurar rateio"}
+            </button>
+            {hasAllocations ? (
+              <button type="button" className="secondary" disabled={busy} onClick={handleRemove}>
+                Remover rateio
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="field-section">
+      <h3>Rateio</h3>
+      <p className="field-hint">
+        Divida o valor total ({formatMoney(total)}) entre N destinos (empreendimentos e/ou organização), por
+        percentual ou valor fixo — a soma precisa bater exato com o valor total.
+      </p>
+
+      {allocationTemplates.length > 0 ? (
+        <div className="field" style={{ maxWidth: 320 }}>
+          <label htmlFor="allocation-template">Aplicar modelo salvo</label>
+          <select
+            id="allocation-template"
+            value={templateId}
+            onChange={(e) => handleApplyTemplate(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">Selecione...</option>
+            {allocationTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <table className="data-table" style={{ marginTop: "0.75rem", marginBottom: "0.75rem" }}>
+        <thead>
+          <tr>
+            <th>Destino</th>
+            <th style={{ width: 110 }}>%</th>
+            <th style={{ width: 150 }}>Valor (R$)</th>
+            <th aria-label="Ações" style={{ width: 40 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td>
+                <select
+                  value={row.developmentId ?? ""}
+                  onChange={(e) => updateRow(index, { developmentId: e.target.value || null })}
+                >
+                  <option value="">Organização</option>
+                  {developments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={row.percent}
+                  onChange={(e) => updateRow(index, { percent: e.target.value })}
+                  placeholder="—"
+                />
+              </td>
+              <td>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={row.amount}
+                  onChange={(e) => updateRow(index, { amount: e.target.value, percent: "" })}
+                />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  aria-label={`Remover destino ${index + 1}`}
+                  onClick={() => removeRow(index)}
+                >
+                  <TrashIcon />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="field-hint">
+        Soma: {formatMoney(sum)} de {formatMoney(total)}
+        {Math.round(sum * 100) === Math.round(total * 100) ? " — fecha certo." : " — ainda não fecha."}
+      </p>
+
+      <button type="button" className="secondary" onClick={addRow} style={{ marginBottom: "0.75rem" }}>
+        + Adicionar destino
+      </button>
+
+      <div className="field-section" style={{ marginTop: 0 }}>
+        <div className="field" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            id="save-as-template"
+            type="checkbox"
+            checked={saveAsTemplate}
+            onChange={(e) => setSaveAsTemplate(e.target.checked)}
+          />
+          <label htmlFor="save-as-template" style={{ margin: 0 }}>
+            Salvar este rateio como modelo pra reuso
+          </label>
+        </div>
+        {saveAsTemplate ? (
+          <input
+            placeholder='Nome do modelo (ex.: "Administrativo 50/30/20")'
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            style={{ marginTop: "0.5rem" }}
+          />
+        ) : null}
+      </div>
+
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <div className="row-actions">
+        <button type="button" disabled={busy} onClick={handleSave}>
+          {busy ? "Salvando..." : "Salvar rateio"}
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setRows(
+              payable.allocations.map((a) => ({
+                developmentId: a.developmentId,
+                percent: a.percent !== null ? String(a.percent) : "",
+                amount: String(a.amount),
+              })),
+            );
+            setEditing(false);
+            setError(null);
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

@@ -57,7 +57,14 @@ function payablesWhere(organizationId: string, params: ListPayablesFilters): Pri
   return {
     organizationId,
     ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
-    ...(params.developmentId ? { developmentId: params.developmentId } : {}),
+    ...(params.developmentId
+      ? {
+          OR: [
+            { developmentId: params.developmentId, allocations: { none: {} } },
+            { allocations: { some: { developmentId: params.developmentId } } },
+          ],
+        }
+      : {}),
     ...(params.speId ? { speId: params.speId } : {}),
     ...(params.supplierId ? { supplierId: params.supplierId } : {}),
     ...(params.costCenterId ? { costCenterId: params.costCenterId } : {}),
@@ -97,7 +104,13 @@ export async function listPayablesPaged(organizationId: string, params: ListPaya
   const [items, total] = await Promise.all([
     prisma.payable.findMany({
       where,
-      include: { development: true, spe: true, supplier: true, costCenter: true },
+      include: {
+        development: true,
+        spe: true,
+        supplier: true,
+        costCenter: true,
+        allocations: { include: { development: true }, orderBy: { sequence: "asc" } },
+      },
       orderBy: { [sortBy]: sortDir },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -115,7 +128,13 @@ export function listPayablesForExport(organizationId: string, params: ListPayabl
   const sortDir = params.sortDir ?? "asc";
   return prisma.payable.findMany({
     where,
-    include: { development: true, spe: true, supplier: true, costCenter: true },
+    include: {
+      development: true,
+      spe: true,
+      supplier: true,
+      costCenter: true,
+      allocations: { include: { development: true }, orderBy: { sequence: "asc" } },
+    },
     orderBy: { [sortBy]: sortDir },
   });
 }
@@ -135,6 +154,7 @@ export async function getPayableDetail(organizationId: string, payableId: string
       supplier: true,
       costCenter: true,
       items: { orderBy: { sequence: "asc" } },
+      allocations: { include: { development: true }, orderBy: { sequence: "asc" } },
     },
   });
   if (!payable) return null;

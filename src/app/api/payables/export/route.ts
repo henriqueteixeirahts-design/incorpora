@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     "Valor",
     "Status",
     "Documento fiscal",
+    "Rateio",
   ];
 
   const rows = items.map((payable) => [
@@ -64,6 +65,11 @@ export async function GET(request: NextRequest) {
     Number(payable.amount).toFixed(2).replace(".", ","),
     STATUS_LABELS[payable.status] ?? payable.status,
     payable.fiscalDocument ?? "",
+    payable.allocations.length > 0
+      ? payable.allocations
+          .map((a) => `${a.development?.name ?? "Organização"}: ${Number(a.amount).toFixed(2).replace(".", ",")}`)
+          .join(" | ")
+      : "",
   ]);
 
   const csv = [header, ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(";")).join("\n");

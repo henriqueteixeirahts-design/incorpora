@@ -2,9 +2,11 @@ import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listSuppliersPaged, listCostCentersPaged, type SupplierSortField, type CostCenterSortField } from "@/server/finance-setup";
 import { listBankAccountsPaged, type BankAccountSortField } from "@/server/bank-accounts";
 import { listDevelopments } from "@/server/developments";
+import { listAllocationTemplates } from "@/server/payable-allocations";
 import { SuppliersManager } from "./suppliers-manager";
 import { CostCentersManager } from "./cost-centers-manager";
 import { BankAccountsManager } from "./bank-accounts-manager";
+import { AllocationTemplatesManager } from "./allocation-templates-manager";
 
 const PAGE_SIZE = 20;
 
@@ -31,7 +33,7 @@ export default async function FinanceSetupPage({
   const bSortDir = params.bdir === "desc" ? "desc" : "asc";
   const bPage = Math.max(1, Number(params.bpage) || 1);
 
-  const [suppliersResult, costCentersResult, bankAccountsResult, developments] = await Promise.all([
+  const [suppliersResult, costCentersResult, bankAccountsResult, developments, allocationTemplates] = await Promise.all([
     listSuppliersPaged(context.organizationId, {
       search: spSearch,
       sortBy: spSortBy,
@@ -54,6 +56,7 @@ export default async function FinanceSetupPage({
       pageSize: PAGE_SIZE,
     }),
     listDevelopments(context.organizationId),
+    listAllocationTemplates(context.organizationId),
   ]);
 
   const canCreateSupplier = hasPermission(context, "supplier", "CREATE");
@@ -121,6 +124,21 @@ export default async function FinanceSetupPage({
           canCreate={canCreateBankAccount}
           canEdit={canEditBankAccount}
           canDelete={canDeleteBankAccount}
+        />
+      </section>
+
+      <section style={{ marginTop: "2.5rem" }}>
+        <h2 style={{ fontSize: "1.1rem" }}>Modelos de rateio de despesa</h2>
+        <AllocationTemplatesManager
+          templates={allocationTemplates.map((t) => ({
+            id: t.id,
+            name: t.name,
+            destinations: t.destinations.map((d) => ({
+              developmentName: d.development?.name ?? null,
+              percent: Number(d.percent),
+            })),
+          }))}
+          canDelete={hasPermission(context, "payable", "EDIT")}
         />
       </section>
     </>

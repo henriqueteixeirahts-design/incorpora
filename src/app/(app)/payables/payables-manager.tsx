@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { EditIcon, SortIcon } from "@/components/icons";
 import { advancePayableStatusAction, cancelPayableAction, getPayableDetailAction } from "./actions";
-import { PayableModal, type PayableDetail } from "./payable-modal";
+import { PayableModal, type PayableDetail, type AllocationTemplateOption } from "./payable-modal";
 import { PayablesFiltersForm, type PayableFiltersValue } from "./payables-filters-form";
 import type { PayableSortField } from "@/server/payables";
 
@@ -31,6 +31,7 @@ export type PayableRow = {
   description: string;
   category: string;
   developmentName: string | null;
+  allocationCount: number;
   dueDate: string;
   amount: number;
   status: string;
@@ -70,6 +71,7 @@ export function PayablesManager({
   filters,
   pendingApprovalOnly,
   exportHref,
+  allocationTemplates,
 }: {
   payables: PayableRow[];
   developments: Option[];
@@ -89,6 +91,7 @@ export function PayablesManager({
   filters: PayableFiltersValue;
   pendingApprovalOnly: boolean;
   exportHref: string;
+  allocationTemplates: AllocationTemplateOption[];
 }) {
   const [modal, setModal] = useState<ModalState>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -198,7 +201,11 @@ export function PayablesManager({
               <td>{new Date(payable.dueDate).toLocaleDateString("pt-BR")}</td>
               <td>{formatCurrency(payable.amount)}</td>
               <td>{STATUS_LABELS[payable.status] ?? payable.status}</td>
-              <td>{payable.developmentName ?? "Organização"}</td>
+              <td>
+                {payable.allocationCount > 1
+                  ? `Rateado (${payable.allocationCount} destinos)`
+                  : (payable.developmentName ?? "Organização")}
+              </td>
               <td>
                 <div className="row-actions">
                   {canEdit ? (
@@ -255,6 +262,7 @@ export function PayablesManager({
           spes={spes}
           suppliers={suppliers}
           costCenters={costCenters}
+          allocationTemplates={allocationTemplates}
           onClose={() => setModal(null)}
           onCreated={(payable) => setModal({ mode: "edit", payable })}
         />

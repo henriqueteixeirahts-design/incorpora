@@ -1,5 +1,6 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listPayablesPaged, countPendingApproval, type PayableSortField } from "@/server/payables";
+import { listAllocationTemplates } from "@/server/payable-allocations";
 import { listSuppliers, listCostCenters } from "@/server/finance-setup";
 import { listDevelopments } from "@/server/developments";
 import { listSpes } from "@/server/spes";
@@ -36,21 +37,23 @@ export default async function PayablesPage({
     pendingApprovalOnly,
   };
 
-  const [{ items, total }, suppliers, costCenters, developments, spes, pendingCount] = await Promise.all([
-    listPayablesPaged(context.organizationId, {
-      search,
-      sortBy,
-      sortDir,
-      page,
-      pageSize: PAGE_SIZE,
-      ...filters,
-    }),
-    listSuppliers(context.organizationId),
-    listCostCenters(context.organizationId),
-    listDevelopments(context.organizationId),
-    listSpes(context.organizationId),
-    countPendingApproval(context.organizationId),
-  ]);
+  const [{ items, total }, suppliers, costCenters, developments, spes, pendingCount, allocationTemplates] =
+    await Promise.all([
+      listPayablesPaged(context.organizationId, {
+        search,
+        sortBy,
+        sortDir,
+        page,
+        pageSize: PAGE_SIZE,
+        ...filters,
+      }),
+      listSuppliers(context.organizationId),
+      listCostCenters(context.organizationId),
+      listDevelopments(context.organizationId),
+      listSpes(context.organizationId),
+      countPendingApproval(context.organizationId),
+      listAllocationTemplates(context.organizationId),
+    ]);
 
   const canCreate = hasPermission(context, "payable", "CREATE");
   const canEdit = hasPermission(context, "payable", "EDIT");
@@ -80,6 +83,7 @@ export default async function PayablesPage({
           description: p.description,
           category: p.category,
           developmentName: p.development?.name ?? null,
+          allocationCount: p.allocations.length,
           dueDate: p.dueDate.toISOString(),
           amount: Number(p.amount),
           status: p.status,
@@ -112,6 +116,15 @@ export default async function PayablesPage({
         }}
         pendingApprovalOnly={pendingApprovalOnly}
         exportHref={`/api/payables/export${exportQs.toString() ? `?${exportQs.toString()}` : ""}`}
+        allocationTemplates={allocationTemplates.map((t) => ({
+          id: t.id,
+          name: t.name,
+          destinations: t.destinations.map((d) => ({
+            developmentId: d.developmentId,
+            developmentName: d.development?.name ?? null,
+            percent: Number(d.percent),
+          })),
+        }))}
       />
     </>
   );

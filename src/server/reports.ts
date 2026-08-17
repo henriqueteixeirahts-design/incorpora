@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { getCashFlow } from "@/server/cash-flow";
+import { resolvePayableDestinations } from "@/server/payable-allocations";
 
 // Relatórios executivos (Sprint 9, PRD seção 22 e 28). Reaproveitam os dados
 // já modelados nas sprints anteriores — nenhuma tabela nova. "Mapa de vendas"
@@ -104,23 +105,42 @@ export async function getReceivablesSummary(organizationId: string, developmentI
   };
 }
 
+/**
+ * Soma contas a pagar por status — quando `developmentId` é passado, soma só
+ * a fração rateada pra aquele empreendimento (Fase B, Parte 4.2), nunca o
+ * valor cheio da conta; sem `developmentId` (visão da organização inteira) a
+ * soma de todos os destinos de uma conta sempre fecha no valor total, então
+ * o resultado bate com o comportamento anterior ao rateio.
+ */
 export async function getPayablesSummary(organizationId: string, developmentId?: string) {
   const payables = await prisma.payable.findMany({
-    where: { organizationId, developmentId, status: { not: "CANCELLED" } },
-    select: { amount: true, paidAmount: true, status: true },
+    where: { organizationId, status: { not: "CANCELLED" } },
+    select: {
+      amount: true,
+      paidAmount: true,
+      status: true,
+      developmentId: true,
+      allocations: { select: { developmentId: true, amount: true } },
+    },
   });
 
-  const totalPaid = payables
-    .filter((p) => p.status === "PAID" || p.status === "RECONCILED")
-    .reduce((sum, p) => sum + Number(p.paidAmount ?? p.amount), 0);
-  const totalPending = payables
-    .filter((p) => p.status !== "PAID" && p.status !== "RECONCILED")
-    .reduce((sum, p) => sum + Number(p.amount), 0);
+  let totalPaid = 0;
+  let totalPending = 0;
+  let count = 0;
+  for (const payable of payables) {
+    const destinations = resolvePayableDestinations(payable);
+    const relevant = developmentId ? destinations.filter((d) => d.developmentId === developmentId) : destinations;
+    if (relevant.length === 0) continue;
+    const sum = relevant.reduce((acc, d) => acc + d.amount, 0);
+    count += 1;
+    if (payable.status === "PAID" || payable.status === "RECONCILED") totalPaid += sum;
+    else totalPending += sum;
+  }
 
   return {
     totalPaid: round2(totalPaid),
     totalPending: round2(totalPending),
-    count: payables.length,
+    count,
   };
 }
 
