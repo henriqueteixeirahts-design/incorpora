@@ -1,0 +1,186 @@
+/* INCORPORA — Design tokens
+   TSH Incorporadora · direção aprovada 1a/3b
+   Fonte da verdade: brandbook TSH 2.0 (Azul #445C6C, Marrom #4F3F42,
+   Dourado #B19B72, Bege #FFF2E0, Azul Claro #8ABDDD, tipografia Inter). */
+
+:root {
+  /* ---------- Marca ---------- */
+  --inc-brand-azul: #445c6c;
+  --inc-brand-azul-claro: #8abddd;
+  --inc-brand-marrom: #4f3f42;
+  --inc-brand-dourado: #b19b72;
+  --inc-brand-bege: #fff2e0;
+
+  /* Derivados de marca (usar só onde indicado) */
+  --inc-azul-900: #2f4250;  /* texto sobre azul claro */
+  --inc-azul-700: #3a4e5c;  /* painel secundário da navegação */
+  --inc-azul-600: #445c6c;  /* = brand azul */
+  --inc-azul-400: #3c5a6b;  /* texto informativo */
+
+  /* ---------- Superfícies ---------- */
+  --inc-canvas: #fbf8f2;        /* fundo da área de conteúdo */
+  --inc-surface: #ffffff;       /* cartões e tabelas */
+  --inc-surface-subtle: #faf8f4;/* cabeçalho de tabela, rodapé de cartão */
+  --inc-surface-alt: #fdfcfa;   /* input desabilitado, chip neutro */
+  --inc-surface-hover: #fdfbf7; /* hover de linha de tabela */
+  --inc-surface-photo: #f2ece1; /* placeholder de imagem */
+
+  /* ---------- Bordas ---------- */
+  --inc-border-card: #e6dfd3;    /* contorno de cartão/tabela */
+  --inc-border-control: #ded7cb; /* inputs e botões secundários */
+  --inc-border-divider: #eee7db; /* divisória de cabeçalho */
+  --inc-border-row: #f3ede2;     /* divisória de linha */
+  --inc-border-faint: #f0ece4;   /* divisória interna leve */
+  --inc-border-dashed: #d8d0c2;  /* estados de convite/vazio */
+
+  /* ---------- Texto ---------- */
+  --inc-text: #3d3a34;         /* títulos de linha, corpo forte */
+  --inc-text-body: #4a453d;    /* corpo */
+  --inc-text-secondary: #6b655c;
+  --inc-text-muted: #7a7367;   /* rótulos 10,5–12px (contraste mínimo 3:1) */
+  --inc-text-soft: #8a8378;    /* apoio 12,5px+ */
+  --inc-text-placeholder: #a8a094;
+  --inc-text-on-azul: #fff2e0;
+
+  /* ---------- Navegação (sidebar) ---------- */
+  --inc-nav-bg: #445c6c;
+  --inc-nav-panel-bg: #3a4e5c;
+  --inc-nav-item: #d9e6ef;
+  --inc-nav-subitem: #c9dae5;
+  --inc-nav-active-bg: #fff2e0;
+  --inc-nav-active-text: #445c6c;
+  --inc-nav-hover-bg: rgba(255, 242, 224, 0.12);
+  --inc-nav-subactive-bg: rgba(255, 242, 224, 0.18);
+  --inc-nav-divider: rgba(255, 242, 224, 0.16);
+  --inc-nav-rail: rgba(138, 189, 221, 0.45);
+  --inc-nav-caption: #7f9cae;
+
+  /* ---------- Semântica ---------- */
+  --inc-success: #5d8a52;
+  --inc-success-text: #4a6a45;
+  --inc-success-bg: #eef4ea;
+  --inc-success-border: #cfdcc6;
+
+  --inc-warning: #b19b72;
+  --inc-warning-text: #8a7340;
+  --inc-warning-bg: #f7f0e2;
+  --inc-warning-border: #e6d8b8;
+
+  --inc-danger: #9c5f4e;
+  --inc-danger-bg: #f7ecea;
+
+  --inc-info-text: #3c5a6b;
+  --inc-info-bg: #eaf1f6;
+  --inc-info-border: #c9dae5;
+
+  --inc-neutral-text: #6b5457;
+  --inc-neutral-bg: #f2ecec;
+  --inc-neutral-border: #d9cbcb;
+
+  /* ---------- Status de unidade (espelho de vendas) ---------- */
+  --inc-unit-disponivel-bg: #8abddd;
+  --inc-unit-disponivel-fg: #2f4250;
+  --inc-unit-reservado-bg: #b19b72;
+  --inc-unit-reservado-fg: #2f2a25;
+  --inc-unit-vendido-bg: #445c6c;
+  --inc-unit-vendido-fg: #fff2e0;
+  --inc-unit-permuta-bg: #4f3f42;
+  --inc-unit-permuta-fg: #fff2e0;
+  --inc-unit-bloqueado-bg: #d8d2c6;
+  --inc-unit-bloqueado-fg: #6b655c;
+
+  /* ---------- Tipografia ---------- */
+  --inc-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --inc-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --inc-fs-overline: 10.5px; /* cabeçalho de tabela, eyebrow */
+  --inc-fs-micro: 11px;
+  --inc-fs-caption: 11.5px;
+  --inc-fs-xs: 12px;
+  --inc-fs-sm: 12.5px;
+  --inc-fs-base: 13px;       /* corpo padrão de tabela e controle */
+  --inc-fs-md: 13.5px;       /* corpo de leitura, item de menu */
+  --inc-fs-lg: 14px;
+  --inc-fs-card-title: 15px;
+  --inc-fs-section: 16px;
+  --inc-fs-metric-sm: 20px;
+  --inc-fs-metric: 25px;
+  --inc-fs-metric-lg: 29px;
+  --inc-fs-h1: 30px;
+  --inc-fs-display: 32px;
+
+  --inc-fw-regular: 400;
+  --inc-fw-medium: 500;
+  --inc-fw-semibold: 600;
+
+  --inc-lh-tight: 1.2;
+  --inc-lh-normal: 1.45;
+  --inc-lh-prose: 1.55;
+
+  --inc-ls-display: -0.02em; /* h1 e métricas */
+  --inc-ls-tight: -0.01em;
+  --inc-ls-overline: 0.1em;  /* cabeçalho de tabela */
+  --inc-ls-eyebrow: 0.16em;  /* eyebrow acima do h1 */
+  --inc-ls-brand: 0.22em;    /* "INCORPORA" sob o logo */
+
+  /* ---------- Espaçamento (base 2px) ---------- */
+  --inc-space-1: 2px;
+  --inc-space-2: 4px;
+  --inc-space-3: 6px;
+  --inc-space-4: 8px;
+  --inc-space-5: 10px;
+  --inc-space-6: 12px;
+  --inc-space-7: 14px;
+  --inc-space-8: 16px;
+  --inc-space-9: 18px;
+  --inc-space-10: 20px;
+  --inc-space-11: 22px;
+  --inc-space-12: 26px;
+  --inc-space-13: 28px;
+  --inc-space-14: 30px;
+  --inc-space-15: 32px;
+  --inc-space-16: 40px;
+
+  /* Gutters canônicos */
+  --inc-gutter-page: 30px;   /* padding lateral do conteúdo */
+  --inc-gutter-card: 20px;   /* padding interno de cartão */
+  --inc-gap-grid: 18px;      /* gap entre cartões */
+  --inc-gap-kpi: 16px;
+
+  /* ---------- Raio ---------- */
+  --inc-radius-0: 0;      /* tabelas e cartões grandes: canto reto */
+  --inc-radius-1: 2px;    /* célula de unidade, chip de status */
+  --inc-radius-2: 3px;    /* botões, inputs, itens de menu */
+  --inc-radius-pill: 999px;
+  --inc-radius-round: 50%;
+
+  /* ---------- Elevação ---------- */
+  /* A interface é plana: hierarquia por borda e superfície, não por sombra.
+     Sombra só em camadas que flutuam sobre o app. */
+  --inc-shadow-none: none;
+  --inc-shadow-frame: 0 24px 60px -20px rgba(68, 92, 108, 0.35);
+  --inc-shadow-overlay: 0 24px 60px -20px rgba(68, 92, 108, 0.35);
+  --inc-shadow-popover: 0 10px 24px -8px rgba(68, 92, 108, 0.28);
+  --inc-overlay-scrim: rgba(47, 42, 37, 0.45);
+
+  /* ---------- Foco ---------- */
+  --inc-focus-ring: 0 0 0 3px rgba(138, 189, 221, 0.5);
+  --inc-focus-ring-dark: 0 0 0 3px rgba(255, 242, 224, 0.35);
+
+  /* ---------- Alturas e larguras fixas ---------- */
+  --inc-control-h: 34px;      /* padrão */
+  --inc-control-h-sm: 30px;   /* filtro secundário dentro de cartão */
+  --inc-control-h-lg: 38px;   /* ação principal de estado vazio */
+  --inc-header-h: 58px;       /* barra superior */
+  --inc-sidebar-w: 262px;
+  --inc-sidebar-panel-w: 248px;
+  --inc-row-h: 46px;          /* linha de tabela densa */
+  --inc-row-h-lg: 52px;       /* linha com duas informações */
+  --inc-unit-cell-h: 46px;    /* célula do espelho com nº + m² */
+
+  /* ---------- Movimento ---------- */
+  --inc-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --inc-dur-fast: 120ms;
+  --inc-dur: 180ms;
+  --inc-dur-slow: 260ms;
+}

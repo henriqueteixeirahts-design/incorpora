@@ -40,19 +40,6 @@ export default async function DevelopmentDetailPage({
       <p style={{ opacity: 0.7 }}>
         {development.spe.name} · {[development.city, development.state].filter(Boolean).join("/")}
       </p>
-      <p style={{ marginTop: "0.5rem", display: "flex", gap: "1rem" }}>
-        <Link href={`/developments/${id}/map`}>Espelho de vendas →</Link>
-        <Link href={`/developments/${id}/sales-tables`}>Tabelas de venda →</Link>
-        <Link href={`/developments/${id}/commercial`}>Comercial →</Link>
-        <Link href={`/developments/${id}/exchange-contracts`}>Permuta →</Link>
-        <Link href={`/developments/${id}/reservation-rules`}>Regras de reserva →</Link>
-        <Link href={`/developments/${id}/proposal-evaluation-rules`}>Avaliação de propostas →</Link>
-        <Link href={`/developments/${id}/commission-release-rule`}>Liberação de comissão →</Link>
-        <Link href={`/developments/${id}/distrato-rule`}>Regra de distrato →</Link>
-        <Link href={`/developments/${id}/collection-rule`}>Régua de cobrança →</Link>
-        <Link href={`/developments/${id}/renegotiation-rule`}>Renegociação de parcelas →</Link>
-      </p>
-
       <section style={{ marginTop: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Torres e pavimentos</h2>
         <ul>

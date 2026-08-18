@@ -1,20 +1,34 @@
-:root {
-  /* Paleta oficial TSH (Brandbook v.1.0) */
-  --tsh-blue: #445c6c;
-  --tsh-blue-light: #8abddd;
-  --tsh-brown: #4f3f42;
-  --tsh-gold: #b19b72;
-  --tsh-beige: #fff2e0;
+/* Direção visual INCORPORA (docs/visual/design_handoff_incorpora) — tokens
+   e componentes .inc- importados como estão (README: "podem entrar no
+   projeto como estão"). As variáveis legadas (tsh-, background,
+   foreground etc.) abaixo passam a apontar pros tokens inc- em vez de
+   duplicar valores: unifica o sistema em vez de manter duas paletas
+   paralelas — as ~40 telas ainda não migradas pra .inc- continuam
+   funcionando com as mesmas variáveis de sempre, só que lendo da fonte
+   única agora. */
+@import "./inc-tokens.css";
+@import "./inc-components.css";
 
-  --background: #ffffff;
-  --surface: var(--tsh-beige);
+:root {
+  /* Paleta oficial TSH — agora um alias direto dos tokens de marca */
+  --tsh-blue: var(--inc-brand-azul);
+  --tsh-blue-light: var(--inc-brand-azul-claro);
+  --tsh-brown: var(--inc-brand-marrom);
+  --tsh-gold: var(--inc-brand-dourado);
+  --tsh-beige: var(--inc-brand-bege);
+
+  --background: var(--inc-canvas);
+  --surface: var(--inc-surface);
   --foreground: var(--tsh-blue);
   --accent: var(--tsh-blue-light);
-  --border-color: color-mix(in srgb, var(--tsh-blue) 18%, transparent);
+  --border-color: var(--inc-border-control);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    /* A direção aprovada é só tema claro (README) — o app ainda oferece um
+       fallback escuro básico pra quem usa dark mode do SO, sem tokens
+       dedicados do handoff (que não definem variante escura). */
     --background: #1b262c;
     --surface: #24333b;
     --foreground: #eef2f4;
