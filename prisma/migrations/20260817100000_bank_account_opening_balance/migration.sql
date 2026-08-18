@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "bank_accounts" ADD COLUMN     "openingBalance" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "openingBalanceDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

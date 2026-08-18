@@ -549,19 +549,24 @@ enum BankAccountStatus {
 /// duplicação quando SPEs compartilham banco e prepara a conciliação
 /// bancária da Fase 2. Ver docs/ESPEC_CADASTRO_SPE.md, aba 3.
 model BankAccount {
-  id             String            @id @default(uuid()) @db.Uuid
-  organizationId String            @db.Uuid
-  bankCode       String? // código FEBRABAN, quando identificável
-  bankName       String // nome do banco (ou "código - nome" quando digitado via sugestão)
-  agency         String // agência, com dígito
-  account        String // conta, com dígito
-  type           BankAccountType
-  pixKeyType     String?
-  pixKeyValue    String?
-  nickname       String?
-  status         BankAccountStatus @default(ACTIVE)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @db.Uuid
+  bankCode           String? // código FEBRABAN, quando identificável
+  bankName           String // nome do banco (ou "código - nome" quando digitado via sugestão)
+  agency             String // agência, com dígito
+  account            String // conta, com dígito
+  type               BankAccountType
+  pixKeyType         String?
+  pixKeyValue        String?
+  nickname           String?
+  status             BankAccountStatus @default(ACTIVE)
+  // Saldo inicial pro fluxo de caixa partir do saldo real (Fase B, Parte
+  // 4.4) — lançado manualmente por enquanto; a conciliação bancária
+  // automática da Fase 2 passa a alimentar isso sozinha.
+  openingBalance     Decimal           @default(0) @db.Decimal(14, 2)
+  openingBalanceDate DateTime          @default(now())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   speLinks      SpeBankAccount[]
@@ -928,30 +933,30 @@ model Development {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  spe                    SpecialPurposeEntity          @relation(fields: [speId], references: [id], onDelete: Restrict)
-  postHabiteSeIndexRule  IndexRule?                    @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
-  buildings              Building[]
-  units                  Unit[]
-  accessGrants           AccessGrant[]
-  developmentEvents      DevelopmentEvent[]
-  salesTables            SalesTable[]
-  proposals              Proposal[]
-  sales                  Sale[]
-  contracts              Contract[]
-  costCenters            CostCenter[]
-  payables               Payable[]
-  exchangeContracts      ExchangeContract[]
-  reservationRule        ReservationRule?
-  proposalEvaluationRule ProposalEvaluationRule?
-  documentTemplates      DocumentTemplateDevelopment[]
-  commissionReleaseRule  CommissionReleaseRule?
-  distratoRule           DistratoRule?
-  collectionRule         CollectionRule?
-  renegotiationRule      RenegotiationRule?
-  payableAllocations     PayableAllocation[]
+  organization                   Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  spe                            SpecialPurposeEntity            @relation(fields: [speId], references: [id], onDelete: Restrict)
+  postHabiteSeIndexRule          IndexRule?                      @relation(fields: [postHabiteSeIndexRuleId], references: [id], onDelete: SetNull)
+  buildings                      Building[]
+  units                          Unit[]
+  accessGrants                   AccessGrant[]
+  developmentEvents              DevelopmentEvent[]
+  salesTables                    SalesTable[]
+  proposals                      Proposal[]
+  sales                          Sale[]
+  contracts                      Contract[]
+  costCenters                    CostCenter[]
+  payables                       Payable[]
+  exchangeContracts              ExchangeContract[]
+  reservationRule                ReservationRule?
+  proposalEvaluationRule         ProposalEvaluationRule?
+  documentTemplates              DocumentTemplateDevelopment[]
+  commissionReleaseRule          CommissionReleaseRule?
+  distratoRule                   DistratoRule?
+  collectionRule                 CollectionRule?
+  renegotiationRule              RenegotiationRule?
+  payableAllocations             PayableAllocation[]
   allocationTemplateDestinations AllocationTemplateDestination[]
-  receivables            Receivable[]
+  receivables                    Receivable[]
 
   @@index([organizationId])
   @@index([speId])
@@ -2459,11 +2464,11 @@ model Receivable {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  development         Development?       @relation(fields: [developmentId], references: [id], onDelete: SetNull)
-  spe                 SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
-  customer            Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  contractAssignment  ContractAssignment? @relation(fields: [contractAssignmentId], references: [id], onDelete: SetNull)
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development        Development?          @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+  spe                SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
+  customer           Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contractAssignment ContractAssignment?   @relation(fields: [contractAssignmentId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])

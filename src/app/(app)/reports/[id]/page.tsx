@@ -93,8 +93,8 @@ export default async function InvestorReportPage({
           </thead>
           <tbody>
             {cashFlow.map((month) => (
-              <tr key={month.month}>
-                <td>{formatMonth(month.month)}</td>
+              <tr key={month.period}>
+                <td>{formatMonth(month.period)}</td>
                 <td>{formatCurrency(month.receivablesForecast)}</td>
                 <td>{formatCurrency(month.payablesForecast)}</td>
                 <td style={{ color: month.netForecast < 0 ? "#e03131" : undefined }}>

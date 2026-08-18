@@ -114,7 +114,11 @@ export default async function FinanceSetupPage({
       <section style={{ marginTop: "2.5rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Contas bancárias</h2>
         <BankAccountsManager
-          bankAccounts={bankAccountsResult.items}
+          bankAccounts={bankAccountsResult.items.map((b) => ({
+            ...b,
+            openingBalance: Number(b.openingBalance),
+            openingBalanceDate: b.openingBalanceDate.toISOString(),
+          }))}
           total={bankAccountsResult.total}
           page={bPage}
           totalPages={Math.max(1, Math.ceil(bankAccountsResult.total / PAGE_SIZE))}

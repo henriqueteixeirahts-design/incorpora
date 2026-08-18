@@ -165,6 +165,8 @@ function parseBankAccountInput(formData: FormData): CreateBankAccountInput | { e
   const pixKeyValue = String(formData.get("pixKeyValue") ?? "").trim();
   const nickname = String(formData.get("nickname") ?? "").trim();
   const status = String(formData.get("status") ?? "ACTIVE") as BankAccountStatus;
+  const openingBalanceRaw = String(formData.get("openingBalance") ?? "").trim();
+  const openingBalanceDateRaw = String(formData.get("openingBalanceDate") ?? "").trim();
 
   if (!bankName) return { error: "Informe o banco." };
   if (!agency) return { error: "Informe a agência." };
@@ -181,6 +183,8 @@ function parseBankAccountInput(formData: FormData): CreateBankAccountInput | { e
     pixKeyValue: pixKeyValue || undefined,
     nickname: nickname || undefined,
     status,
+    openingBalance: openingBalanceRaw ? Number(openingBalanceRaw) : undefined,
+    openingBalanceDate: openingBalanceDateRaw ? new Date(openingBalanceDateRaw) : undefined,
   };
 }
 

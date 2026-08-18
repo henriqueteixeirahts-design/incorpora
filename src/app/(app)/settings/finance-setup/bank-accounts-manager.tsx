@@ -23,9 +23,15 @@ export type BankAccountRow = {
   pixKeyValue: string | null;
   nickname: string | null;
   status: string;
+  openingBalance: number;
+  openingBalanceDate: string;
 };
 
 type ModalState = { mode: "create" } | { mode: "edit"; bankAccount: BankAccountRow } | null;
+
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
 const initialState: FormState = {};
 
@@ -159,13 +165,14 @@ export function BankAccountsManager({
               </Link>
             </th>
             <th>Situação</th>
+            <th>Saldo inicial</th>
             {canEdit || canDelete ? <th aria-label="Ações" /> : null}
           </tr>
         </thead>
         <tbody>
           {bankAccounts.length === 0 ? (
             <tr>
-              <td colSpan={6} style={{ opacity: 0.7 }}>
+              <td colSpan={7} style={{ opacity: 0.7 }}>
                 {search ? "Nenhuma conta encontrada." : "Nenhuma conta bancária cadastrada."}
               </td>
             </tr>
@@ -179,6 +186,10 @@ export function BankAccountsManager({
               <td>{TYPE_LABELS[bankAccount.type] ?? bankAccount.type}</td>
               <td>{bankAccount.nickname ?? "—"}</td>
               <td>{STATUS_LABELS[bankAccount.status] ?? bankAccount.status}</td>
+              <td>
+                {bankAccount.openingBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} em{" "}
+                {new Date(bankAccount.openingBalanceDate).toLocaleDateString("pt-BR")}
+              </td>
               {canEdit || canDelete ? (
                 <td>
                   <div className="row-actions">
@@ -349,6 +360,35 @@ function BankAccountModal({
             <div className="field">
               <label htmlFor="ba-pix-value">Chave Pix</label>
               <input id="ba-pix-value" name="pixKeyValue" defaultValue={bankAccount?.pixKeyValue ?? ""} />
+            </div>
+          </div>
+        </div>
+
+        <div className="field-section">
+          <h3>Saldo inicial</h3>
+          <p className="field-hint">
+            Ponto de partida do saldo acumulado no fluxo de caixa (Fase B) — lançado manualmente por enquanto; a
+            conciliação bancária automática (Fase 2) passa a alimentar isso sozinha.
+          </p>
+          <div className="field-grid">
+            <div className="field">
+              <label htmlFor="ba-opening-balance">Saldo inicial (R$)</label>
+              <input
+                id="ba-opening-balance"
+                name="openingBalance"
+                type="number"
+                step="0.01"
+                defaultValue={bankAccount ? bankAccount.openingBalance : 0}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="ba-opening-balance-date">Data do saldo</label>
+              <input
+                id="ba-opening-balance-date"
+                name="openingBalanceDate"
+                type="date"
+                defaultValue={bankAccount ? bankAccount.openingBalanceDate.slice(0, 10) : toDateInputValue(new Date())}
+              />
             </div>
           </div>
         </div>

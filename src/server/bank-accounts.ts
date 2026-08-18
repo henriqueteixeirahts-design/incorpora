@@ -68,6 +68,8 @@ export type CreateBankAccountInput = {
   pixKeyValue?: string;
   nickname?: string;
   status: BankAccountStatus;
+  openingBalance?: number;
+  openingBalanceDate?: Date;
 };
 
 export async function createBankAccount(context: AccessContext, input: CreateBankAccountInput) {
@@ -135,6 +137,43 @@ export async function deleteBankAccount(context: AccessContext, bankAccountId: s
       beforeData: bankAccount,
     });
   });
+}
+
+/**
+ * Soma o saldo inicial das contas bancárias relevantes pro escopo pedido
+ * (Fase B, Parte 4.4) — é o que permite o fluxo de caixa partir do saldo
+ * real em vez de zero. Sem SPE nem empreendimento (visão consolidada da
+ * organização): soma todas as contas ativas. Com SPE ou empreendimento
+ * (resolvido pra SPE via `Development.speId`): soma só as contas vinculadas
+ * àquela SPE — o saldo bancário é um recurso da SPE, não do empreendimento
+ * individual (uma SPE pode ter mais de um empreendimento na mesma conta).
+ */
+export async function getOpeningBalanceTotal(
+  organizationId: string,
+  scope: { speId?: string; developmentId?: string },
+) {
+  let speId = scope.speId;
+  if (!speId && scope.developmentId) {
+    const development = await prisma.development.findFirst({
+      where: { id: scope.developmentId, organizationId },
+      select: { speId: true },
+    });
+    speId = development?.speId;
+  }
+
+  if (!speId) {
+    const accounts = await prisma.bankAccount.findMany({
+      where: { organizationId, status: "ACTIVE" },
+      select: { openingBalance: true },
+    });
+    return accounts.reduce((sum, a) => sum + Number(a.openingBalance), 0);
+  }
+
+  const links = await prisma.speBankAccount.findMany({
+    where: { speId, bankAccount: { organizationId, status: "ACTIVE" } },
+    select: { bankAccount: { select: { openingBalance: true } } },
+  });
+  return links.reduce((sum, l) => sum + Number(l.bankAccount.openingBalance), 0);
 }
 
 export function listSpeBankAccounts(context: AccessContext, speId: string) {
