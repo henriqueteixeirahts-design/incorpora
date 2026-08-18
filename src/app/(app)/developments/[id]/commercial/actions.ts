@@ -9,9 +9,23 @@ import {
   renewReservation,
   reservationRequiresApprovalToRenew,
 } from "@/server/reservations";
-import { createProposal, submitProposalForApproval, decideProposalApproval } from "@/server/proposals";
+import {
+  createProposal,
+  submitProposalForApproval,
+  decideProposalApproval,
+  getProposalReferenceData,
+  type ProposalReferenceData,
+} from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
+import { ValidationError } from "@/lib/errors";
 import type { ApprovalLevel } from "@/generated/prisma/client";
+
+/** Mensagem segura pra mostrar ao usuário — nunca repassa erro cru de infra (Prisma etc), docs/RELATORIO_TESTDRIVE.md B1. */
+function toUserMessage(error: unknown, fallback: string): string {
+  if (error instanceof ValidationError) return error.message;
+  console.error(error);
+  return fallback;
+}
 
 export type FormState = { error?: string; message?: string };
 
@@ -148,11 +162,28 @@ export async function createProposalAction(
       proposedKeysInstallmentPercent,
     });
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Falha ao criar proposta." };
+    return { error: toUserMessage(error, "Falha ao criar proposta. Tente novamente.") };
   }
 
   revalidateCommercial(developmentId);
   return {};
+}
+
+export async function getProposalReferenceDataAction(input: {
+  developmentId: string;
+  unitId: string;
+  salesTableId?: string;
+  listPriceOverride?: number;
+}): Promise<{ data?: ProposalReferenceData; error?: string }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "proposal", "CREATE")) return { error: "Sem permissão." };
+
+  try {
+    const data = await getProposalReferenceData(context, input);
+    return { data };
+  } catch (error) {
+    return { error: toUserMessage(error, "Falha ao carregar dados de referência da proposta.") };
+  }
 }
 
 export async function submitProposalAction(formData: FormData) {

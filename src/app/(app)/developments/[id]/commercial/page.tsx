@@ -8,9 +8,10 @@ import { listSalesTables } from "@/server/sales-tables";
 import { listReservations, listWaitlistForOrganization } from "@/server/reservations";
 import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import { listProposals } from "@/server/proposals";
+import { canSubmitForApproval } from "@/lib/proposal-status";
 import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
 import { NewReservationForm } from "./new-reservation-form";
-import { NewProposalForm } from "./new-proposal-form";
+import { ProposalModal } from "./proposal-modal";
 import {
   cancelReservationAction,
   renewReservationAction,
@@ -278,7 +279,7 @@ export default async function CommercialPage({
             ) : null}
 
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.6rem" }}>
-              {canEditProposal && proposal.status === "DRAFT" ? (
+              {canEditProposal && canSubmitForApproval(proposal) ? (
                 <form action={submitProposalAction}>
                   <input type="hidden" name="developmentId" value={id} />
                   <input type="hidden" name="proposalId" value={proposal.id} />
@@ -300,7 +301,7 @@ export default async function CommercialPage({
 
         {canCreateProposal ? (
           <div style={{ marginTop: "1.5rem" }}>
-            <NewProposalForm
+            <ProposalModal
               developmentId={id}
               units={availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${u.status})` }))}
               customers={customers.map((c) => ({ id: c.id, label: c.name }))}

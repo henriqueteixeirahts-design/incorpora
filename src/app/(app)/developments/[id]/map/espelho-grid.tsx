@@ -6,6 +6,7 @@ import { UNIT_STATUS_META, UNIT_STATUS_VALUES } from "@/lib/unit-status";
 import { bucketUnitStatus, type UnitStatusBucket } from "@/lib/unit-status-bucket";
 import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
 import type { UnitSaleDetail } from "@/server/unit-sale-detail";
+import { ProposalModal } from "../commercial/proposal-modal";
 import {
   createReservationFromMapAction,
   destacarUnidadeFromMapAction,
@@ -798,9 +799,16 @@ export function EspelhoGrid({
                         </button>
                       ) : null}
                       {canCreateProposal ? (
-                        <Link href={`/developments/${developmentId}/commercial?unitId=${selectedUnit.id}#nova-proposta`} className="inc-btn inc-btn--secondary">
-                          Simular proposta
-                        </Link>
+                        <ProposalModal
+                          developmentId={developmentId}
+                          units={[{ id: selectedUnit.id, label: selectedUnit.number }]}
+                          customers={customers}
+                          brokers={brokers}
+                          agencies={agencies}
+                          salesTables={salesTables}
+                          defaultUnitId={selectedUnit.id}
+                          triggerLabel="Simular proposta"
+                        />
                       ) : null}
                     </div>
                   </>

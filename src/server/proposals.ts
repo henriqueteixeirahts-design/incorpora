@@ -5,9 +5,10 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
-import { evaluateProposal } from "@/lib/proposal-evaluation";
+import { evaluateProposal, type ProposalEvaluationRuleValues } from "@/lib/proposal-evaluation";
 import { getEffectiveProposalEvaluationRule } from "@/server/proposal-evaluation-rules";
 import { developmentOwnedScope } from "@/server/scope";
+import { ValidationError } from "@/lib/errors";
 import type { AccessContext } from "@/server/auth-context";
 import type { ApprovalDecision, ApprovalLevel, Prisma } from "@/generated/prisma/client";
 import type { CorrectionPhaseConfig } from "@/lib/index-correction";
@@ -95,14 +96,65 @@ export type CreateProposalInput = {
   proposedKeysInstallmentPercent?: number;
 };
 
+/**
+ * Valida os campos de fluxo proposto antes de montar o pagamento — mata o
+ * overflow numérico do test drive (B1: usuário digitou 80000 num campo de
+ * %) e a combinação impossível de entrada+chaves passando de 100% do valor
+ * da venda (B3), barrando com mensagem amigável em vez de deixar o Prisma
+ * estourar ou o fluxo silenciosamente inconsistente ser salvo.
+ */
+function assertValidProposedFlow(input: CreateProposalInput) {
+  const assertPercent = (label: string, value: number | undefined) => {
+    if (value === undefined) return;
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      throw new ValidationError(`${label} deve estar entre 0% e 100%.`);
+    }
+  };
+  assertPercent("Entrada", input.proposedDownPaymentPercent);
+  assertPercent("Chaves", input.proposedKeysInstallmentPercent);
+
+  if (input.proposedMonthlyInstallments !== undefined) {
+    if (!Number.isInteger(input.proposedMonthlyInstallments) || input.proposedMonthlyInstallments < 0) {
+      throw new ValidationError("Parcelas mensais deve ser um número inteiro não negativo.");
+    }
+  }
+
+  const downPayment = input.proposedDownPaymentPercent ?? 0;
+  const keys = input.proposedKeysInstallmentPercent ?? 0;
+  if (input.proposedDownPaymentPercent !== undefined && input.proposedKeysInstallmentPercent !== undefined && downPayment + keys > 100) {
+    throw new ValidationError(
+      `Entrada (${downPayment}%) + Chaves (${keys}%) não pode ultrapassar 100% do valor da venda.`,
+    );
+  }
+}
+
+async function resolveListPrice(
+  tx: typeof prisma | Prisma.TransactionClient,
+  input: { unitId: string; listPriceOverride?: number; unitReferenceValue: Prisma.Decimal | null },
+  salesTable: { id: string } | null,
+): Promise<number> {
+  let listPrice = input.listPriceOverride;
+  if (!listPrice && salesTable) {
+    const entry = await tx.salesTableUnit.findUnique({
+      where: { salesTableId_unitId: { salesTableId: salesTable.id, unitId: input.unitId } },
+    });
+    listPrice = entry ? Number(entry.price) : undefined;
+  }
+  if (!listPrice) listPrice = input.unitReferenceValue ? Number(input.unitReferenceValue) : undefined;
+  if (!listPrice) throw new ValidationError("Sem preço de referência para a unidade — informe o valor de tabela.");
+  return listPrice;
+}
+
 export async function createProposal(context: AccessContext, input: CreateProposalInput) {
+  assertValidProposedFlow(input);
+
   return prisma.$transaction(async (tx) => {
     const unit = await tx.unit.findFirst({
       where: { id: input.unitId, developmentId: input.developmentId, ...developmentOwnedScope(context) },
     });
-    if (!unit) throw new Error("Unidade inválida.");
+    if (!unit) throw new ValidationError("Unidade inválida.");
     if (unit.status !== "AVAILABLE" && unit.status !== "RESERVED") {
-      throw new Error("Unidade não está disponível nem reservada.");
+      throw new ValidationError("Unidade não está disponível nem reservada.");
     }
 
     const salesTable = input.salesTableId
@@ -115,30 +167,26 @@ export async function createProposal(context: AccessContext, input: CreatePropos
     const customer = await tx.customer.findFirst({
       where: { id: input.customerId, organizationId: context.organizationId },
     });
-    if (!customer) throw new Error("Cliente inválido.");
+    if (!customer) throw new ValidationError("Cliente inválido.");
     if (input.brokerId) {
       const broker = await tx.broker.findFirst({ where: { id: input.brokerId, organizationId: context.organizationId } });
-      if (!broker) throw new Error("Corretor inválido.");
+      if (!broker) throw new ValidationError("Corretor inválido.");
     }
     if (input.agencyId) {
       const agency = await tx.realEstateAgency.findFirst({
         where: { id: input.agencyId, organizationId: context.organizationId },
       });
-      if (!agency) throw new Error("Imobiliária inválida.");
+      if (!agency) throw new ValidationError("Imobiliária inválida.");
     }
 
-    let listPrice = input.listPriceOverride;
-    if (!listPrice && salesTable) {
-      const entry = await tx.salesTableUnit.findUnique({
-        where: { salesTableId_unitId: { salesTableId: salesTable.id, unitId: input.unitId } },
-      });
-      listPrice = entry ? Number(entry.price) : undefined;
-    }
-    if (!listPrice) listPrice = unit.referenceValue ? Number(unit.referenceValue) : undefined;
-    if (!listPrice) throw new Error("Sem preço de referência para a unidade — informe o valor de tabela.");
+    const listPrice = await resolveListPrice(
+      tx,
+      { unitId: input.unitId, listPriceOverride: input.listPriceOverride, unitReferenceValue: unit.referenceValue },
+      salesTable,
+    );
 
     if (salesTable?.maxDiscountPercent && input.discountPercent > Number(salesTable.maxDiscountPercent)) {
-      throw new Error(
+      throw new ValidationError(
         `Desconto acima do máximo autorizado pela tabela (${salesTable.maxDiscountPercent}%).`,
       );
     }
@@ -240,6 +288,70 @@ export async function createProposal(context: AccessContext, input: CreatePropos
   });
 }
 
+export type ProposalReferenceData = {
+  listPrice: number;
+  maxDiscountPercent: number | null;
+  commissionPercent: number | null;
+  standardFlow: { downPaymentPercent: number; monthlyInstallments: number; keysInstallmentPercent: number };
+  rule: ProposalEvaluationRuleValues;
+  habiteSeDate: Date | null;
+  preHabiteSe: CorrectionPhaseConfig;
+  postHabiteSe: CorrectionPhaseConfig | null;
+};
+
+/**
+ * Dados de referência pro modal de proposta (docs/RELATORIO_TESTDRIVE.md,
+ * decisão do PO): preço de tabela, fluxo padrão pré-carregado, regra de
+ * avaliação e fases de correção — tudo que o cliente precisa pra rodar a
+ * mesma simulação de VPL (funções puras, sem I/O) localmente, em tempo
+ * real, sem round-trip ao servidor a cada tecla. `createProposal` recalcula
+ * tudo de novo no servidor ao persistir — este endpoint é só leitura/prévia.
+ */
+export async function getProposalReferenceData(
+  context: AccessContext,
+  input: { developmentId: string; unitId: string; salesTableId?: string; listPriceOverride?: number },
+): Promise<ProposalReferenceData> {
+  const unit = await prisma.unit.findFirst({
+    where: { id: input.unitId, developmentId: input.developmentId, ...developmentOwnedScope(context) },
+  });
+  if (!unit) throw new ValidationError("Unidade inválida.");
+
+  const salesTable = input.salesTableId
+    ? await prisma.salesTable.findFirst({
+        where: { id: input.salesTableId, ...developmentOwnedScope(context) },
+        include: { preHabiteSeIndexRule: { include: { values: true } } },
+      })
+    : null;
+
+  const listPrice = await resolveListPrice(
+    prisma,
+    { unitId: input.unitId, listPriceOverride: input.listPriceOverride, unitReferenceValue: unit.referenceValue },
+    salesTable,
+  );
+
+  const development = await prisma.development.findUniqueOrThrow({
+    where: { id: input.developmentId },
+    include: { postHabiteSeIndexRule: { include: { values: true } } },
+  });
+  const phases = buildProposalCorrectionPhases(salesTable, development);
+  const rule = await getEffectiveProposalEvaluationRule(input.developmentId);
+
+  return {
+    listPrice,
+    maxDiscountPercent: salesTable?.maxDiscountPercent ? Number(salesTable.maxDiscountPercent) : null,
+    commissionPercent: salesTable?.commissionPercent ? Number(salesTable.commissionPercent) : null,
+    standardFlow: {
+      downPaymentPercent: salesTable?.downPaymentPercent ? Number(salesTable.downPaymentPercent) : 0,
+      monthlyInstallments: salesTable?.monthlyInstallments ?? 0,
+      keysInstallmentPercent: salesTable?.keysInstallmentPercent ? Number(salesTable.keysInstallmentPercent) : 0,
+    },
+    rule,
+    habiteSeDate: phases.habiteSeDate,
+    preHabiteSe: phases.preHabiteSe,
+    postHabiteSe: phases.postHabiteSe,
+  };
+}
+
 /**
  * Submete a proposta — o motor de avaliação já rodou na criação (a análise
  * numérica acompanha a proposta desde o início, PRD/Parte 5.3); aqui só se
@@ -254,8 +366,8 @@ export async function submitProposalForApproval(context: AccessContext, proposal
       where: { id: proposalId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!proposal) throw new Error("Proposta inválida.");
-    if (proposal.status !== "DRAFT") throw new Error("Proposta já foi enviada para aprovação.");
+    if (!proposal) throw new ValidationError("Proposta inválida.");
+    if (proposal.status !== "DRAFT") throw new ValidationError("Proposta já foi enviada para aprovação.");
 
     if (proposal.evaluationStatus === "REJECTED_AUTO") {
       const updated = await tx.proposal.update({ where: { id: proposalId }, data: { status: "REJECTED" } });
@@ -364,12 +476,12 @@ export async function decideProposalApproval(
       where: { id: proposalId, organizationId: context.organizationId },
       include: { unit: true, approvals: true },
     });
-    if (!proposal) throw new Error("Proposta inválida.");
-    if (proposal.status !== "PENDING_APPROVAL") throw new Error("Proposta não está em aprovação.");
+    if (!proposal) throw new ValidationError("Proposta inválida.");
+    if (proposal.status !== "PENDING_APPROVAL") throw new ValidationError("Proposta não está em aprovação.");
 
     const approval = proposal.approvals.find((item) => item.level === level);
-    if (!approval) throw new Error("Etapa de aprovação não aplicável a esta proposta.");
-    if (approval.decision !== "PENDING") throw new Error("Etapa já decidida.");
+    if (!approval) throw new ValidationError("Etapa de aprovação não aplicável a esta proposta.");
+    if (approval.decision !== "PENDING") throw new ValidationError("Etapa já decidida.");
 
     await tx.proposalApproval.update({
       where: { id: approval.id },
