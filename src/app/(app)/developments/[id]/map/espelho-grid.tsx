@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { UNIT_STATUS_META, UNIT_STATUS_VALUES } from "@/lib/unit-status";
+import { bucketUnitStatus, type UnitStatusBucket } from "@/lib/unit-status-bucket";
 import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
+import type { UnitSaleDetail } from "@/server/unit-sale-detail";
 import {
   createReservationFromMapAction,
   destacarUnidadeFromMapAction,
   removerDestaqueFromMapAction,
   renewReservationFromMapAction,
   cancelReservationFromMapAction,
+  getUnitSaleDetailAction,
   type FormState,
 } from "./actions";
 
@@ -23,6 +26,7 @@ export type EspelhoUnit = {
   position: string | null;
   block: string | null;
   referenceValue: number | null;
+  area: number | null;
   exchangeContractId: string | null;
 };
 
@@ -61,8 +65,146 @@ const UNIT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Outro",
 };
 
+const BUCKET_LABEL: Record<UnitStatusBucket, string> = {
+  disponivel: "Disponível",
+  reservado: "Reservado",
+  vendido: "Vendido",
+  permuta: "Permuta",
+  bloqueado: "Bloqueado",
+};
+
+const HIGH_RISE_FLOOR_THRESHOLD = 20;
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function initialsOf(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function SaleDetailSection({ unitId }: { unitId: string }) {
+  const [saleDetail, setSaleDetail] = useState<UnitSaleDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUnitSaleDetailAction(unitId).then((detail) => {
+      if (!cancelled) {
+        setSaleDetail(detail);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [unitId]);
+
+  if (loading) {
+    return <p style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>Carregando contrato…</p>;
+  }
+  if (!saleDetail) return null;
+
+  return (
+    <>
+      <div>
+        <div className="inc-eyebrow">Valor da venda</div>
+        <div style={{ marginTop: "4px", fontSize: "15px", fontWeight: 600, color: "var(--inc-brand-azul)" }}>
+          {formatCurrency(saleDetail.salePrice)}
+        </div>
+      </div>
+      <div style={{ height: "1px", background: "var(--inc-border-divider)" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "11px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "11px" }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              flex: "none",
+              borderRadius: "16px",
+              background: "var(--inc-info-bg)",
+              color: "var(--inc-brand-azul)",
+              fontSize: "11px",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {initialsOf(saleDetail.customerName)}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "13.5px", fontWeight: 500 }}>{saleDetail.customerName}</div>
+            <div style={{ fontSize: "11.5px", color: "var(--inc-text-soft)" }}>{saleDetail.customerDocument}</div>
+          </div>
+        </div>
+        {saleDetail.commission ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "11px" }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                flex: "none",
+                borderRadius: "16px",
+                background: "var(--inc-warning-bg)",
+                color: "var(--inc-warning-text)",
+                fontSize: "11px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {initialsOf(saleDetail.commission.beneficiaryName)}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "13.5px", fontWeight: 500 }}>{saleDetail.commission.beneficiaryName}</div>
+              <div style={{ fontSize: "11.5px", color: "var(--inc-text-soft)" }}>
+                Comissão {saleDetail.commission.percent}% · {formatCurrency(saleDetail.commission.value)}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {saleDetail.installmentGroups.length > 0 ? (
+        <>
+          <div style={{ height: "1px", background: "var(--inc-border-divider)" }} />
+          <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--inc-brand-azul)" }}>Recebíveis</div>
+              <div style={{ marginLeft: "auto", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+                {saleDetail.installments.paidCount} de {saleDetail.installments.totalCount} pagas
+              </div>
+            </div>
+            <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+              {saleDetail.installmentGroups.map((group) => {
+                const label = group.count > 1 ? `${group.label} · ${group.count} parcelas` : group.label;
+                const state = group.paidCount === group.count ? "pago" : group.paidCount > 0 ? "em curso" : "previsto";
+                const color =
+                  state === "pago" ? "var(--inc-success)" : state === "em curso" ? "var(--inc-warning-text)" : "var(--inc-text-soft)";
+                return (
+                  <div key={group.label} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12.5px" }}>
+                    <span style={{ flex: 1, color: "var(--inc-text-secondary)" }}>{label}</span>
+                    <span style={{ fontWeight: 600 }}>{formatCurrency(group.value)}</span>
+                    <span style={{ color, fontWeight: 500 }}>{state}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : null}
+      <Link href={`/sales/${saleDetail.saleId}`} className="inc-btn inc-btn--primary" style={{ marginTop: "auto" }}>
+        Ver contrato
+      </Link>
+    </>
+  );
 }
 
 const reservationInitialState: FormState = {};
@@ -95,13 +237,13 @@ function ReservationPanel({
   }, [state.success]);
 
   return (
-    <form action={dispatch} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+    <form action={dispatch} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <input type="hidden" name="developmentId" value={developmentId} />
       <input type="hidden" name="unitId" value={unit.id} />
 
-      <div className="field">
-        <label htmlFor="map-res-customer">Cliente *</label>
-        <select id="map-res-customer" name="customerId" required defaultValue="">
+      <label className="inc-field">
+        <span className="inc-label">Cliente *</span>
+        <select id="map-res-customer" name="customerId" className="inc-select" required defaultValue="">
           <option value="" disabled>
             Selecione...
           </option>
@@ -111,10 +253,10 @@ function ReservationPanel({
             </option>
           ))}
         </select>
-      </div>
-      <div className="field">
-        <label htmlFor="map-res-broker">Corretor</label>
-        <select id="map-res-broker" name="brokerId" defaultValue="">
+      </label>
+      <label className="inc-field">
+        <span className="inc-label">Corretor</span>
+        <select name="brokerId" className="inc-select" defaultValue="">
           <option value="">—</option>
           {brokers.map((b) => (
             <option key={b.id} value={b.id}>
@@ -122,10 +264,10 @@ function ReservationPanel({
             </option>
           ))}
         </select>
-      </div>
-      <div className="field">
-        <label htmlFor="map-res-agency">Imobiliária</label>
-        <select id="map-res-agency" name="agencyId" defaultValue="">
+      </label>
+      <label className="inc-field">
+        <span className="inc-label">Imobiliária</span>
+        <select name="agencyId" className="inc-select" defaultValue="">
           <option value="">—</option>
           {agencies.map((a) => (
             <option key={a.id} value={a.id}>
@@ -133,10 +275,10 @@ function ReservationPanel({
             </option>
           ))}
         </select>
-      </div>
-      <div className="field">
-        <label htmlFor="map-res-table">Tabela de vendas</label>
-        <select id="map-res-table" name="salesTableId" defaultValue="">
+      </label>
+      <label className="inc-field">
+        <span className="inc-label">Tabela de vendas</span>
+        <select name="salesTableId" className="inc-select" defaultValue="">
           <option value="">—</option>
           {salesTables.map((t) => (
             <option key={t.id} value={t.id}>
@@ -144,25 +286,88 @@ function ReservationPanel({
             </option>
           ))}
         </select>
-      </div>
+      </label>
       {!isWaitlistFlow ? (
-        <div className="field">
-          <label htmlFor="map-res-hours">Validade (horas)</label>
-          <input id="map-res-hours" name="expiresInHours" type="number" defaultValue={defaultValidityHours} min={1} />
-        </div>
+        <label className="inc-field">
+          <span className="inc-label">Validade (horas)</span>
+          <input name="expiresInHours" type="number" className="inc-input" defaultValue={defaultValidityHours} min={1} />
+        </label>
       ) : null}
-      <div className="field">
-        <label htmlFor="map-res-reason">Observação</label>
-        <input id="map-res-reason" name="reason" />
-      </div>
+      <label className="inc-field">
+        <span className="inc-label">Observação</span>
+        <input name="reason" className="inc-input" />
+      </label>
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.message ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>{state.message}</p> : null}
+      {state.message ? <p style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>{state.message}</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="inc-btn inc-btn--primary" disabled={pending}>
         {pending ? "Enviando..." : isWaitlistFlow ? "Entrar na fila de espera" : "Reservar"}
       </button>
     </form>
+  );
+}
+
+function UnitCell({
+  unit,
+  selected,
+  destacadaToActive,
+  visible,
+  busy,
+  onClick,
+  compact,
+}: {
+  unit: EspelhoUnit;
+  selected: boolean;
+  destacadaToActive: boolean;
+  visible: boolean;
+  busy: boolean;
+  onClick: () => void;
+  compact: boolean;
+}) {
+  const meta = UNIT_STATUS_META[unit.status as keyof typeof UNIT_STATUS_META];
+  const bucket = bucketUnitStatus(unit.status as keyof typeof UNIT_STATUS_META);
+
+  return (
+    <button
+      type="button"
+      title={`${unit.number} — ${meta.label}`}
+      onClick={onClick}
+      disabled={busy}
+      aria-pressed={selected}
+      className={`inc-unit inc-unit--${bucket}`}
+      style={{
+        position: "relative",
+        height: compact ? "26px" : undefined,
+        border: destacadaToActive ? "2px dashed #fff" : undefined,
+        opacity: visible ? 1 : 0.3,
+        cursor: "pointer",
+      }}
+    >
+      <div className="inc-unit__n">{unit.number}</div>
+      {!compact && unit.area !== null ? <div className="inc-unit__area">{unit.area} m²</div> : null}
+      {unit.exchangeContractId ? (
+        <span
+          style={{
+            position: "absolute",
+            top: -4,
+            right: -4,
+            background: "#fff",
+            color: "#000",
+            borderRadius: "50%",
+            width: 14,
+            height: 14,
+            fontSize: "9px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+          }}
+        >
+          P
+        </span>
+      ) : null}
+    </button>
   );
 }
 
@@ -218,7 +423,6 @@ export function EspelhoGrid({
   const [exchangeBusy, setExchangeBusy] = useState(false);
 
   const allUnits = useMemo(() => [...units, ...unassignedUnits], [units, unassignedUnits]);
-
   const lotsByBlock = useMemo(() => groupLotsByBlock(unassignedUnits), [unassignedUnits]);
 
   const passesFilter = (unit: EspelhoUnit) => {
@@ -231,20 +435,22 @@ export function EspelhoGrid({
 
   const counters = useMemo(() => {
     const total = allUnits.length;
-    const disponiveis = allUnits.filter((u) => u.status === "AVAILABLE").length;
-    const reservadas = allUnits.filter((u) => u.status === "RESERVED").length;
-    const vendidas = allUnits.filter((u) => u.status === "SOLD").length;
-    const bloqueadas = allUnits.filter((u) => u.status === "BLOCKED").length;
-    const vgvDisponivel = allUnits
-      .filter((u) => u.status === "AVAILABLE")
-      .reduce((sum, u) => sum + (u.referenceValue ?? 0), 0);
-    const pctVendido = total > 0 ? (vendidas / total) * 100 : 0;
-    return { total, disponiveis, reservadas, vendidas, bloqueadas, vgvDisponivel, pctVendido };
+    const byBucket = new Map<UnitStatusBucket, number>();
+    for (const unit of allUnits) {
+      const bucket = bucketUnitStatus(unit.status as keyof typeof UNIT_STATUS_META);
+      byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
+    }
+    const vendido = byBucket.get("vendido") ?? 0;
+    const vso = total > 0 ? (vendido / total) * 100 : 0;
+    return { total, byBucket, vso };
   }, [allUnits]);
 
   const selectedUnit = allUnits.find((u) => u.id === selectedUnitId) ?? null;
-  const selectedReservation = selectedUnit
-    ? reservations.find((r) => r.unitId === selectedUnit.id) ?? null
+  const selectedReservation = selectedUnit ? reservations.find((r) => r.unitId === selectedUnit.id) ?? null : null;
+  const selectedBuilding = selectedUnit ? buildings.find((b) => b.id === selectedUnit.buildingId) ?? null : null;
+  const selectedFloor = selectedBuilding?.floors.find((f) => f.id === selectedUnit?.floorId) ?? null;
+  const selectedExchangeContract = selectedUnit?.exchangeContractId
+    ? contracts.find((c) => c.id === selectedUnit.exchangeContractId) ?? null
     : null;
   const activeContract = contracts.find((c) => c.id === activeContractId) ?? null;
 
@@ -277,116 +483,83 @@ export function EspelhoGrid({
     setSelectedUnitId(unit.id === selectedUnitId ? null : unit.id);
   }
 
-  function renderCell(unit: EspelhoUnit) {
-    const meta = UNIT_STATUS_META[unit.status as keyof typeof UNIT_STATUS_META];
-    const visible = passesFilter(unit);
-    const isDestacadaToActive = exchangeMode && activeContract && unit.exchangeContractId === activeContract.id;
-
+  function renderCell(unit: EspelhoUnit, compact: boolean) {
+    const isDestacadaToActive = Boolean(exchangeMode && activeContract && unit.exchangeContractId === activeContract.id);
     return (
-      <button
+      <UnitCell
         key={unit.id}
-        type="button"
-        title={`${unit.number} — ${meta.label}`}
+        unit={unit}
+        selected={selectedUnitId === unit.id}
+        destacadaToActive={isDestacadaToActive}
+        visible={passesFilter(unit)}
+        busy={exchangeBusy}
+        compact={compact}
         onClick={() => handleUnitClick(unit)}
-        disabled={exchangeBusy}
-        style={{
-          position: "relative",
-          background: meta.color,
-          color: "#fff",
-          borderRadius: 4,
-          padding: "0.3rem 0.4rem",
-          fontSize: "0.75rem",
-          border: selectedUnitId === unit.id ? "2px solid var(--foreground)" : isDestacadaToActive ? "2px dashed #fff" : "none",
-          opacity: visible ? 1 : 0.25,
-          cursor: "pointer",
-          minWidth: 46,
-        }}
-      >
-        {unit.number}
-        {unit.exchangeContractId ? (
-          <span
-            style={{
-              position: "absolute",
-              top: -4,
-              right: -4,
-              background: "#fff",
-              color: "#000",
-              borderRadius: "50%",
-              width: 14,
-              height: 14,
-              fontSize: "0.6rem",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 700,
-            }}
-          >
-            P
-          </span>
-        ) : null}
-      </button>
+      />
     );
   }
 
   const exchangeableContracts = contracts.filter((c) => c.type !== "FINANCIAL");
 
   return (
-    <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", margin: "1rem 0", fontSize: "0.85rem" }}>
-        <span>Total: {counters.total}</span>
-        <span>Disponíveis: {counters.disponiveis}</span>
-        <span>Reservadas: {counters.reservadas}</span>
-        <span>Vendidas: {counters.vendidas}</span>
-        <span>Bloqueadas: {counters.bloqueadas}</span>
-        <span>% vendido: {counters.pctVendido.toFixed(1)}%</span>
-        <span>VGV disponível: {formatCurrency(counters.vgvDisponivel)}</span>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center", marginBottom: "1rem" }}>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">Todas as tipologias</option>
-          {Object.entries(UNIT_TYPE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">Todos os status</option>
-          {UNIT_STATUS_VALUES.map((status) => (
-            <option key={status} value={status}>
-              {UNIT_STATUS_META[status].label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="number"
-          placeholder="Preço mín."
-          value={minPrice}
-          onChange={(e) => setMinPrice(e.target.value)}
-          style={{ width: 120 }}
-        />
-        <input
-          type="number"
-          placeholder="Preço máx."
-          value={maxPrice}
-          onChange={(e) => setMaxPrice(e.target.value)}
-          style={{ width: 120 }}
-        />
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.75rem" }}>
-        {Object.values(UNIT_STATUS_META).map((meta) => (
-          <span key={meta.label} style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.78rem" }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: meta.color, display: "inline-block" }} />
-            {meta.label}
-          </span>
+    <>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px 18px",
+          padding: "13px 18px",
+          background: "var(--inc-surface)",
+          border: "1px solid var(--inc-border-card)",
+        }}
+      >
+        {(Object.keys(BUCKET_LABEL) as UnitStatusBucket[]).map((bucket) => (
+          <div key={bucket} className="inc-legend__item" style={{ fontWeight: 500, color: "var(--inc-text-body)" }}>
+            <span className={`inc-legend__swatch inc-unit--${bucket}`} />
+            {BUCKET_LABEL[bucket]} <span style={{ color: "var(--inc-text-soft)", fontWeight: 400 }}>{counters.byBucket.get(bucket) ?? 0}</span>
+          </div>
         ))}
+        <div style={{ marginLeft: "auto", fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {counters.total} unidades · VSO {counters.vso.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+        </div>
+      </div>
+
+      <div className="inc-filters" style={{ margin: "16px 0" }}>
+        <label className="inc-field" style={{ minWidth: 180 }}>
+          <span className="inc-label">Tipologia</span>
+          <select className="inc-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="">Todas as tipologias</option>
+            {Object.entries(UNIT_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inc-field" style={{ minWidth: 180 }}>
+          <span className="inc-label">Status</span>
+          <select className="inc-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos os status</option>
+            {UNIT_STATUS_VALUES.map((status) => (
+              <option key={status} value={status}>
+                {UNIT_STATUS_META[status].label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inc-field" style={{ width: 130 }}>
+          <span className="inc-label">Preço mín.</span>
+          <input type="number" className="inc-input" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+        </label>
+        <label className="inc-field" style={{ width: 130 }}>
+          <span className="inc-label">Preço máx.</span>
+          <input type="number" className="inc-input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+        </label>
       </div>
 
       {canManageExchange && exchangeableContracts.length > 0 ? (
-        <div className="field-section" style={{ marginBottom: "1.5rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div className="inc-card" style={{ padding: "16px 20px", marginBottom: "18px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13.5px" }}>
             <input
               type="checkbox"
               checked={exchangeMode}
@@ -399,8 +572,8 @@ export function EspelhoGrid({
             Modo permutante — destacar/remover unidades de um contrato de permuta
           </label>
           {exchangeMode ? (
-            <div style={{ marginTop: "0.5rem" }}>
-              <select value={activeContractId} onChange={(e) => setActiveContractId(e.target.value)}>
+            <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "8px", maxWidth: 420 }}>
+              <select className="inc-select" value={activeContractId} onChange={(e) => setActiveContractId(e.target.value)}>
                 <option value="">Selecione o contrato...</option>
                 {exchangeableContracts.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -408,7 +581,7 @@ export function EspelhoGrid({
                   </option>
                 ))}
               </select>
-              <p className="field-hint" style={{ marginTop: "0.35rem" }}>
+              <p style={{ fontSize: "12px", color: "var(--inc-text-soft)" }}>
                 Clique numa unidade Disponível para destacar; clique numa já destacada deste contrato pra remover.
               </p>
               {exchangeError ? <p className="error-text">{exchangeError}</p> : null}
@@ -417,152 +590,250 @@ export function EspelhoGrid({
         </div>
       ) : null}
 
-      {buildings.map((building) => {
-        const buildingUnits = units.filter((unit) => unit.buildingId === building.id);
-        const floors = [...building.floors].sort((a, b) => b.level - a.level);
-        const columnKeys = Array.from(new Set(buildingUnits.map((u) => getUnitColumnKey(u)))).sort();
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 336px", gap: "18px", alignItems: "start" }}>
+        <div className="inc-card" style={{ padding: "20px 22px" }}>
+          {buildings.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "26px" }}>
+              {buildings.map((building) => {
+                const buildingUnits = units.filter((unit) => unit.buildingId === building.id);
+                const floors = [...building.floors].sort((a, b) => b.level - a.level);
+                const columnKeys = Array.from(new Set(buildingUnits.map((u) => getUnitColumnKey(u)))).sort();
+                const compact = building.floors.length > HIGH_RISE_FLOOR_THRESHOLD;
 
-        return (
-          <section key={building.id} style={{ marginTop: "1.5rem" }}>
-            <h2 style={{ fontSize: "1.05rem" }}>{building.name}</h2>
-            <div style={{ overflowX: "auto", marginTop: "0.5rem" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `90px repeat(${columnKeys.length}, minmax(50px, 1fr))`,
-                  gap: "0.3rem",
-                  minWidth: columnKeys.length * 55 + 90,
-                }}
-              >
-                {floors.map((floor) => {
-                  const floorUnits = buildingUnits.filter((u) => u.floorId === floor.id);
-                  if (floorUnits.length === 0) return null;
-                  const unitsByColumn = new Map(floorUnits.map((u) => [getUnitColumnKey(u), u]));
-
-                  return (
-                    <div key={floor.id} style={{ display: "contents" }}>
-                      <span style={{ fontSize: "0.78rem", opacity: 0.7, alignSelf: "center" }}>
-                        {floor.label ?? `Andar ${floor.level}`}
-                      </span>
-                      {columnKeys.map((key) => {
-                        const unit = unitsByColumn.get(key);
-                        return unit ? (
-                          renderCell(unit)
-                        ) : (
-                          <span key={key} />
-                        );
-                      })}
+                return (
+                  <div key={building.id} style={{ display: "flex", flexDirection: "column", gap: "5px", minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "var(--inc-brand-azul)",
+                        paddingBottom: "8px",
+                        borderBottom: "1px solid var(--inc-border-divider)",
+                      }}
+                    >
+                      {building.name}
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ display: "flex", gap: "5px", alignItems: "center", paddingTop: "4px" }}>
+                      <div style={{ width: 30, flex: "none" }} />
+                      <div
+                        style={{
+                          flex: 1,
+                          display: "grid",
+                          gridTemplateColumns: `repeat(${columnKeys.length}, 1fr)`,
+                          gap: "5px",
+                          fontSize: "10px",
+                          color: "var(--inc-text-muted)",
+                          fontWeight: 600,
+                          textAlign: "center",
+                        }}
+                      >
+                        {columnKeys.map((key) => (
+                          <div key={key}>{key}</div>
+                        ))}
+                      </div>
+                    </div>
+                    {floors.map((floor) => {
+                      const floorUnits = buildingUnits.filter((u) => u.floorId === floor.id);
+                      if (floorUnits.length === 0) return null;
+                      const unitsByColumn = new Map(floorUnits.map((u) => [getUnitColumnKey(u), u]));
+
+                      return (
+                        <div key={floor.id} style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+                          <div
+                            style={{
+                              width: 30,
+                              flex: "none",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              color: "var(--inc-text-muted)",
+                              textAlign: "right",
+                              paddingRight: "6px",
+                            }}
+                          >
+                            {floor.label ?? floor.level}
+                          </div>
+                          <div
+                            style={{
+                              flex: 1,
+                              display: "grid",
+                              gridTemplateColumns: `repeat(${columnKeys.length}, 1fr)`,
+                              gap: "5px",
+                            }}
+                          >
+                            {columnKeys.map((key) => {
+                              const unit = unitsByColumn.get(key);
+                              return unit ? renderCell(unit, compact) : <span key={key} />;
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
-          </section>
-        );
-      })}
+          ) : null}
 
-      {lotsByBlock.length > 0 ? (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.05rem" }}>Loteamento</h2>
-          {lotsByBlock.map(([block, lots]) => (
-            <div key={block} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
-              <span style={{ width: 110, fontSize: "0.78rem", opacity: 0.7, flexShrink: 0 }}>
-                {block === UNASSIGNED_BLOCK ? "Sem quadra" : `Quadra ${block}`}
-              </span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>{lots.map((unit) => renderCell(unit))}</div>
+          {lotsByBlock.length > 0 ? (
+            <div style={{ marginTop: buildings.length > 0 ? "26px" : 0, display: "flex", flexDirection: "column", gap: "10px" }}>
+              {lotsByBlock.map(([block, lots]) => (
+                <div key={block} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ width: 90, fontSize: "10px", fontWeight: 600, color: "var(--inc-text-muted)", flexShrink: 0 }}>
+                    {block === UNASSIGNED_BLOCK ? "Sem quadra" : `Quadra ${block}`}
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>{lots.map((unit) => renderCell(unit, false))}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </section>
-      ) : null}
+          ) : null}
 
-      {allUnits.length === 0 ? <p style={{ opacity: 0.7 }}>Nenhuma unidade cadastrada.</p> : null}
+          {allUnits.length === 0 ? (
+            <p style={{ color: "var(--inc-text-soft)", fontSize: "13px" }}>Nenhuma unidade cadastrada.</p>
+          ) : null}
+        </div>
 
-      {selectedUnit ? (
-        <div className="field-section" style={{ marginTop: "1.5rem", maxWidth: 420 }}>
-          <h3>
-            Unidade {selectedUnit.number} — {UNIT_STATUS_META[selectedUnit.status as keyof typeof UNIT_STATUS_META].label}
-          </h3>
-          <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-            {UNIT_TYPE_LABELS[selectedUnit.unitType] ?? selectedUnit.unitType}
-            {selectedUnit.referenceValue !== null ? ` · ${formatCurrency(selectedUnit.referenceValue)}` : ""}
-          </p>
-
-          {selectedUnit.status === "RESERVED" && selectedReservation ? (
+        <div className="inc-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {selectedUnit ? (
             <>
-              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                Reservada para {selectedReservation.customerName}
-                {selectedReservation.brokerName ? ` (corretor: ${selectedReservation.brokerName})` : ""} — expira em{" "}
-                {new Date(selectedReservation.expiresAt).toLocaleString("pt-BR")}
-              </p>
-              {(waitlistCounts[selectedUnit.id] ?? 0) > 0 ? (
-                <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                  {waitlistCounts[selectedUnit.id]} cliente(s) na fila de espera.
-                </p>
-              ) : null}
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                {canRenewReservation && renewalAllowed && selectedReservation.renewalCount < maxRenewals ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={async () => {
-                      await renewReservationFromMapAction(developmentId, selectedReservation.id);
-                    }}
-                  >
-                    Renovar
-                  </button>
+              <div style={{ padding: "18px 20px", background: "var(--inc-brand-azul)", color: "var(--inc-text-on-azul)" }}>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "var(--inc-brand-azul-claro)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Unidade selecionada
+                </div>
+                <div style={{ marginTop: "7px", fontSize: "24px", fontWeight: 600, letterSpacing: "-0.01em" }}>
+                  {selectedUnit.number}
+                </div>
+                <div style={{ marginTop: "4px", fontSize: "13px", color: "var(--inc-nav-subitem)" }}>
+                  {[selectedBuilding?.name, selectedFloor ? `${selectedFloor.label ?? selectedFloor.level}º pavimento` : null, UNIT_TYPE_LABELS[selectedUnit.unitType] ?? selectedUnit.unitType]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
+                <div
+                  style={{
+                    marginTop: "14px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    padding: "4px 11px",
+                    borderRadius: "2px",
+                    background: "var(--inc-brand-bege)",
+                    color: "var(--inc-brand-azul)",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {UNIT_STATUS_META[selectedUnit.status as keyof typeof UNIT_STATUS_META].label}
+                </div>
+              </div>
+
+              <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: "14px", flex: 1, overflowY: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  {selectedUnit.area !== null ? (
+                    <div>
+                      <div className="inc-eyebrow">Área privativa</div>
+                      <div style={{ marginTop: "4px", fontSize: "15px", fontWeight: 600 }}>{selectedUnit.area} m²</div>
+                    </div>
+                  ) : null}
+                  {selectedUnit.referenceValue !== null ? (
+                    <div>
+                      <div className="inc-eyebrow">Valor de tabela</div>
+                      <div style={{ marginTop: "4px", fontSize: "15px", fontWeight: 600 }}>{formatCurrency(selectedUnit.referenceValue)}</div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <SaleDetailSection key={selectedUnit.id} unitId={selectedUnit.id} />
+
+                {selectedExchangeContract ? (
+                  <>
+                    <div style={{ height: "1px", background: "var(--inc-border-divider)" }} />
+                    <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                      Destacada para o contrato de permuta de <strong>{selectedExchangeContract.permutanteName}</strong>.
+                    </p>
+                  </>
                 ) : null}
-                {canCancelReservation ? (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={async () => {
-                      await cancelReservationFromMapAction(developmentId, selectedReservation.id);
-                      setSelectedUnitId(null);
-                    }}
-                  >
-                    Cancelar reserva
-                  </button>
+
+                {selectedUnit.status === "RESERVED" && selectedReservation ? (
+                  <>
+                    <div style={{ height: "1px", background: "var(--inc-border-divider)" }} />
+                    <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                      Reservada para <strong>{selectedReservation.customerName}</strong>
+                      {selectedReservation.brokerName ? ` (corretor: ${selectedReservation.brokerName})` : ""} — expira em{" "}
+                      {new Date(selectedReservation.expiresAt).toLocaleString("pt-BR")}
+                    </p>
+                    {(waitlistCounts[selectedUnit.id] ?? 0) > 0 ? (
+                      <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                        {waitlistCounts[selectedUnit.id]} cliente(s) na fila de espera.
+                      </p>
+                    ) : null}
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {canRenewReservation && renewalAllowed && selectedReservation.renewalCount < maxRenewals ? (
+                        <button
+                          type="button"
+                          className="inc-btn inc-btn--secondary"
+                          onClick={async () => {
+                            await renewReservationFromMapAction(developmentId, selectedReservation.id);
+                          }}
+                        >
+                          Renovar
+                        </button>
+                      ) : null}
+                      {canCancelReservation ? (
+                        <button
+                          type="button"
+                          className="inc-btn inc-btn--secondary"
+                          onClick={async () => {
+                            await cancelReservationFromMapAction(developmentId, selectedReservation.id);
+                            setSelectedUnitId(null);
+                          }}
+                        >
+                          Cancelar reserva
+                        </button>
+                      ) : null}
+                      {canCreateProposal ? (
+                        <Link href={`/developments/${developmentId}/commercial?unitId=${selectedUnit.id}#nova-proposta`} className="inc-btn inc-btn--secondary">
+                          Simular proposta
+                        </Link>
+                      ) : null}
+                    </div>
+                  </>
                 ) : null}
-                {canCreateProposal ? (
-                  <Link
-                    href={`/developments/${developmentId}/commercial?unitId=${selectedUnit.id}#nova-proposta`}
-                    className="secondary"
-                    style={{ display: "inline-flex", alignItems: "center" }}
-                  >
-                    Simular proposta
-                  </Link>
+
+                {!exchangeMode && (selectedUnit.status === "AVAILABLE" || selectedUnit.status === "RESERVED") && canCreateReservation ? (
+                  <>
+                    <div style={{ height: "1px", background: "var(--inc-border-divider)" }} />
+                    <ReservationPanel
+                      developmentId={developmentId}
+                      unit={selectedUnit}
+                      customers={customers}
+                      brokers={brokers}
+                      agencies={agencies}
+                      salesTables={salesTables}
+                      defaultValidityHours={defaultValidityHours}
+                      onDone={() => setSelectedUnitId(null)}
+                    />
+                  </>
                 ) : null}
+
+                <button type="button" className="inc-btn inc-btn--quiet" onClick={() => setSelectedUnitId(null)}>
+                  Fechar
+                </button>
               </div>
             </>
-          ) : null}
-
-          {!exchangeMode &&
-          (selectedUnit.status === "AVAILABLE" || selectedUnit.status === "RESERVED") &&
-          canCreateReservation ? (
-            <div style={{ marginTop: "0.75rem" }}>
-              <ReservationPanel
-                developmentId={developmentId}
-                unit={selectedUnit}
-                customers={customers}
-                brokers={brokers}
-                agencies={agencies}
-                salesTables={salesTables}
-                defaultValidityHours={defaultValidityHours}
-                onDone={() => setSelectedUnitId(null)}
-              />
+          ) : (
+            <div style={{ padding: "20px", color: "var(--inc-text-soft)", fontSize: "13px" }}>
+              Selecione uma unidade no espelho para ver os detalhes.
             </div>
-          ) : null}
-
-          <button
-            type="button"
-            className="secondary"
-            style={{ marginTop: "0.75rem" }}
-            onClick={() => setSelectedUnitId(null)}
-          >
-            Fechar
-          </button>
+          )}
         </div>
-      ) : null}
-    </div>
+      </div>
+    </>
   );
 }

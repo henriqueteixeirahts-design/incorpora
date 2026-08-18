@@ -64,6 +64,15 @@ body {
   margin: 0;
 }
 
+/* components.css entra como está (README) e só define seleção de unidade
+   via [aria-selected] — o espelho de vendas usa <button> pra cada célula, e
+   aria-selected não é válido em elementos com role button (a11y), então o
+   anel duplo de seleção usa aria-pressed aqui em vez de duplicar o arquivo
+   do handoff por uma única regra. */
+.inc-unit[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--inc-brand-azul), 0 0 0 4px var(--inc-surface);
+}
+
 a {
   color: var(--tsh-blue-light);
   text-decoration: none;

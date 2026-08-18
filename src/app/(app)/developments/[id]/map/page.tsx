@@ -78,15 +78,25 @@ export default async function DevelopmentMapPage({
     position: unit.position,
     block: unit.block,
     referenceValue: unit.referenceValue === null ? null : Number(unit.referenceValue),
+    area: unit.privateArea !== null ? Number(unit.privateArea) : unit.totalArea !== null ? Number(unit.totalArea) : unit.lotArea !== null ? Number(unit.lotArea) : null,
     exchangeContractId: unit.exchangeContractId,
   });
 
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href={`/developments/${id}`}>← {development.name}</Link>
-      </p>
-      <h1>Espelho de vendas</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            {development.spe.name} · {[development.city, development.state].filter(Boolean).join("/")}
+          </div>
+          <h1 className="inc-h1">Espelho de vendas</h1>
+        </div>
+        <div className="inc-page-head__actions">
+          <Link href={`/developments/${id}`} className="inc-btn inc-btn--secondary">
+            ← {development.name}
+          </Link>
+        </div>
+      </div>
 
       <EspelhoGrid
         developmentId={id}

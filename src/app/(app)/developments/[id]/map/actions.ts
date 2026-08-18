@@ -10,6 +10,7 @@ import {
   reservationRequiresApprovalToRenew,
 } from "@/server/reservations";
 import { destacarUnidade, removerDestaque } from "@/server/exchange-contracts";
+import { getUnitSaleDetail, type UnitSaleDetail } from "@/server/unit-sale-detail";
 
 export type FormState = { error?: string; success?: boolean; message?: string };
 
@@ -123,6 +124,11 @@ export async function destacarUnidadeFromMapAction(
   }
   revalidateMap(developmentId);
   return { success: true };
+}
+
+export async function getUnitSaleDetailAction(unitId: string): Promise<UnitSaleDetail | null> {
+  const context = await requireAccessContext();
+  return getUnitSaleDetail(context.organizationId, unitId);
 }
 
 export async function removerDestaqueFromMapAction(
