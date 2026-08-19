@@ -17,6 +17,7 @@ import {
 } from "./actions";
 import type { Option } from "./payables-manager";
 import type { AllocationDestinationInput } from "@/server/payable-allocations";
+import { formatCurrencyBRL, formatDateBR, formatDateTimeBR, formatCalendarDateBR } from "@/lib/format";
 
 export type PayableDetail = NonNullable<Awaited<ReturnType<typeof getPayableDetailAction>>>;
 
@@ -339,8 +340,8 @@ export function PayableModal({
               </div>
               {payable?.paidAt ? (
                 <p className="field-hint">
-                  Pago em {new Date(payable.paidAt).toLocaleDateString("pt-BR")} —{" "}
-                  {Number(payable.paidAmount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  Pago em {formatCalendarDateBR(payable.paidAt)} —{" "}
+                  {formatCurrencyBRL(Number(payable.paidAmount))}
                 </p>
               ) : null}
             </div>
@@ -438,7 +439,7 @@ function DocumentsTab({
               <tr key={doc.id}>
                 <td>{doc.fileName}</td>
                 <td>{DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
-                <td>{new Date(doc.createdAt).toLocaleDateString("pt-BR")}</td>
+                <td>{formatDateBR(doc.createdAt)}</td>
                 <td>
                   <div className="row-actions">
                     {doc.signedUrl ? (
@@ -580,7 +581,7 @@ function ItemsTab({
 
       <p className="field-hint">
         Soma dos itens:{" "}
-        {sum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+        {formatCurrencyBRL(sum)}
       </p>
 
       <button type="button" className="secondary" onClick={addItem}>
@@ -603,7 +604,7 @@ function ApprovalHistory({
           <li key={entry.id}>
             {STATUS_LABELS[entry.fromStatus] ?? entry.fromStatus} → {STATUS_LABELS[entry.toStatus] ?? entry.toStatus}
             {" — "}
-            {entry.actorName} em {new Date(entry.occurredAt).toLocaleString("pt-BR")}
+            {entry.actorName} em {formatDateTimeBR(entry.occurredAt)}
           </li>
         ))}
       </ul>
@@ -613,9 +614,7 @@ function ApprovalHistory({
 
 type AllocationRow = { developmentId: string | null; percent: string; amount: string };
 
-function formatMoney(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatMoney = formatCurrencyBRL;
 
 function AllocationsTab({
   payable,

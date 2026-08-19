@@ -11,6 +11,7 @@ import { GenerateDocumentForm } from "./generate-document-form";
 import { NewAmendmentForm, SignAmendmentButton, AmendmentDocumentForm } from "./amendment-forms";
 import { NewAssignmentForm, SignAssignmentButton, AssignmentDocumentForm } from "./assignment-forms";
 import { NewDistratoForm, SignDistratoButton, DistratoDocumentForm } from "./distrato-forms";
+import { formatCurrencyBRL } from "@/lib/format";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -35,9 +36,7 @@ const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
   CAMPAIGN: "Campanha",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export type TimelineEventRow = { id: string; label: string; occurredAtLabel: string };
 

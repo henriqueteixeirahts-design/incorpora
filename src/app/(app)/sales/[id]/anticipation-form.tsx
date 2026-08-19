@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { simulateAnticipationAction, type AnticipationState } from "./actions";
+import { formatCurrencyBRL } from "@/lib/format";
 
 const initialState: AnticipationState = {};
 
@@ -63,6 +64,4 @@ export function AnticipationForm({ installments }: { installments: InstallmentOp
   );
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

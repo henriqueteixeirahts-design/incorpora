@@ -7,6 +7,7 @@ import { advancePayableStatusAction, cancelPayableAction, getPayableDetailAction
 import { PayableModal, type PayableDetail, type AllocationTemplateOption } from "./payable-modal";
 import { PayablesFiltersForm, type PayableFiltersValue } from "./payables-filters-form";
 import type { PayableSortField } from "@/server/payables";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 const STATUS_LABELS: Record<string, string> = {
   ENTERED: "Lançada",
@@ -48,9 +49,7 @@ const SORTABLE_COLUMNS: { field: PayableSortField; label: string }[] = [
   { field: "status", label: "Status" },
 ];
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export function PayablesManager({
   payables,
@@ -198,7 +197,7 @@ export function PayablesManager({
           {payables.map((payable) => (
             <tr key={payable.id}>
               <td>{payable.description}</td>
-              <td>{new Date(payable.dueDate).toLocaleDateString("pt-BR")}</td>
+              <td>{formatCalendarDateBR(payable.dueDate)}</td>
               <td>{formatCurrency(payable.amount)}</td>
               <td>{STATUS_LABELS[payable.status] ?? payable.status}</td>
               <td>

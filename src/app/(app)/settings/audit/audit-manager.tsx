@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { reverifyNowAction } from "./actions";
+import { formatDateTimeBR } from "@/lib/format";
 
 export type AuditCheckRow = {
   id: string;
@@ -165,7 +166,7 @@ export function AuditManager({
           <h3>
             <StatusDot status={latest.status} />
             {latest.status === "OK" ? "Carteira íntegra" : "ATENÇÃO: verificação encontrou problema"} — verificada
-            em {new Date(latest.startedAt).toLocaleString("pt-BR")}
+            em {formatDateTimeBR(latest.startedAt)}
           </h3>
           <ReverifyButton canRun={canRun} />
         </div>
@@ -209,7 +210,7 @@ export function AuditManager({
                   </td>
                   <td>{run.fullCheck ? "Completa" : "Amostragem"}</td>
                   <td>{TRIGGER_LABELS[run.triggeredBy] ?? run.triggeredBy}</td>
-                  <td>{new Date(run.startedAt).toLocaleString("pt-BR")}</td>
+                  <td>{formatDateTimeBR(run.startedAt)}</td>
                   <td>
                     <button
                       type="button"

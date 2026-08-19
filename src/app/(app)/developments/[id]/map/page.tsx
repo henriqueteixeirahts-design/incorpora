@@ -10,6 +10,7 @@ import { listCustomers, listBrokers, listAgencies } from "@/server/crm";
 import { listSalesTables } from "@/server/sales-tables";
 import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
 import { EspelhoGrid } from "./espelho-grid";
+import { resolveUnitArea } from "@/lib/unit-area";
 
 export default async function DevelopmentMapPage({
   params,
@@ -78,7 +79,11 @@ export default async function DevelopmentMapPage({
     position: unit.position,
     block: unit.block,
     referenceValue: unit.referenceValue === null ? null : Number(unit.referenceValue),
-    area: unit.privateArea !== null ? Number(unit.privateArea) : unit.totalArea !== null ? Number(unit.totalArea) : unit.lotArea !== null ? Number(unit.lotArea) : null,
+    area: resolveUnitArea({
+      privateArea: unit.privateArea !== null ? Number(unit.privateArea) : null,
+      totalArea: unit.totalArea !== null ? Number(unit.totalArea) : null,
+      lotArea: unit.lotArea !== null ? Number(unit.lotArea) : null,
+    }),
     exchangeContractId: unit.exchangeContractId,
   });
 

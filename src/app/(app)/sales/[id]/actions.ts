@@ -15,6 +15,7 @@ import { renderDocumentPdf } from "@/lib/document-pdf";
 import { createAmendment, signAmendment } from "@/server/contract-amendments";
 import { createAssignment, signAssignment } from "@/server/contract-assignments";
 import { createDistrato, signDistrato } from "@/server/contract-distratos";
+import { parseCalendarDate as parseDateOnly, formatDateTimeBR } from "@/lib/format";
 import type { ContractAmendmentType, InterestType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
@@ -23,14 +24,6 @@ export type AmendmentFormState = { error?: string; success?: boolean };
 export type AssignmentFormState = { error?: string; success?: boolean };
 export type DistratoFormState = { error?: string; success?: boolean };
 
-/** input[type=date] devolve "AAAA-MM-DD" sem hora — `new Date(str)` interpretaria
- * isso como meia-noite UTC, que exibe um dia a menos em `toLocaleDateString("pt-BR")`
- * pra qualquer servidor rodando num fuso a oeste de UTC. Constrói a data local
- * direto dos componentes pra evitar esse desvio de fuso. */
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
 export type AnticipationState = {
   error?: string;
   result?: Awaited<ReturnType<typeof simulateInstallmentAnticipation>>;
@@ -210,7 +203,7 @@ export async function generateDocumentAction(
     const pdfBuffer = await renderDocumentPdf({
       title: preview.templateName,
       text: preview.text,
-      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${formatDateTimeBR(new Date())}`,
     });
 
     const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;

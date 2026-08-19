@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { runJobAction } from "./actions";
+import { formatDateTimeBR } from "@/lib/format";
 
 export type JobCatalogEntry = { name: string; label: string; description: string };
 
@@ -188,7 +189,7 @@ export function JobsManager({
                     {STATUS_LABELS[run.status] ?? run.status}
                   </td>
                   <td>{TRIGGER_LABELS[run.triggeredBy] ?? run.triggeredBy}</td>
-                  <td>{new Date(run.startedAt).toLocaleString("pt-BR")}</td>
+                  <td>{formatDateTimeBR(run.startedAt)}</td>
                   <td>{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "—"}</td>
                   <td style={{ maxWidth: 360 }}>
                     {run.status === "FAILURE" ? (

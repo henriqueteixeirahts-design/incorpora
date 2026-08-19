@@ -1,82 +1,73 @@
-# Relatório de Test Drive em Produção — Incorpora
+# Relatório de Test Drive em Produção — Incorpora (VERSÃO COMPLETA — 23 achados)
 
-Primeiro teste de uso real do sistema em produção (ambiente `incorpora-six.vercel.app`), feito manualmente pela interface, tentando percorrer o ciclo cadastrar cliente → reservar unidade → criar proposta → fechar venda → gerar contrato/PDF. **O fluxo travou na criação de proposta por bugs bloqueantes** — não foi possível chegar à venda nem testar a geração de PDF em produção (que segue sem confirmação end-to-end).
+Substitui a versão anterior no disco. Registra os dois test drives feitos em produção (incorpora-six.vercel.app), com o ciclo completo validado e todos os achados numerados de 1 a 23.
 
-**Validação positiva importante:** o motor de avaliação de propostas por VPL **funciona corretamente em produção** — calcula o VPL, aplica as regras (entrada mínima, % pós-chaves) e reprova/aprova automaticamente com justificativa. O problema não é o cérebro financeiro; é a interface que impede o usuário de alimentá-lo corretamente.
+## Resultado geral
+**O núcleo do sistema funciona de ponta a ponta com dado real.** No segundo test drive (após a correção dos P0 da proposta, commit 2001e05), foi possível percorrer o ciclo inteiro: cadastro/seleção de cliente -> reserva -> proposta (modal novo) -> aprovação -> conversão em venda (V-2026-0001, unidade 2501) -> geração de contrato -> PDF gerado, subido ao Supabase Storage e aberto. A pendência de upload de documento em produção, aberta desde a Fase B etapa 1, esta RESOLVIDA e confirmada.
 
-Os achados abaixo estão priorizados: P0 = bloqueia o uso, P1 = furo funcional sério, P2 = qualidade/UX, P3 = cosmético. Sugiro atacar nessa ordem.
-
----
-
-## P0 — Bloqueantes (impedem fechar uma venda)
-
-**B1. Erro de banco cru exposto ao criar proposta (numeric field overflow).**
-No campo "Entrada (%)" da contra-proposta de fluxo, digitar um número grande (usuário digitou `80000` interpretando como R$ 80.000, não como percentual) causa `Invalid prisma.proposal.create() invocation: Value out of range for the type: numeric field overflow`, exibido cru na tela. Correções necessárias: (a) validar o range do campo % (0–100) antes de enviar, com mensagem amigável; (b) tratar qualquer erro de servidor sem vazar a mensagem técnica do Prisma pro usuário; (c) ver B2 sobre a ambiguidade %/R$.
-
-**B2. Não há caminho óbvio para montar uma proposta que passe.**
-A tela de nova proposta não tem um campo claro de entrada. O parcelamento fica escondido atrás de "▶ Contra-proposta de fluxo (opcional)" recolhido — se o usuário não expandir e preencher, o sistema assume entrada 0% e **sempre reprova** por "entrada abaixo do mínimo (10%)". Um usuário real não descobre o caminho. A tela precisa deixar o fluxo de pagamento em primeiro plano, não opcional/escondido.
-
-**B3. Cálculo de fluxo errado quando a contra-proposta não é preenchida.**
-Proposta com 100% de entrada foi reprovada por "pós-chaves 80% acima do máximo (30%)". Com entrada de 100% não deveria sobrar 80% pós-chaves — indica que, sem a contra-proposta preenchida, o sistema cai num default (da tabela) que empurra 80% pra pós-chaves e ignora a entrada informada. Investigar a montagem do fluxo nominal a partir dos campos da tela.
+Itens marcados [VALIDACAO POSITIVA] nao requerem acao. Itens marcados [JA CORRIGIDO 2001e05] foram resolvidos na correcao dos P0 da proposta; ficam registrados para historico e testes de regressao.
 
 ---
 
-## Decisão do product owner: **a tela de proposta será repensada do zero**, não remendada.
+## Cadastro de Cliente
+1. CPF invalido so valida ao salvar - deveria validar no blur do campo (feedback imediato).
+2. E-mail invalido so valida ao salvar - idem, validacao tardia.
+3. CEP: ao TROCAR um CEP ja preenchido, nao refaz a busca automatica - mantem o endereco do CEP anterior. O autocomplete (ViaCEP) so dispara na primeira digitacao, nao em mudanca.
+4. Campo "Numero" do endereco nao e obrigatorio - deveria ser (endereco completo para contrato).
 
-Redesenhar a criação/simulação de proposta como um **modal** (ver R1 abaixo), com:
-- Campo de entrada claro, com opção de informar em **% OU em R$** (e mostrar o outro convertido ao lado).
-- Todos os campos de fluxo (entrada, parcelas, balões/intermediárias, chaves) mostrando o **valor em R$ correspondente** ao lado do %, e uma **validação visível de que a soma fecha 100%** do valor da venda antes de permitir submeter.
-- **Referências sempre visíveis**: valor da unidade, tabela de preços vigente, e o fluxo da tabela padrão **pré-carregado** (a spec 5.3 do `ESPEC_MODULO_COMERCIAL.md` já previa isso — "parte da tabela padrão pré-carregada"). O corretor edita a partir do padrão, não do zero.
-- O resultado da avaliação (VPL, checks, status) atualizado **em tempo real** conforme edita, como a spec previa.
+## Reserva / Simular Proposta (espelho de vendas)
+5. REGRA GERAL DE UX: nenhum cadastro deve ser feito inline empurrando a tela pra baixo - deve abrir em modal OU painel lateral (painel lateral aprovado depois - ambos aceitos).
+6. A tela de simular proposta estava no visual antigo no test drive #1 (esperado; entra na reforma visual).
+7. Ao simular proposta, nao apareciam valor da unidade nem tabela de precos vigente pre-carregados (spec 5.3). [JA CORRIGIDO 2001e05] - modal novo mostra valor de tabela, valor da venda e fluxo pre-carregado.
+8. Campos de preco sem separador de milhar/decimais - formatacao de moeda faltando. SISTEMICO (Sprint V1).
+9. Proposta REPROVADA ainda mostrava botao "Enviar para aprovacao" - reprovada e fim de linha. [JA CORRIGIDO 2001e05, F1].
+
+## Simular Proposta - problemas estruturais (test drive #1, JA CORRIGIDOS em 2001e05)
+10. Tela de nova proposta nao tinha campo direto de entrada; fluxo escondido atras de "Contra-proposta de fluxo (opcional)" recolhido -> sistema assumia entrada 0% e sempre reprovava. [CORRIGIDO] - fluxo sempre visivel.
+11. Tela confusa, sem referencia de valor/tabela/fluxo padrao. [CORRIGIDO] - modal mostra tudo.
+12. (= 9) Botao "Enviar para aprovacao" em proposta reprovada. [CORRIGIDO].
+13. ERRO DE BANCO ao criar proposta: numeric field overflow - campo "Entrada (%)" recebeu 80000 (usuario achou que era R$). Sem validacao de range, mandou 80000% ao banco. [CORRIGIDO] - validacao de range + erro tratado + R$ ao lado do % pra desfazer a ambiguidade.
+14. Campos de fluxo em % sem mostrar o R$ correspondente e sem validar soma 100%. [CORRIGIDO] - R$ ao lado ao vivo + validacao de 100% + auto-ajuste de Chaves.
+15. Proposta com 100% de entrada reprovada por "pos-chaves 80%" - caia no default da tabela. [CORRIGIDO] - repro virou teste; 100% de entrada agora da pos-chaves 0%.
+16. Mensagem tecnica do Prisma vazando pro usuario. [CORRIGIDO] - ValidationError amigavel.
+
+## [VALIDACAO POSITIVA] Motor de VPL
+Confirmado em producao nos dois test drives: calcula VPL, aplica limites (entrada minima, prazo, % pos-chaves), roteia os 3 status corretamente. Exemplos ao vivo: entrada 20%/100 parcelas -> Reprovada (desagio -28,87%); entrada 30%/30 parcelas -> Aguardando analise (desagio -8,88%, dentro do limite de 10%); reprovacao por entrada 0% < minimo. Sem acao - esta correto.
+
+## Fluxo de aprovacao de proposta
+17. Nomenclatura confusa: "Avaliacao de propostas" no submenu leva a tela de CONFIGURACAO dos parametros do motor (taxa, tolerancias, limites), nao a lista de propostas pendentes. Renomear (ex.: "Parametros de avaliacao" / "Regras de proposta") e ter um lugar claro onde propostas "Aguardando analise" aparecem para o gestor decidir.
+18. Tela de aprovacao so tem "aprovar/reprovar" - nao ha opcao de o gestor fazer CONTRA-PROPOSTA (ajustar o fluxo e devolver). Avaliar contra ESPEC_MODULO_COMERCIAL.md se contra-proposta do gestor estava previsto; implementar se sim, ou registrar a decisao de manter so aprovar/reprovar.
+
+## [MARCO] Primeira venda ponta a ponta
+V-2026-0001 (unidade 2501) fechada em producao: reserva -> proposta -> enviada -> aprovada -> convertida em venda. O caminho que travava no test drive #1 esta 100%.
+
+## Linha do tempo da venda
+19. HORARIOS ERRADOS na linha do tempo - provavel bug de FUSO HORARIO (mesma categoria de bugs de data ja vista em cessao e outras etapas). Vale um FIX CENTRAL de timezone aplicado em todo o sistema, com teste que fixe o comportamento.
+20. Cada evento da linha do tempo deveria mostrar o NOME DO USUARIO que executou a acao (quem reservou, aprovou, converteu). Hoje so mostra acao + data. O AuditEvent/DevelopmentEvent ja grava o autor - falta EXIBIR.
+
+## Geracao de documento / PDF
+21. No primeiro teste, "Nenhum modelo ativo para este empreendimento" - o motor de templates existe mas NAO HAVIA modelo de contrato cadastrado em producao. Por isso o PDF nunca fora testado end-to-end: nao havia o que gerar. NAO era bug de Storage; era falta de dado de configuracao. Acao: SEEDAR uma biblioteca-padrao de modelos por organizacao (contrato, distrato, cessao, extrato), clonavel - o Pilar 4 do ESPEC_MULTITENANT_FUNDACOES.md ja previa. Uma incorporadora nova precisa gerar contrato no dia 1 sem cadastrar do zero. Seedar retroativo para a organizacao TSH.
+22. A unidade 2501 tem "80 m2" visivel no painel do espelho, mas o gerador reportou unidade.area vazio. O dado existe em algum lugar (o espelho mostra), mas nao no campo que o template le. Investigar: area nao persistida no seed das unidades, OU a variavel do template aponta pra campo diferente. Corrigir para que a variavel de area resolva. Verificar/preencher a area nas unidades reais de TSH Laguna e Lake House.
+
+## [VALIDACAO POSITIVA] Bloqueio por variavel faltante
+Ao gerar com modelo usando a variavel de area e a unidade sem area, o sistema bloqueou com "Faltam dados no cadastro pra gerar: unidade.area" - exatamente como a spec da Fase A previa (nao gerar documento com lacunas). Comportamento correto.
+
+## [VALIDACAO POSITIVA] PDF confirmado em producao
+Apos ajustar o modelo, o documento GEROU, subiu ao Supabase Storage, apareceu na aba "Documentos" da venda com opcao de baixar, e ABRIU em nova aba corretamente. Pendencia da Fase B RESOLVIDA. Todos os fluxos de documento (contrato, distrato, cessao, extrato) tem o alicerce de Storage confirmado.
+
+## Achado transversal
+23. REGRA GERAL de auditoria: toda acao deve EXIBIR quem criou + data/hora, e quem alterou por ultimo + data/hora (se houve alteracao). Falta em: documentos gerados ("gerado por" ausente no CT-2026-0001), linha do tempo (achado 20), e cadastros em geral. Criterio de aceite transversal.
 
 ---
 
-## P1 — Furos funcionais
+## Duas regras transversais estabelecidas pelo product owner
+- R1 - SEM FORMULARIO INLINE. Cadastro/edicao em modal OU painel lateral (o painel lateral do espelho foi aprovado - ambos aceitos; escolher conforme o contexto). Nunca formulario empurrando a tela pra baixo.
+- R2 - AUDITORIA UNIVERSAL EXIBIDA. Autor + data de criacao e de ultima alteracao visiveis em toda tela de acao.
 
-**F1. Proposta reprovada ainda mostra "Enviar para aprovação".**
-Reprovada é fim de linha — só o status "Aguardando análise do gestor" deveria ter o botão de enviar. Reprovada não pode ser submetida. (Reincidiu em todas as tentativas.)
-
-**F2. Troca de CEP não refaz o autocomplete de endereço.**
-No cadastro de cliente, ao **alterar** um CEP já preenchido, o endereço anterior permanece — o ViaCEP só dispara na primeira digitação, não em mudança. Deve refazer a busca sempre que o CEP mudar.
-
-**F3. Campo "Número" do endereço não é obrigatório.**
-Conforme a spec de endereço completo, número deveria ser obrigatório (endereço sem número é incompleto para contrato).
-
----
-
-## P2 — Qualidade / UX
-
-**Q1. Formatação de moeda ausente em todo o sistema (sistêmico).**
-Valores aparecem sem separador de milhar e sem decimais (ex.: "R$ 704000" em vez de "R$ 704.000,00"). Num sistema financeiro isso é grave — dificulta leitura e induz erro. Aplicar formatação `pt-BR` (R$ #.###,##) em toda exibição de valor monetário do sistema.
-
-**Q2. Validação de CPF e e-mail só ocorre ao salvar.**
-Deveria validar no `blur` de cada campo (feedback imediato), não só ao submeter o formulário inteiro.
-
-**Q3. Reserva permite selecionar usuário do sistema em vez de exigir cliente.**
-Verificar: a reserva deveria vincular um **cliente** (comprador), não um usuário do sistema. Confirmar a regra da spec e ajustar se procede.
-
----
-
-## R1 — Regra geral de UX estabelecida pelo product owner (vale pro sistema inteiro)
-
-**Nenhum cadastro/formulário deve ser feito inline na tela empurrando o conteúdo pra baixo. TODO cadastro deve abrir em modal (janela/popup).**
-Isso é o padrão já aprovado no handoff visual (modais 520/760px) e já aplicado em Clientes/SPE. As telas que ainda usam formulário inline (proposta, e outras que aparecerem) devem migrar pra modal nas rodadas de reforma visual. Registrar como critério de aceite de toda tela reformada daqui pra frente.
-
----
-
-## Nota sobre o PDF (pendência que permanece)
-
-O teste de geração de PDF em produção **continua sem confirmação** — não por falha de tentativa, mas porque todo caminho até o PDF (contrato, extrato) depende de uma venda fechada, e o fluxo de venda está bloqueado pelos itens P0. Assim que B1–B3 forem corrigidos e for possível fechar uma venda de teste, o teste de PDF em produção deve ser refeito (era o objetivo original deste test drive).
-
----
-
-## Sugestão de ordem de execução
-
-1. **P0 (B1, B2, B3)** — desbloqueia o fluxo de venda. Como a tela de proposta será redesenhada do zero (modal, ver decisão acima), B1–B3 podem ser resolvidos dentro desse redesenho em vez de remendos isolados.
-2. **F1** (rápido) junto com o redesenho da proposta.
-3. **Q1 (formatação de moeda)** — sistêmico, alto impacto visual, vale um helper central de formatação aplicado em todo o sistema.
-4. **F2, F3, Q2** — ajustes do cadastro de cliente.
-5. **R1** — aplicar como critério nas rodadas de reforma visual em andamento.
-6. Refazer o teste de venda ponta a ponta + **PDF em produção**.
-
-Rigor de sempre: cada correção que toca cálculo de proposta/fluxo precisa de teste contra cálculo manual; e o botão de submeter proposta reprovada + o overflow do % pedem casos de teste que reproduzam exatamente o que o test drive encontrou (proposta reprovada não deve ter caminho de envio; % fora de range deve ser barrado com mensagem amigável).
+## Correspondencia com o plano de sprints
+Os numeros deste relatorio correspondem as referencias em PLANO_SPRINTS_VISUAL_CORRECOES.md:
+- Sprint V1: achados 8, 14 (moeda), 19 (fuso), 21 (seed de modelo), 22 (area)
+- Sprint V2: achados 17, 18 (aprovacao/nomenclatura), R1
+- Sprint V3: achados 1, 2, 3, 4 (cadastro cliente), colunas trocadas + "APARTMENT" (empreendimentos)
+- Sprint V4: achados 20, 23 (autor/auditoria em vendas/documentos)
+- Sprint V5: varredura transversal (R1, R2, moeda, fuso, enums)

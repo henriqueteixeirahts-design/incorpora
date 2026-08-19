@@ -11,6 +11,7 @@ import {
   type FormState,
 } from "./actions";
 import type { BankAccountSortField } from "@/server/bank-accounts";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 export type BankAccountRow = {
   id: string;
@@ -187,8 +188,8 @@ export function BankAccountsManager({
               <td>{bankAccount.nickname ?? "—"}</td>
               <td>{STATUS_LABELS[bankAccount.status] ?? bankAccount.status}</td>
               <td>
-                {bankAccount.openingBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} em{" "}
-                {new Date(bankAccount.openingBalanceDate).toLocaleDateString("pt-BR")}
+                {formatCurrencyBRL(bankAccount.openingBalance)} em{" "}
+                {formatCalendarDateBR(bankAccount.openingBalanceDate)}
               </td>
               {canEdit || canDelete ? (
                 <td>

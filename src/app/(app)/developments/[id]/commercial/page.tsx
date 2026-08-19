@@ -20,6 +20,7 @@ import {
   decideApprovalAction,
   convertToSaleAction,
 } from "./actions";
+import { formatCurrencyBRL, formatDateTimeBR } from "@/lib/format";
 
 const RESERVATION_STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Ativa",
@@ -134,7 +135,7 @@ export default async function CommercialPage({
                     {reservation.fromWaitlist ? " (fila de espera)" : ""}
                   </td>
                   <td>{RESERVATION_STATUS_LABELS[reservation.status]}</td>
-                  <td>{new Date(reservation.expiresAt).toLocaleString("pt-BR")}</td>
+                  <td>{formatDateTimeBR(reservation.expiresAt)}</td>
                   <td>
                     <div className="row-actions">
                       {canRenewThis ? (
@@ -187,7 +188,7 @@ export default async function CommercialPage({
                   <tr key={entry.id}>
                     <td>{entry.unit.number}</td>
                     <td>{entry.customer.name}</td>
-                    <td>{new Date(entry.createdAt).toLocaleString("pt-BR")}</td>
+                    <td>{formatDateTimeBR(entry.createdAt)}</td>
                     <td>
                       {canCancelReservation ? (
                         <form action={cancelWaitlistEntryAction}>
@@ -317,6 +318,4 @@ export default async function CommercialPage({
   );
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

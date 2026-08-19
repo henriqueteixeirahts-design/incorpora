@@ -6,6 +6,7 @@ import { Tabs, type TabDef } from "@/components/Tabs";
 import { TrashIcon, DownloadIcon } from "@/components/icons";
 import { AddressFields } from "@/components/AddressFields";
 import { formatDocument, formatPhone } from "@/lib/br-validation";
+import { formatDateBR, formatDateTimeBR } from "@/lib/format";
 import {
   createCustomerAction,
   updateCustomerAction,
@@ -108,12 +109,12 @@ export function CustomerModal({
       {isEditing && customer!.audit ? (
         <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
           Cadastrado por {customer!.audit.createdByName ?? "—"} em{" "}
-          {new Date(customer!.audit.createdAt).toLocaleString("pt-BR")}
+          {formatDateTimeBR(customer!.audit.createdAt)}
           {customer!.audit.updatedAt !== customer!.audit.createdAt ? (
             <>
               {" "}
               · Última alteração por {customer!.audit.updatedByName ?? "—"} em{" "}
-              {new Date(customer!.audit.updatedAt).toLocaleString("pt-BR")}
+              {formatDateTimeBR(customer!.audit.updatedAt)}
             </>
           ) : null}
         </p>
@@ -489,7 +490,7 @@ function DocumentsTab({
               <tr key={doc.id}>
                 <td>{doc.fileName}</td>
                 <td>{DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
-                <td>{new Date(doc.createdAt).toLocaleDateString("pt-BR")}</td>
+                <td>{formatDateBR(doc.createdAt)}</td>
                 <td>
                   <div className="row-actions">
                     {doc.signedUrl ? (

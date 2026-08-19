@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireAccessContext } from "@/server/auth-context";
 import { listReceivablesForExport } from "@/server/receivables-avulsos";
 import type { ReceivableCategory, ReceivableStatus } from "@/generated/prisma/client";
+import { formatCalendarDateBR } from "@/lib/format";
 
 const CATEGORY_LABELS: Record<string, string> = {
   ASSIGNMENT_FEE: "Taxa de cessão",
@@ -48,10 +49,10 @@ export async function GET(request: NextRequest) {
     r.customer?.name ?? "",
     r.development?.name ?? "Organização",
     r.spe?.name ?? "",
-    new Date(r.dueDate).toLocaleDateString("pt-BR"),
+    formatCalendarDateBR(r.dueDate),
     Number(r.amount).toFixed(2).replace(".", ","),
     STATUS_LABELS[r.status] ?? r.status,
-    r.receivedAt ? new Date(r.receivedAt).toLocaleDateString("pt-BR") : "",
+    r.receivedAt ? formatCalendarDateBR(r.receivedAt) : "",
     r.receivedAmount ? Number(r.receivedAmount).toFixed(2).replace(".", ",") : "",
   ]);
 

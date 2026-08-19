@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { createIndexRule, upsertIndexValue, syncIndexRuleValues } from "@/server/index-rules";
+import { parseCalendarDate } from "@/lib/format";
 import type { IndexCode } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
@@ -43,8 +44,7 @@ export async function upsertIndexValueAction(
     return { error: "Preencha índice, mês e percentual." };
   }
 
-  const [year, month] = monthValue.split("-").map(Number);
-  const referenceMonth = new Date(year, month - 1, 1);
+  const referenceMonth = parseCalendarDate(monthValue);
 
   try {
     await upsertIndexValue(context, { indexRuleId, referenceMonth, ratePercent });

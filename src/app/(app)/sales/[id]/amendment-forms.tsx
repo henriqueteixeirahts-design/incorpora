@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { createAmendmentAction, signAmendmentAction, type AmendmentFormState } from "./actions";
 import { GenerateDocumentForm } from "./generate-document-form";
+import { formatCurrencyBRL } from "@/lib/format";
 
 const initialState: AmendmentFormState = {};
 
@@ -13,9 +14,7 @@ const AMENDMENT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Outro",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export function NewAmendmentForm({
   saleId,

@@ -9,6 +9,7 @@ import { uploadEntityDocument } from "@/server/storage";
 import { renderStatementPdf, renderDocumentPdf, type StatementInstallmentRow } from "@/lib/document-pdf";
 import { logCollectionContact } from "@/server/collection-log";
 import { createRenegotiationAgreement, decideRenegotiationApproval, signRenegotiationAgreement } from "@/server/renegotiations";
+import { parseCalendarDate as parseDateOnly, formatCurrencyBRL as formatCurrency, formatCalendarDateBR, formatDateBR, formatDateTimeBR } from "@/lib/format";
 import type { ApprovalLevel } from "@/generated/prisma/client";
 
 export type FormState = { error?: string };
@@ -19,16 +20,6 @@ export type SettlementState = {
 export type GenerateStatementState = { error?: string; missing?: string[]; missingTemplateName?: string; success?: boolean };
 export type LogContactState = { error?: string; success?: boolean };
 export type RenegotiationFormState = { error?: string; success?: boolean };
-
-/** input[type=date] devolve "AAAA-MM-DD" sem hora — ver nota em sales/[id]/actions.ts. */
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
 
 export async function registerStatementPaymentAction(
   _prevState: FormState,
@@ -103,7 +94,7 @@ export async function generateStatementPdfAction(
       undefined,
       undefined,
       {
-        asOfDateLabel: position.asOfDate.toLocaleDateString("pt-BR"),
+        asOfDateLabel: formatDateBR(position.asOfDate),
         situationLabel: contractStatement.situationLabel,
         contractedValueLabel: formatCurrency(contractStatement.contractedValue),
         totalPaidLabel: formatCurrency(contractStatement.totalPaid),
@@ -127,14 +118,14 @@ export async function generateStatementPdfAction(
       situationLabel: i.situationLabel,
       paymentLabel:
         i.payments.length > 0
-          ? i.payments.map((p) => `${new Date(p.paidAt).toLocaleDateString("pt-BR")} — ${formatCurrency(p.amount)}${p.method ? ` — ${p.method}` : ""}`).join("; ")
+          ? i.payments.map((p) => `${formatCalendarDateBR(p.paidAt)} — ${formatCurrency(p.amount)}${p.method ? ` — ${p.method}` : ""}`).join("; ")
           : "—",
     }));
 
     const pdfBuffer = await renderStatementPdf({
       title: `Extrato — ${contractStatement.contractNumber}`,
       headerText,
-      footer: `Extrato — ${templateName}${templateVersion ? ` v${templateVersion}` : ""} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+      footer: `Extrato — ${templateName}${templateVersion ? ` v${templateVersion}` : ""} — gerado em ${formatDateTimeBR(new Date())}`,
       contracts: [
         {
           contractNumber: contractStatement.contractNumber,
@@ -299,7 +290,7 @@ export async function generateRenegotiationPdfAction(
     const pdfBuffer = await renderDocumentPdf({
       title: preview.templateName,
       text: preview.text,
-      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${new Date().toLocaleString("pt-BR")}`,
+      footer: `${preview.templateName} — versão ${preview.templateVersion} — gerado em ${formatDateTimeBR(new Date())}`,
     });
 
     const fileName = `${preview.templateName.replace(/[^a-zA-Z0-9]+/g, "-")}-v${preview.templateVersion}.pdf`;

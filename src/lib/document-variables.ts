@@ -5,6 +5,7 @@
 // e chama `resolveDocumentVariables` + `substituteTemplate` daqui.
 
 import { currencyToExtenso } from "@/lib/currency-extenso";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 /** Catálogo exibido no editor de modelos (spec 1.3) — a lista de tokens em `resolveDocumentVariables` deve espelhar exatamente essas chaves. */
 export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; label: string }[] }[] = [
@@ -218,13 +219,8 @@ export type ResolvedVariables = {
 
 const NO_INDEX_LABEL = "Sem índice (juros contratuais fixos)";
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR");
-}
+const formatCurrency = formatCurrencyBRL;
+const formatDate = formatCalendarDateBR;
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);

@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireAccessContext } from "@/server/auth-context";
 import { listPayablesForExport } from "@/server/payables";
 import type { PayableCategory, PayableStatus } from "@/generated/prisma/client";
+import { formatCalendarDateBR } from "@/lib/format";
 
 const STATUS_LABELS: Record<string, string> = {
   ENTERED: "Lançada",
@@ -60,8 +61,8 @@ export async function GET(request: NextRequest) {
     payable.spe?.name ?? "",
     payable.supplier?.name ?? "",
     payable.costCenter?.name ?? "",
-    new Date(payable.competenceDate).toLocaleDateString("pt-BR"),
-    new Date(payable.dueDate).toLocaleDateString("pt-BR"),
+    formatCalendarDateBR(payable.competenceDate),
+    formatCalendarDateBR(payable.dueDate),
     Number(payable.amount).toFixed(2).replace(".", ","),
     STATUS_LABELS[payable.status] ?? payable.status,
     payable.fiscalDocument ?? "",

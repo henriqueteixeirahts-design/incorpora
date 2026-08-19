@@ -8,6 +8,7 @@ import {
   uploadExchangeContractDocumentAction,
   type FormState,
 } from "./actions";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 export type ExchangeContractRow = {
   id: string;
@@ -41,9 +42,7 @@ const STATUS_LABELS: Record<string, string> = {
   TERMINATED: "Encerrado",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 const initialState: FormState = {};
 
@@ -277,7 +276,7 @@ export function ExchangeContractsManager({
                 <strong>{contract.permutanteName}</strong>
                 <p style={{ fontSize: "0.85rem", opacity: 0.8, marginTop: "0.25rem" }}>
                   {TYPE_LABELS[contract.type] ?? contract.type} · {STATUS_LABELS[contract.status] ?? contract.status} ·{" "}
-                  {new Date(contract.contractDate).toLocaleDateString("pt-BR")}
+                  {formatCalendarDateBR(contract.contractDate)}
                   {contract.appraisalValue !== null ? ` · avaliação ${formatCurrency(contract.appraisalValue)}` : ""}
                 </p>
                 {contract.type !== "FINANCIAL" ? (

@@ -6,6 +6,7 @@ import { Tabs, type TabDef } from "@/components/Tabs";
 import { AddressFields } from "@/components/AddressFields";
 import { TrashIcon, DownloadIcon } from "@/components/icons";
 import { formatCnpj, formatPhone, formatDocument } from "@/lib/br-validation";
+import { formatCurrencyBRL, formatDateTimeBR, formatCalendarDateBR } from "@/lib/format";
 import {
   createSpeAction,
   updateSpeAction,
@@ -276,7 +277,7 @@ function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
                   <td>{doc.description ?? "—"}</td>
                   <td style={expired ? { color: "var(--danger-color, #b91c1c)" } : undefined}>
                     {doc.expiresAt
-                      ? new Date(doc.expiresAt).toLocaleDateString("pt-BR") + (expired ? " (vencida)" : "")
+                      ? formatCalendarDateBR(doc.expiresAt) + (expired ? " (vencida)" : "")
                       : "—"}
                   </td>
                   <td>
@@ -540,8 +541,8 @@ function SpePartnersTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => v
                 <td>{formatDocument(partner.document, partner.type)}</td>
                 <td>{partner.participationPct.toLocaleString("pt-BR")}%</td>
                 <td>{partner.role ? PARTNER_ROLE_LABELS[partner.role] : "—"}</td>
-                <td>{partner.startDate ? new Date(partner.startDate).toLocaleDateString("pt-BR") : "—"}</td>
-                <td>{partner.endDate ? new Date(partner.endDate).toLocaleDateString("pt-BR") : "—"}</td>
+                <td>{partner.startDate ? formatCalendarDateBR(partner.startDate) : "—"}</td>
+                <td>{partner.endDate ? formatCalendarDateBR(partner.endDate) : "—"}</td>
                 <td>
                   <div className="row-actions">
                     <button type="button" className="secondary" onClick={() => setEditing(partner)}>
@@ -852,7 +853,7 @@ function SpeContributionSummaryPanel({ speId, refreshKey }: { speId: string; ref
 
   if (!summary) return null;
 
-  const format = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const format = formatCurrencyBRL;
 
   return (
     <div className="field-section" style={{ marginBottom: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
@@ -936,7 +937,7 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
                   <td>{INVESTOR_MODALITY_LABELS[investor.modality] ?? investor.modality}</td>
                   <td>
                     {investor.committedCapital !== null
-                      ? investor.committedCapital.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                      ? formatCurrencyBRL(investor.committedCapital)
                       : "Sem teto"}
                   </td>
                   <td>
@@ -1468,12 +1469,12 @@ export function SpeModal({
       {isEditing && spe!.audit ? (
         <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
           Cadastrado por {spe!.audit.createdByName ?? "—"} em{" "}
-          {new Date(spe!.audit.createdAt).toLocaleString("pt-BR")}
+          {formatDateTimeBR(spe!.audit.createdAt)}
           {spe!.audit.updatedAt !== spe!.audit.createdAt ? (
             <>
               {" "}
               · Última alteração por {spe!.audit.updatedByName ?? "—"} em{" "}
-              {new Date(spe!.audit.updatedAt).toLocaleString("pt-BR")}
+              {formatDateTimeBR(spe!.audit.updatedAt)}
             </>
           ) : null}
         </p>

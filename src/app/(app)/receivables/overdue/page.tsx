@@ -5,10 +5,9 @@ import { listDevelopments } from "@/server/developments";
 import { listSpes } from "@/server/spes";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
 import { AgingFiltersForm } from "./aging-filters-form";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 function stepLabel(step: { offsetDays: number; actionLabel: string } | null) {
   if (!step) return "—";
@@ -129,7 +128,7 @@ export default async function OverdueInstallmentsPage({
                 {row.developmentName} — {row.unitNumber}
               </td>
               <td>{row.label}</td>
-              <td>{new Date(row.dueDate).toLocaleDateString("pt-BR")}</td>
+              <td>{formatCalendarDateBR(row.dueDate)}</td>
               <td>{row.daysOverdue}</td>
               <td>{formatCurrency(row.resultValue)}</td>
               <td>

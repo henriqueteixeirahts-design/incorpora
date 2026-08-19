@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { generateDocumentAction, type GenerateDocumentState } from "./actions";
+import { isDraftTemplateName } from "@/lib/document-template-draft";
 
 const initialState: GenerateDocumentState = {};
 
@@ -23,10 +24,14 @@ export function GenerateDocumentForm({
   templates: Option[];
 }) {
   const [state, formAction, pending] = useActionState(generateDocumentAction, initialState);
+  const [selectedId, setSelectedId] = useState("");
 
   if (templates.length === 0) {
     return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo ativo pra este empreendimento.</p>;
   }
+
+  const selected = templates.find((t) => t.id === selectedId);
+  const selectedIsDraft = selected ? isDraftTemplateName(selected.label) : false;
 
   return (
     <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -36,7 +41,7 @@ export function GenerateDocumentForm({
       {assignmentId ? <input type="hidden" name="assignmentId" value={assignmentId} /> : null}
       {distratoId ? <input type="hidden" name="distratoId" value={distratoId} /> : null}
 
-      <select name="documentTemplateId" required defaultValue="">
+      <select name="documentTemplateId" required defaultValue="" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
         <option value="" disabled>
           Selecione o modelo...
         </option>
@@ -50,6 +55,12 @@ export function GenerateDocumentForm({
       <button type="submit" disabled={pending}>
         {pending ? "Gerando..." : "Gerar documento"}
       </button>
+
+      {selectedIsDraft ? (
+        <p className="error-text" style={{ width: "100%" }}>
+          ⚠ Este modelo é um rascunho gerado automaticamente — revise com o jurídico antes de usar o documento gerado como definitivo.
+        </p>
+      ) : null}
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
       {state.missing && state.missing.length > 0 ? (

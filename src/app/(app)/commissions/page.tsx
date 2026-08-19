@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAccessContext } from "@/server/auth-context";
 import { getCommissionStatement } from "@/server/commissions";
 import { listBrokers, listAgencies } from "@/server/crm";
+import { formatCurrencyBRL } from "@/lib/format";
 
 const BENEFICIARY_LABELS: Record<string, string> = {
   BROKER: "Corretor",
@@ -19,9 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelada",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export default async function CommissionsPage({
   searchParams,

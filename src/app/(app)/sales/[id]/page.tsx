@@ -21,6 +21,7 @@ import { listCustomers } from "@/server/crm";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { SaleDetailTabs } from "./sale-detail-tabs";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
+import { formatCurrencyBRL, formatDateBR, formatDateTimeBR, formatCalendarDateBR } from "@/lib/format";
 
 export default async function SaleDetailPage({
   params,
@@ -120,7 +121,7 @@ export default async function SaleDetailPage({
       </h1>
       <p style={{ opacity: 0.7 }}>
         {sale.customer.name} · {formatCurrency(Number(sale.salePrice))} em{" "}
-        {new Date(sale.saleDate).toLocaleDateString("pt-BR")}
+        {formatDateBR(sale.saleDate)}
       </p>
 
       <div style={{ marginTop: "1.5rem" }}>
@@ -140,7 +141,7 @@ export default async function SaleDetailPage({
           timeline={timelineEvents.map((event) => ({
             id: event.id,
             label: event.label,
-            occurredAtLabel: new Date(event.occurredAt).toLocaleString("pt-BR"),
+            occurredAtLabel: formatDateTimeBR(event.occurredAt),
           }))}
           paymentFlowItems={paymentFlow?.items ?? []}
           installments={
@@ -148,7 +149,7 @@ export default async function SaleDetailPage({
               id: installment.id,
               sequence: installment.sequence,
               label: installment.label,
-              dueDateLabel: new Date(installment.dueDate).toLocaleDateString("pt-BR"),
+              dueDateLabel: formatCalendarDateBR(installment.dueDate),
               originalValue: Number(installment.originalValue),
               correctedValue: installment.correctedValue ? Number(installment.correctedValue) : null,
               paidAmount: Number(installment.paidAmount),
@@ -161,7 +162,7 @@ export default async function SaleDetailPage({
             openInstallments?.map((i) => ({
               id: i.id,
               label: i.label,
-              dueDate: new Date(i.dueDate).toLocaleDateString("pt-BR"),
+              dueDate: formatCalendarDateBR(i.dueDate),
             })) ?? []
           }
           applicableTemplates={applicableTemplates.map((t) => ({ id: t.id, label: `${t.name} (v${t.version})` }))}
@@ -170,7 +171,7 @@ export default async function SaleDetailPage({
             fileName: doc.fileName,
             templateVersion: doc.documentTemplateVersion,
             uploadedByName: doc.uploadedBy?.fullName ?? "—",
-            createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+            createdAtLabel: formatDateTimeBR(doc.createdAt),
             downloadUrl: generatedDocumentUrls[index],
           }))}
           commissionSplits={sale.commissionSplits.map((split) => ({
@@ -180,8 +181,8 @@ export default async function SaleDetailPage({
             percent: Number(split.percent),
             value: Number(split.value),
             status: split.status,
-            releasedAtLabel: split.releasedAt ? new Date(split.releasedAt).toLocaleDateString("pt-BR") : null,
-            paidAtLabel: split.paidAt ? new Date(split.paidAt).toLocaleDateString("pt-BR") : null,
+            releasedAtLabel: split.releasedAt ? formatDateBR(split.releasedAt) : null,
+            paidAtLabel: split.paidAt ? formatDateBR(split.paidAt) : null,
           }))}
           downPaymentAbatement={
             (() => {
@@ -213,8 +214,8 @@ export default async function SaleDetailPage({
           downPaymentTableDefault={sale.proposal.salesTable?.downPaymentDestination ?? null}
           downPaymentOverride={sale.downPaymentDestinationOverride}
           contractNumber={contract?.contractNumber ?? null}
-          contractIssuedAtLabel={contract ? new Date(contract.issuedAt).toLocaleDateString("pt-BR") : null}
-          contractSignedAtLabel={contract?.signedAt ? new Date(contract.signedAt).toLocaleDateString("pt-BR") : null}
+          contractIssuedAtLabel={contract ? formatDateBR(contract.issuedAt) : null}
+          contractSignedAtLabel={contract?.signedAt ? formatDateBR(contract.signedAt) : null}
           canCreateContract={canCreateContract}
           canEditContract={canEditContract}
           canRegisterPayment={canRegisterPayment}
@@ -227,8 +228,8 @@ export default async function SaleDetailPage({
             type: amendment.type,
             status: amendment.status,
             notes: amendment.notes,
-            createdAtLabel: new Date(amendment.createdAt).toLocaleDateString("pt-BR"),
-            signedAtLabel: amendment.signedAt ? new Date(amendment.signedAt).toLocaleDateString("pt-BR") : null,
+            createdAtLabel: formatDateBR(amendment.createdAt),
+            signedAtLabel: amendment.signedAt ? formatDateBR(amendment.signedAt) : null,
             proposedFlowItems: amendment.proposedPaymentFlow
               ? (amendment.proposedPaymentFlow as unknown as PaymentFlowResult).items
               : null,
@@ -237,7 +238,7 @@ export default async function SaleDetailPage({
               fileName: doc.fileName,
               templateVersion: doc.documentTemplateVersion,
               uploadedByName: doc.uploadedBy?.fullName ?? "—",
-              createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+              createdAtLabel: formatDateTimeBR(doc.createdAt),
               downloadUrl: amendmentDocumentUrls[index][docIndex],
             })),
           }))}
@@ -248,10 +249,10 @@ export default async function SaleDetailPage({
             assignmentNumber: assignment.assignmentNumber,
             status: assignment.status,
             notes: assignment.notes,
-            assignmentDateLabel: new Date(assignment.assignmentDate).toLocaleDateString("pt-BR"),
+            assignmentDateLabel: formatCalendarDateBR(assignment.assignmentDate),
             feeAmount: assignment.feeAmount ? Number(assignment.feeAmount) : null,
-            createdAtLabel: new Date(assignment.createdAt).toLocaleDateString("pt-BR"),
-            signedAtLabel: assignment.signedAt ? new Date(assignment.signedAt).toLocaleDateString("pt-BR") : null,
+            createdAtLabel: formatDateBR(assignment.createdAt),
+            signedAtLabel: assignment.signedAt ? formatDateBR(assignment.signedAt) : null,
             previousCustomerName: assignment.previousCustomer.name,
             newCustomerName: assignment.newCustomer.name,
             generatedDocuments: assignmentDocuments[index].map((doc, docIndex) => ({
@@ -259,7 +260,7 @@ export default async function SaleDetailPage({
               fileName: doc.fileName,
               templateVersion: doc.documentTemplateVersion,
               uploadedByName: doc.uploadedBy?.fullName ?? "—",
-              createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+              createdAtLabel: formatDateTimeBR(doc.createdAt),
               downloadUrl: assignmentDocumentUrls[index][docIndex],
             })),
           }))}
@@ -277,18 +278,18 @@ export default async function SaleDetailPage({
                   brokerageDeductionAmount: distrato.brokerageDeductionAmount ? Number(distrato.brokerageDeductionAmount) : null,
                   occupancyFeeAmount: distrato.occupancyFeeAmount ? Number(distrato.occupancyFeeAmount) : null,
                   refundAmount: Number(distrato.refundAmount),
-                  refundDueDateLabel: new Date(distrato.refundDueDate).toLocaleDateString("pt-BR"),
+                  refundDueDateLabel: formatCalendarDateBR(distrato.refundDueDate),
                   refundTerms: distrato.refundTerms,
                   reason: distrato.reason,
-                  createdAtLabel: new Date(distrato.createdAt).toLocaleDateString("pt-BR"),
-                  signedAtLabel: distrato.signedAt ? new Date(distrato.signedAt).toLocaleDateString("pt-BR") : null,
+                  createdAtLabel: formatDateBR(distrato.createdAt),
+                  signedAtLabel: distrato.signedAt ? formatDateBR(distrato.signedAt) : null,
                   refundPayableId: distrato.refundPayableId,
                   generatedDocuments: distratoDocuments.map((doc, docIndex) => ({
                     id: doc.id,
                     fileName: doc.fileName,
                     templateVersion: doc.documentTemplateVersion,
                     uploadedByName: doc.uploadedBy?.fullName ?? "—",
-                    createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+                    createdAtLabel: formatDateTimeBR(doc.createdAt),
                     downloadUrl: distratoDocumentUrls[docIndex],
                   })),
                 }
@@ -302,6 +303,4 @@ export default async function SaleDetailPage({
   );
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

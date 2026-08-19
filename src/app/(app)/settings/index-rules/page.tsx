@@ -1,6 +1,7 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listIndexRules } from "@/server/index-rules";
 import { NewIndexRuleForm, NewIndexValueForm, SyncIndexRuleButton } from "./index-rule-forms";
+import { formatCalendarDateBR } from "@/lib/format";
 
 const CODE_LABELS: Record<string, string> = {
   INCC: "INCC",
@@ -52,7 +53,7 @@ export default async function IndexRulesPage() {
               <tbody>
                 {rule.values.map((value) => (
                   <tr key={value.id}>
-                    <td>{new Date(value.referenceMonth).toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" })}</td>
+                    <td>{formatCalendarDateBR(value.referenceMonth, { month: "2-digit", year: "numeric" })}</td>
                     <td>{Number(value.ratePercent)}%</td>
                     <td style={{ fontSize: "0.8rem", opacity: 0.75 }}>
                       {value.source === "OFFICIAL" ? "Banco Central" : "Manual"}

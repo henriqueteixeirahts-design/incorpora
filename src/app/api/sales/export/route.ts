@@ -6,6 +6,7 @@ import {
   type ContractStatusFilter,
   type WalletStatusFilter,
 } from "@/server/sales";
+import { formatDateBR } from "@/lib/format";
 
 const CONTRACT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Minuta gerada",
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
 
   const rows = items.map((sale) => [
     sale.saleNumber,
-    new Date(sale.saleDate).toLocaleDateString("pt-BR"),
+    formatDateBR(sale.saleDate),
     sale.customer.name,
     sale.development.name,
     sale.unit.number,

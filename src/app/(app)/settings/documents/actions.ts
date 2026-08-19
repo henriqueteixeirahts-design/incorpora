@@ -7,6 +7,7 @@ import {
   updateDocumentTemplate,
   setDocumentTemplateStatus,
 } from "@/server/document-templates";
+import { seedDefaultDocumentTemplates } from "@/server/document-template-seed";
 import type { DocumentTemplateType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; ok?: boolean };
@@ -58,6 +59,22 @@ export async function updateDocumentTemplateAction(_prev: FormState, formData: F
 
   revalidatePath("/settings/documents");
   return { ok: true };
+}
+
+/**
+ * Biblioteca-padrão de modelos por organização (docs/RELATORIO_TESTDRIVE.md,
+ * achado 21) — idempotente, só cria o que ainda não existe por tipo. Botão
+ * manual em vez de disparo automático porque ainda não existe um fluxo de
+ * criação de organização nesta versão (Pilar 4 do ESPEC_MULTITENANT_
+ * FUNDACOES.md é fase futura) — este é o gatilho disponível hoje, tanto pro
+ * seed retroativo da TSH quanto pra qualquer organização nova até lá.
+ */
+export async function seedDefaultDocumentTemplatesAction() {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "document_template", "CREATE")) return;
+
+  await seedDefaultDocumentTemplates(context);
+  revalidatePath("/settings/documents");
 }
 
 export async function toggleDocumentTemplateStatusAction(formData: FormData) {

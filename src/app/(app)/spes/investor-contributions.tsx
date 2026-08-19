@@ -10,6 +10,7 @@ import {
   deleteContributionAction,
   type FormState,
 } from "./actions";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getInvestorContributionsDetailAction>>>;
 type ForecastRow = Detail["forecasts"][number];
@@ -28,9 +29,7 @@ const FORECAST_STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelado",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 const forecastFormInitialState: FormState = {};
 
@@ -166,7 +165,7 @@ function ContributionForm({
             <option value="">Sem vínculo (espontâneo)</option>
             {linkableForecasts.map((f) => (
               <option key={f.id} value={f.id}>
-                {formatCurrency(f.amount)} — {new Date(f.expectedDate).toLocaleDateString("pt-BR")} (
+                {formatCurrency(f.amount)} — {formatCalendarDateBR(f.expectedDate)} (
                 {ORIGIN_LABELS[f.origin]})
               </option>
             ))}
@@ -290,7 +289,7 @@ export function InvestorContributionsPanel({
             {detail.forecasts.map((f) => (
               <tr key={f.id}>
                 <td>{formatCurrency(f.amount)}</td>
-                <td>{new Date(f.expectedDate).toLocaleDateString("pt-BR")}</td>
+                <td>{formatCalendarDateBR(f.expectedDate)}</td>
                 <td>{ORIGIN_LABELS[f.origin] ?? f.origin}</td>
                 <td>{FORECAST_STATUS_LABELS[f.status] ?? f.status}</td>
                 <td>
@@ -347,7 +346,7 @@ export function InvestorContributionsPanel({
             {detail.contributions.map((c) => (
               <tr key={c.id}>
                 <td>{formatCurrency(c.amount)}</td>
-                <td>{new Date(c.creditDate).toLocaleDateString("pt-BR")}</td>
+                <td>{formatCalendarDateBR(c.creditDate)}</td>
                 <td>
                   {c.bankAccount.bankName} — ag. {c.bankAccount.agency} / cc {c.bankAccount.account}
                 </td>

@@ -10,6 +10,7 @@ import {
   type FormState,
 } from "./actions";
 import type { Option } from "./receivables-manager";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 export type ReceivableDetail = NonNullable<Awaited<ReturnType<typeof getReceivableDetailAction>>>;
 
@@ -103,8 +104,8 @@ export function ReceivableModal({
       ) : null}
       {isEditing && receivable!.status === "RECEIVED" ? (
         <p className="field-hint">
-          Recebido em {new Date(receivable!.receivedAt!).toLocaleDateString("pt-BR")} —{" "}
-          {Number(receivable!.receivedAmount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          Recebido em {formatCalendarDateBR(receivable!.receivedAt!)} —{" "}
+          {formatCurrencyBRL(Number(receivable!.receivedAmount))}
         </p>
       ) : null}
 

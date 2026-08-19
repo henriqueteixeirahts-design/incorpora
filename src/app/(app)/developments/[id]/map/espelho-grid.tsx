@@ -7,6 +7,7 @@ import { bucketUnitStatus, type UnitStatusBucket } from "@/lib/unit-status-bucke
 import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
 import type { UnitSaleDetail } from "@/server/unit-sale-detail";
 import { ProposalModal } from "../commercial/proposal-modal";
+import { formatCurrencyBRL, formatDateTimeBR } from "@/lib/format";
 import {
   createReservationFromMapAction,
   destacarUnidadeFromMapAction,
@@ -76,9 +77,7 @@ const BUCKET_LABEL: Record<UnitStatusBucket, string> = {
 
 const HIGH_RISE_FLOOR_THRESHOLD = 20;
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 function initialsOf(name: string) {
   return name
@@ -767,7 +766,7 @@ export function EspelhoGrid({
                     <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
                       Reservada para <strong>{selectedReservation.customerName}</strong>
                       {selectedReservation.brokerName ? ` (corretor: ${selectedReservation.brokerName})` : ""} — expira em{" "}
-                      {new Date(selectedReservation.expiresAt).toLocaleString("pt-BR")}
+                      {formatDateTimeBR(selectedReservation.expiresAt)}
                     </p>
                     {(waitlistCounts[selectedUnit.id] ?? 0) > 0 ? (
                       <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>

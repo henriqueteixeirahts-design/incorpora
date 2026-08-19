@@ -13,6 +13,8 @@ import {
   type LogContactState,
 } from "./actions";
 import { RenegotiationSection, type RenegotiationRow, type OpenInstallmentOption } from "./renegotiation-forms";
+import { formatCalendarDateBR, formatCurrencyBRL } from "@/lib/format";
+import { isDraftTemplateName } from "@/lib/document-template-draft";
 
 const registerInitialState: FormState = {};
 const settlementInitialState: SettlementState = {};
@@ -39,13 +41,8 @@ function stepLabel(step: { offsetDays: number; actionLabel: string } | null) {
   return `${dayLabel} — ${step.actionLabel}`;
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatDate(value: Date | string) {
-  return new Date(value).toLocaleDateString("pt-BR");
-}
+const formatCurrency = formatCurrencyBRL;
+const formatDate = formatCalendarDateBR;
 
 function RegisterPaymentForm({ customerId, installmentId }: { customerId: string; installmentId: string }) {
   const [state, formAction, pending] = useActionState(registerStatementPaymentAction, registerInitialState);
@@ -179,16 +176,20 @@ function GenerateStatementForm({
   templates: { id: string; label: string }[];
 }) {
   const [state, formAction, pending] = useActionState(generateStatementPdfAction, generateInitialState);
+  const [selectedId, setSelectedId] = useState("");
 
   if (templates.length === 0) {
     return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo de extrato ativo pra este empreendimento.</p>;
   }
 
+  const selected = templates.find((t) => t.id === selectedId);
+  const selectedIsDraft = selected ? isDraftTemplateName(selected.label) : false;
+
   return (
     <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
       <input type="hidden" name="customerId" value={customerId} />
       <input type="hidden" name="contractId" value={contractId} />
-      <select name="documentTemplateId" required defaultValue="">
+      <select name="documentTemplateId" required defaultValue="" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
         <option value="" disabled>
           Selecione o modelo...
         </option>
@@ -201,6 +202,11 @@ function GenerateStatementForm({
       <button type="submit" disabled={pending}>
         {pending ? "Gerando..." : "Gerar PDF do extrato"}
       </button>
+      {selectedIsDraft ? (
+        <p className="error-text" style={{ width: "100%" }}>
+          ⚠ Este modelo é um rascunho gerado automaticamente — revise com o jurídico antes de usar o documento gerado como definitivo.
+        </p>
+      ) : null}
       {state.error ? <p className="error-text">{state.error}</p> : null}
       {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Extrato gerado — veja em Documentos, na venda.</p> : null}
       {state.missing && state.missing.length > 0 ? (

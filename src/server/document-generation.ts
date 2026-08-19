@@ -9,6 +9,8 @@ import {
 } from "@/lib/document-variables";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { getLatestDocumentTemplateVersion } from "@/server/document-templates";
+import { resolveUnitArea } from "@/lib/unit-area";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 import type { AccessContext } from "@/server/auth-context";
 
 function round2(value: number) {
@@ -44,9 +46,7 @@ const AMENDMENT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Outro",
 };
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 /**
  * Busca todos os dados necessários pra resolver as variáveis de um contrato.
@@ -183,7 +183,11 @@ export async function buildGenerationContext(
     },
     unit: {
       identification: contract.unit.number,
-      area: contract.unit.totalArea !== null ? Number(contract.unit.totalArea) : null,
+      area: resolveUnitArea({
+        privateArea: contract.unit.privateArea !== null ? Number(contract.unit.privateArea) : null,
+        totalArea: contract.unit.totalArea !== null ? Number(contract.unit.totalArea) : null,
+        lotArea: contract.unit.lotArea !== null ? Number(contract.unit.lotArea) : null,
+      }),
       idealFraction: contract.unit.idealFraction !== null ? Number(contract.unit.idealFraction) : null,
       parkingSpaces,
     },
@@ -203,7 +207,7 @@ export async function buildGenerationContext(
     assignment: assignmentOverride
       ? {
           number: assignmentOverride.number,
-          dateLabel: assignmentOverride.assignmentDate.toLocaleDateString("pt-BR"),
+          dateLabel: formatCalendarDateBR(assignmentOverride.assignmentDate),
           feeLabel: assignmentOverride.feeAmount ? formatCurrency(assignmentOverride.feeAmount) : "Não há",
           previousCustomerName: assignmentOverride.previousCustomer.name,
           previousCustomerDocument: assignmentOverride.previousCustomer.document,
@@ -385,7 +389,7 @@ export async function previewDocumentGeneration(
     if (!agreement) throw new Error("Acordo de renegociação inválido.");
     renegotiationOverride = {
       number: agreement.agreementNumber,
-      dateLabel: agreement.agreementDate.toLocaleDateString("pt-BR"),
+      dateLabel: formatCalendarDateBR(agreement.agreementDate),
       consolidatedPrincipal: Number(agreement.consolidatedPrincipal),
       consolidatedCharges: Number(agreement.consolidatedCharges),
       discountPercent: Number(agreement.chargesDiscountPercent),

@@ -6,6 +6,9 @@ import {
   EditDocumentTemplateForm,
   ToggleDocumentTemplateStatusButton,
 } from "./document-template-form";
+import { formatDateTimeBR } from "@/lib/format";
+import { isDraftTemplateName } from "@/lib/document-template-draft";
+import { seedDefaultDocumentTemplatesAction } from "./actions";
 
 const TYPE_LABELS: Record<string, string> = {
   SALES_CONTRACT: "Contrato de compra e venda / promessa",
@@ -40,6 +43,17 @@ export default async function DocumentTemplatesPage() {
         são apagadas e o documento gerado sempre referencia a versão exata usada.
       </p>
 
+      {canCreate ? (
+        <form action={seedDefaultDocumentTemplatesAction} style={{ marginTop: "1rem" }}>
+          <button type="submit" className="secondary">
+            Criar modelos padrão que faltam
+          </button>
+          <span style={{ marginLeft: "0.6rem", fontSize: "0.8rem", opacity: 0.7 }}>
+            Cria um modelo por tipo (contrato, cessão, distrato, extrato) que ainda não existir — não duplica os já cadastrados.
+          </span>
+        </form>
+      ) : null}
+
       {templates.map((template, index) => (
         <div
           key={template.templateGroupId}
@@ -53,6 +67,11 @@ export default async function DocumentTemplatesPage() {
               {template.versionCount} versão(ões)
             </span>
           </p>
+          {isDraftTemplateName(template.name) ? (
+            <p className="error-text" style={{ fontSize: "0.8rem" }}>
+              ⚠ Rascunho gerado automaticamente — revisar com jurídico antes de usar em um documento real.
+            </p>
+          ) : null}
           <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
             Aplica-se a:{" "}
             {template.developments.length === 0
@@ -66,7 +85,7 @@ export default async function DocumentTemplatesPage() {
               <ul style={{ paddingLeft: "1.1rem", marginTop: "0.4rem", fontSize: "0.8rem" }}>
                 {versionHistories[index].map((v) => (
                   <li key={v.id}>
-                    v{v.version} — {new Date(v.createdAt).toLocaleString("pt-BR")}
+                    v{v.version} — {formatDateTimeBR(v.createdAt)}
                     {v.id === template.id ? " (atual)" : ""}
                   </li>
                 ))}

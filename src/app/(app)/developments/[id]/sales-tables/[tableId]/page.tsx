@@ -4,6 +4,7 @@ import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getSalesTable } from "@/server/sales-tables";
 import { listUnits } from "@/server/units";
 import { SetUnitPriceForm } from "./set-unit-price-form";
+import { formatCurrencyBRL } from "@/lib/format";
 
 export default async function SalesTableDetailPage({
   params,
@@ -64,6 +65,4 @@ export default async function SalesTableDetailPage({
   );
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

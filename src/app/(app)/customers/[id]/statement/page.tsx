@@ -10,6 +10,7 @@ import { getCustomerCollectionStage } from "@/server/aging";
 import { checkAndUpdateBrokenAgreementsForCustomer, listRenegotiations } from "@/server/renegotiations";
 import { StatementView } from "./statement-view";
 import type { RenegotiationRow } from "./renegotiation-forms";
+import { formatCalendarDateBR, formatDateBR, formatDateTimeBR } from "@/lib/format";
 
 export default async function CustomerStatementPage({
   params,
@@ -59,7 +60,7 @@ export default async function CustomerStatementPage({
           id: agreement.id,
           agreementNumber: agreement.agreementNumber,
           status: agreement.status,
-          agreementDateLabel: new Date(agreement.agreementDate).toLocaleDateString("pt-BR"),
+          agreementDateLabel: formatCalendarDateBR(agreement.agreementDate),
           consolidatedPrincipal: Number(agreement.consolidatedPrincipal),
           consolidatedCharges: Number(agreement.consolidatedCharges),
           chargesDiscountPercent: Number(agreement.chargesDiscountPercent),
@@ -68,7 +69,7 @@ export default async function CustomerStatementPage({
           finalValue: Number(agreement.finalValue),
           applyFutureCorrection: agreement.applyFutureCorrection,
           reason: agreement.reason,
-          brokenAtLabel: agreement.brokenAt ? new Date(agreement.brokenAt).toLocaleDateString("pt-BR") : null,
+          brokenAtLabel: agreement.brokenAt ? formatDateBR(agreement.brokenAt) : null,
           reactivatedOriginal: agreement.reactivatedOriginal,
           approvals: agreement.approvals.map((a) => ({ level: a.level, decision: a.decision, comment: a.comment })),
           originInstallments: agreement.originInstallments.map((i) => ({
@@ -89,7 +90,7 @@ export default async function CustomerStatementPage({
             id: doc.id,
             fileName: doc.fileName,
             uploadedByName: doc.uploadedBy?.fullName ?? "—",
-            createdAtLabel: new Date(doc.createdAt).toLocaleString("pt-BR"),
+            createdAtLabel: formatDateTimeBR(doc.createdAt),
             downloadUrl: documentUrls[index],
           })),
         };
@@ -115,7 +116,7 @@ export default async function CustomerStatementPage({
         canEditContract={hasPermission(context, "contract", "EDIT")}
         collectionHistory={collectionHistory.map((log) => ({
           id: log.id,
-          occurredAtLabel: new Date(log.occurredAt).toLocaleDateString("pt-BR"),
+          occurredAtLabel: formatCalendarDateBR(log.occurredAt),
           channel: log.channel,
           summary: log.summary,
           nextStepNote: log.nextStepNote,

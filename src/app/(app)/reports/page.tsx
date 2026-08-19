@@ -8,6 +8,7 @@ import {
 } from "@/server/reports";
 import { listDevelopments } from "@/server/developments";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
+import { formatCurrencyBRL } from "@/lib/format";
 
 export default async function ReportsPage() {
   const context = await requireAccessContext();
@@ -114,6 +115,4 @@ export default async function ReportsPage() {
   );
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

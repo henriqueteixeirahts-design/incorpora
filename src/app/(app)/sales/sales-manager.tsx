@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 import { SortIcon } from "@/components/icons";
 import { addCommissionSplitAction, getSaleCommissionSplitsAction, type FormState } from "./actions";
 import type { SaleSortField } from "@/server/sales";
+import { formatCurrencyBRL, formatDateBR } from "@/lib/format";
 
 const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
   BROKER: "Corretor",
@@ -68,9 +69,7 @@ const WALLET_STATUS_LABELS: Record<string, string> = {
   INADIMPLENTE: "Inadimplente",
 };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export function SalesManager({
   sales,
@@ -240,7 +239,7 @@ export function SalesManager({
           {sales.map((sale) => (
             <tr key={sale.id}>
               <td>{sale.saleNumber}</td>
-              <td>{new Date(sale.saleDate).toLocaleDateString("pt-BR")}</td>
+              <td>{formatDateBR(sale.saleDate)}</td>
               <td>{sale.developmentName}</td>
               <td>{sale.customerName}</td>
               <td>{formatCurrency(sale.salePrice)}</td>

@@ -7,6 +7,7 @@ import { registerReceivableReceiptAction, cancelReceivableAction, getReceivableD
 import { ReceivableModal, type ReceivableDetail } from "./receivable-modal";
 import { ReceivablesFiltersForm, type ReceivableFiltersValue } from "./receivables-filters-form";
 import type { ReceivableSortField } from "@/server/receivables-avulsos";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pendente",
@@ -45,9 +46,7 @@ const SORTABLE_COLUMNS: { field: ReceivableSortField; label: string }[] = [
   { field: "status", label: "Status" },
 ];
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 export function ReceivablesManager({
   receivables,
@@ -176,7 +175,7 @@ export function ReceivablesManager({
           {receivables.map((receivable) => (
             <tr key={receivable.id}>
               <td>{receivable.origin}</td>
-              <td>{new Date(receivable.dueDate).toLocaleDateString("pt-BR")}</td>
+              <td>{formatCalendarDateBR(receivable.dueDate)}</td>
               <td>{formatCurrency(receivable.amount)}</td>
               <td>{STATUS_LABELS[receivable.status] ?? receivable.status}</td>
               <td>{CATEGORY_LABELS[receivable.category] ?? receivable.category}</td>

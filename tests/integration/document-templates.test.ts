@@ -275,6 +275,51 @@ describe("Geração de documento — resolução real contra o contrato", () => 
     expect(ctx.correction.preHabiteSeIndexName).toBeNull();
     expect(ctx.correction.postHabiteSeIndexName).toBeNull();
   });
+
+  it("unidade.area resolve por privateArea mesmo sem totalArea preenchido (docs/RELATORIO_TESTDRIVE.md, achado 22)", async () => {
+    // Repro exata do achado: unidade com só área privativa cadastrada (o
+    // espelho de vendas já mostrava isso corretamente) — o gerador de
+    // documento lia só totalArea antes do fix e resolvia vazio.
+    const unit = await createUnit(context, {
+      developmentId,
+      unitType: "APARTMENT",
+      number: "M-AREA-01",
+      referenceValue: 450000,
+      privateArea: 80,
+    });
+    const customer = await createCustomer(context, {
+      type: "INDIVIDUAL",
+      name: "Cliente Área",
+      document: "05192837465",
+    });
+    const proposal = await createProposal(context, {
+      developmentId,
+      unitId: unit.id,
+      customerId: customer.id,
+      discountPercent: 0,
+      proposedDownPaymentPercent: 100,
+      proposedMonthlyInstallments: 0,
+      proposedKeysInstallmentPercent: 0,
+    });
+    await submitProposalForApproval(context, proposal.id);
+    const sale = await convertProposalToSale(context, proposal.id);
+    const contract = await createContract(context, sale.id);
+
+    const ctx = await buildGenerationContext(org.id, contract.id);
+    expect(ctx.unit.area).toBe(80);
+
+    const template = await createDocumentTemplate(context, {
+      name: "CCV com área",
+      type: "SALES_CONTRACT",
+      content: "Unidade {{unidade.identificacao}}, área {{unidade.area}}.",
+      developmentIds: [],
+    });
+    const preview = await previewDocumentGeneration(org.id, contract.id, template.id);
+    expect(preview.status).toBe("READY");
+    if (preview.status === "READY") {
+      expect(preview.text).toContain("área 80 m²");
+    }
+  });
 });
 
 describe("Isolamento entre organizações", () => {
