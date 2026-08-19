@@ -5,6 +5,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { UNIT_STATUS_META, UNIT_STATUS_VALUES } from "@/lib/unit-status";
 import { bucketUnitStatus, type UnitStatusBucket } from "@/lib/unit-status-bucket";
 import { getUnitColumnKey, groupLotsByBlock, UNASSIGNED_BLOCK } from "@/lib/unit-grid";
+import { UNIT_TYPE_LABELS } from "@/lib/unit-labels";
 import type { UnitSaleDetail } from "@/server/unit-sale-detail";
 import { ProposalModal } from "../commercial/proposal-modal";
 import { formatCurrencyBRL, formatDateTimeBR } from "@/lib/format";
@@ -56,16 +57,6 @@ export type EspelhoReservation = {
 
 type Option = { id: string; label: string };
 
-const UNIT_TYPE_LABELS: Record<string, string> = {
-  APARTMENT: "Apartamento",
-  COMMERCIAL_ROOM: "Sala comercial",
-  STORE: "Loja",
-  LOT: "Lote",
-  PARKING_SPACE: "Vaga",
-  STORAGE_UNIT: "Depósito",
-  BOX: "Box",
-  OTHER: "Outro",
-};
 
 const BUCKET_LABEL: Record<UnitStatusBucket, string> = {
   disponivel: "Disponível",

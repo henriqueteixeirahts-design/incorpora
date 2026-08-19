@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { createBrokerAction, updateBrokerAction, deleteBrokerAction, type FormState } from "./actions";
 import type { BrokerSortField } from "@/server/crm";
+import { formatDateTimeBR } from "@/lib/format";
 
 export type BrokerRow = {
   id: string;
@@ -15,6 +16,7 @@ export type BrokerRow = {
   phone: string | null;
   agencyId: string | null;
   agencyName: string | null;
+  audit: { createdByName: string | null; createdAt: Date; updatedByName: string | null; updatedAt: Date };
 };
 
 export type AgencyOption = { id: string; name: string };
@@ -81,100 +83,102 @@ export function BrokersManager({
 
   return (
     <div id="corretores">
-      <div className="list-toolbar">
-        <form className="list-search" action="/partners" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/partners" method="get">
           <input type="hidden" name="bsort" value={sortBy} />
           <input type="hidden" name="bdir" value={sortDir} />
           <input type="search" name="bq" placeholder="Buscar por nome ou e-mail" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} corretor{total === 1 ? "" : "es"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo corretor
-            </button>
-          ) : null}
-        </div>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} corretor{total === 1 ? "" : "es"}
+        </span>
+
+        {canCreate ? (
+          <button type="button" className="inc-btn inc-btn--primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ mode: "create" })}>
+            + Novo corretor
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th className="sortable-th">
-              <Link href={sortLink("name")}>
-                <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              <th>
+                <Link href={sortLink("name")} style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}>
                   Nome
                   <SortIcon direction={sortBy === "name" ? sortDir : null} />
-                </button>
-              </Link>
-            </th>
-            <th>Imobiliária</th>
-            <th>Contato</th>
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {brokers.length === 0 ? (
-            <tr>
-              <td colSpan={4} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum corretor encontrado." : "Nenhum corretor cadastrado."}
-              </td>
+                </Link>
+              </th>
+              <th>Imobiliária</th>
+              <th>Contato</th>
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {brokers.map((broker) => (
-            <tr key={broker.id}>
-              <td>{broker.name}</td>
-              <td>{broker.agencyName ?? "Autônomo"}</td>
-              <td>{[broker.email, broker.phone].filter(Boolean).join(" · ") || "—"}</td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${broker.name}`}
-                        onClick={() => setModal({ mode: "edit", broker })}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${broker.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(broker.id, broker.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {brokers.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="is-empty">
+                  {search ? "Nenhum corretor encontrado." : "Nenhum corretor cadastrado."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {brokers.map((broker) => (
+              <tr key={broker.id}>
+                <td className="is-key">{broker.name}</td>
+                <td className="is-muted">{broker.agencyName ?? "Autônomo"}</td>
+                <td className="is-muted">{[broker.email, broker.phone].filter(Boolean).join(" · ") || "—"}</td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${broker.name}`}
+                          onClick={() => setModal({ mode: "edit", broker })}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${broker.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(broker.id, broker.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (
@@ -217,10 +221,10 @@ function BrokerModal({
       width={520}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
             {pending ? "Salvando..." : "Salvar"}
           </button>
         </>
@@ -228,38 +232,48 @@ function BrokerModal({
     >
       <form ref={formRef} action={dispatch}>
         {mode === "edit" && broker ? <input type="hidden" name="brokerId" value={broker.id} /> : null}
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="broker-name">Nome *</label>
-              <input id="broker-name" name="name" required defaultValue={broker?.name ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="broker-agency">Imobiliária</label>
-              <select id="broker-agency" name="agencyId" defaultValue={broker?.agencyId ?? ""}>
-                <option value="">Autônomo</option>
-                {agencies.map((agency) => (
-                  <option key={agency.id} value={agency.id}>
-                    {agency.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="broker-document">CPF/CNPJ</label>
-              <input id="broker-document" name="document" defaultValue={broker?.document ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="broker-email">E-mail</label>
-              <input id="broker-email" name="email" type="email" defaultValue={broker?.email ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="broker-phone">Telefone</label>
-              <input id="broker-phone" name="phone" defaultValue={broker?.phone ?? ""} />
-            </div>
-          </div>
+        {mode === "edit" && broker ? (
+          <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+            Cadastrado por {broker.audit.createdByName ?? "—"} em {formatDateTimeBR(broker.audit.createdAt)}
+            {" · "}Última alteração por {broker.audit.updatedByName ?? "—"} em{" "}
+            {formatDateTimeBR(broker.audit.updatedAt)}
+          </p>
+        ) : null}
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px", marginBottom: "18px" }}>
+          <label className="inc-field">
+            <span className="inc-label">Nome *</span>
+            <input id="broker-name" name="name" className="inc-input" required defaultValue={broker?.name ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Imobiliária</span>
+            <select id="broker-agency" name="agencyId" className="inc-select" defaultValue={broker?.agencyId ?? ""}>
+              <option value="">Autônomo</option>
+              {agencies.map((agency) => (
+                <option key={agency.id} value={agency.id}>
+                  {agency.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">CPF/CNPJ</span>
+            <input id="broker-document" name="document" className="inc-input" defaultValue={broker?.document ?? ""} />
+          </label>
         </div>
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Contato</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+          <label className="inc-field">
+            <span className="inc-label">E-mail</span>
+            <input id="broker-email" name="email" type="email" className="inc-input" defaultValue={broker?.email ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Telefone</span>
+            <input id="broker-phone" name="phone" className="inc-input" defaultValue={broker?.phone ?? ""} />
+          </label>
+        </div>
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );

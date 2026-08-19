@@ -2,19 +2,9 @@
 
 import { useActionState } from "react";
 import { createUnitAction, type FormState } from "./actions";
+import { UNIT_TYPE_LABELS } from "@/lib/unit-labels";
 
 const initialState: FormState = {};
-
-const UNIT_TYPE_OPTIONS = [
-  { value: "APARTMENT", label: "Apartamento" },
-  { value: "COMMERCIAL_ROOM", label: "Sala comercial" },
-  { value: "STORE", label: "Loja" },
-  { value: "LOT", label: "Lote" },
-  { value: "PARKING_SPACE", label: "Vaga de garagem" },
-  { value: "STORAGE_UNIT", label: "Escaninho/depósito" },
-  { value: "BOX", label: "Box" },
-  { value: "OTHER", label: "Outro" },
-];
 
 type FloorOption = { id: string; level: number; label: string | null };
 type BuildingOption = { id: string; name: string; floors: FloorOption[] };
@@ -46,9 +36,9 @@ export function CreateUnitForm({
         <option value="" disabled>
           Selecione...
         </option>
-        {UNIT_TYPE_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
+        {Object.entries(UNIT_TYPE_LABELS).map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
           </option>
         ))}
       </select>

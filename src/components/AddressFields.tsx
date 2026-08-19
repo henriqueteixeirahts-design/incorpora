@@ -25,11 +25,14 @@ export function AddressFields({
   defaultValues,
   legacyNote,
   idPrefix = "",
+  numberRequired = false,
 }: {
   defaultValues?: AddressDefaultValues;
   legacyNote?: string | null;
   /** Prefixo para os ids/htmlFor dos campos — necessário quando mais de um AddressFields pode estar montado ao mesmo tempo na página (ids duplicados quebram getElementById e a associação label/input). O name= dos campos no FormData continua fixo (zipCode, street...). */
   idPrefix?: string;
+  /** Exige "Número" (docs/RELATORIO_TESTDRIVE.md, achado 4) — endereço sem número é incompleto pra contrato. Default false pra não afetar usos onde o endereço inteiro é opcional (SPE/terreno/permutante). */
+  numberRequired?: boolean;
 }) {
   const cepInputRef = useRef<HTMLInputElement>(null);
   const streetInputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +55,7 @@ export function AddressFields({
         setCepStatus("CEP não encontrado — preencha o endereço manualmente.");
         return;
       }
-      if (streetInputRef.current && !streetInputRef.current.value) streetInputRef.current.value = data.logradouro ?? "";
+      if (streetInputRef.current) streetInputRef.current.value = data.logradouro ?? "";
       if (neighborhoodInputRef.current) neighborhoodInputRef.current.value = data.bairro ?? "";
       if (cityInputRef.current) cityInputRef.current.value = data.localidade ?? "";
       if (stateInputRef.current) stateInputRef.current.value = data.uf ?? "";
@@ -63,58 +66,67 @@ export function AddressFields({
   }
 
   return (
-    <div className="field-section">
-      <h3>Endereço</h3>
-      {legacyNote ? <p className="field-hint">{legacyNote}</p> : null}
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor={`${idPrefix}zipCode`}>CEP</label>
+    <div>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Endereço</div>
+      {legacyNote ? <p style={{ fontSize: "12px", color: "var(--inc-text-soft)", marginBottom: "8px" }}>{legacyNote}</p> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">CEP</span>
           <input
             id={`${idPrefix}zipCode`}
             name="zipCode"
+            className="inc-input"
             ref={cepInputRef}
             placeholder="00000-000"
             defaultValue={defaultValues?.zipCode ? formatCep(defaultValues.zipCode) : ""}
             onBlur={handleCepBlur}
           />
-          {cepStatus ? <span style={{ fontSize: "0.75rem", opacity: 0.75 }}>{cepStatus}</span> : null}
-        </div>
-        <div className="field" style={{ gridColumn: "span 2" }}>
-          <label htmlFor={`${idPrefix}street`}>Logradouro</label>
-          <input id={`${idPrefix}street`} name="street" ref={streetInputRef} defaultValue={defaultValues?.street ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor={`${idPrefix}number`}>Número</label>
-          <input id={`${idPrefix}number`} name="number" defaultValue={defaultValues?.number ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor={`${idPrefix}complement`}>Complemento</label>
-          <input id={`${idPrefix}complement`} name="complement" defaultValue={defaultValues?.complement ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor={`${idPrefix}neighborhood`}>Bairro</label>
+          {cepStatus ? <span style={{ fontSize: "11.5px", color: "var(--inc-text-soft)" }}>{cepStatus}</span> : null}
+        </label>
+        <label className="inc-field" style={{ gridColumn: "span 2" }}>
+          <span className="inc-label">Logradouro</span>
+          <input id={`${idPrefix}street`} name="street" className="inc-input" ref={streetInputRef} defaultValue={defaultValues?.street ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Número{numberRequired ? " *" : ""}</span>
+          <input
+            id={`${idPrefix}number`}
+            name="number"
+            className="inc-input"
+            required={numberRequired}
+            defaultValue={defaultValues?.number ?? ""}
+          />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Complemento</span>
+          <input id={`${idPrefix}complement`} name="complement" className="inc-input" defaultValue={defaultValues?.complement ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Bairro</span>
           <input
             id={`${idPrefix}neighborhood`}
             name="neighborhood"
+            className="inc-input"
             ref={neighborhoodInputRef}
             defaultValue={defaultValues?.neighborhood ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor={`${idPrefix}city`}>Cidade</label>
-          <input id={`${idPrefix}city`} name="city" ref={cityInputRef} defaultValue={defaultValues?.city ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor={`${idPrefix}state`}>UF</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Cidade</span>
+          <input id={`${idPrefix}city`} name="city" className="inc-input" ref={cityInputRef} defaultValue={defaultValues?.city ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">UF</span>
           <input
             id={`${idPrefix}state`}
             name="state"
+            className="inc-input"
             ref={stateInputRef}
             maxLength={2}
             style={{ textTransform: "uppercase" }}
             defaultValue={defaultValues?.state ?? ""}
           />
-        </div>
+        </label>
       </div>
     </div>
   );

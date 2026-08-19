@@ -6,12 +6,14 @@ import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { createCostCenterAction, updateCostCenterAction, deleteCostCenterAction, type FormState } from "./actions";
 import type { CostCenterSortField } from "@/server/finance-setup";
+import { formatDateTimeBR } from "@/lib/format";
 
 export type CostCenterRow = {
   id: string;
   name: string;
   developmentId: string | null;
   developmentName: string | null;
+  audit: { createdByName: string | null; createdAt: Date; updatedByName: string | null; updatedAt: Date };
 };
 
 export type DevelopmentOption = { id: string; name: string };
@@ -78,98 +80,108 @@ export function CostCentersManager({
 
   return (
     <div id="centros-de-custo">
-      <div className="list-toolbar">
-        <form className="list-search" action="/settings/finance-setup" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/settings/finance-setup" method="get">
           <input type="hidden" name="csort" value={sortBy} />
           <input type="hidden" name="cdir" value={sortDir} />
           <input type="search" name="cq" placeholder="Buscar por nome" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} centro{total === 1 ? "" : "s"} de custo
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo centro de custo
-            </button>
-          ) : null}
-        </div>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} centro{total === 1 ? "" : "s"} de custo
+        </span>
+
+        {canCreate ? (
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setModal({ mode: "create" })}
+          >
+            + Novo centro de custo
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th className="sortable-th">
-              <Link href={sortLink("name")}>
-                <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              <th>
+                <Link
+                  href={sortLink("name")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                >
                   Nome
                   <SortIcon direction={sortBy === "name" ? sortDir : null} />
-                </button>
-              </Link>
-            </th>
-            <th>Empreendimento</th>
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {costCenters.length === 0 ? (
-            <tr>
-              <td colSpan={3} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum centro de custo encontrado." : "Nenhum centro de custo cadastrado."}
-              </td>
+                </Link>
+              </th>
+              <th>Empreendimento</th>
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {costCenters.map((cc) => (
-            <tr key={cc.id}>
-              <td>{cc.name}</td>
-              <td>{cc.developmentName ?? "Organização"}</td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${cc.name}`}
-                        onClick={() => setModal({ mode: "edit", costCenter: cc })}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${cc.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(cc.id, cc.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {costCenters.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="is-empty">
+                  {search ? "Nenhum centro de custo encontrado." : "Nenhum centro de custo cadastrado."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {costCenters.map((cc) => (
+              <tr key={cc.id}>
+                <td className="is-key">{cc.name}</td>
+                <td className="is-muted">{cc.developmentName ?? "Organização"}</td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${cc.name}`}
+                          onClick={() => setModal({ mode: "edit", costCenter: cc })}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${cc.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(cc.id, cc.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (
@@ -212,10 +224,10 @@ function CostCenterModal({
       width={440}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
             {pending ? "Salvando..." : "Salvar"}
           </button>
         </>
@@ -225,26 +237,32 @@ function CostCenterModal({
         {mode === "edit" && costCenter ? (
           <input type="hidden" name="costCenterId" value={costCenter.id} />
         ) : null}
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="cc-name">Nome *</label>
-              <input id="cc-name" name="name" required defaultValue={costCenter?.name ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="cc-development">Empreendimento</label>
-              <select id="cc-development" name="developmentId" defaultValue={costCenter?.developmentId ?? ""}>
-                <option value="">Organização (sem empreendimento específico)</option>
-                {developments.map((dev) => (
-                  <option key={dev.id} value={dev.id}>
-                    {dev.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+        {mode === "edit" && costCenter ? (
+          <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+            Cadastrado por {costCenter.audit.createdByName ?? "—"} em {formatDateTimeBR(costCenter.audit.createdAt)}
+            {" · "}Última alteração por {costCenter.audit.updatedByName ?? "—"} em{" "}
+            {formatDateTimeBR(costCenter.audit.updatedAt)}
+          </p>
+        ) : null}
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Nome *</span>
+            <input id="cc-name" name="name" className="inc-input" required defaultValue={costCenter?.name ?? ""} />
+          </label>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Empreendimento</span>
+            <select id="cc-development" name="developmentId" className="inc-select" defaultValue={costCenter?.developmentId ?? ""}>
+              <option value="">Organização (sem empreendimento específico)</option>
+              {developments.map((dev) => (
+                <option key={dev.id} value={dev.id}>
+                  {dev.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );

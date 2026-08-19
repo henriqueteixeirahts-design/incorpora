@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { recordAuditEvent } from "@/lib/audit";
+import { recordAuditEvent, getAuditSummaries } from "@/lib/audit";
 import type { AccessContext } from "@/server/auth-context";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -43,7 +43,14 @@ export async function listSuppliersPaged(
     prisma.supplier.count({ where }),
   ]);
 
-  return { items, total, page, pageSize };
+  const audit = await getAuditSummaries(
+    organizationId,
+    "Supplier",
+    items.map((i) => i.id),
+    new Map(items.map((i) => [i.id, { createdAt: i.createdAt, updatedAt: i.createdAt }])),
+  );
+
+  return { items: items.map((item) => ({ ...item, audit: audit.get(item.id)! })), total, page, pageSize };
 }
 
 export type CreateSupplierInput = {
@@ -156,7 +163,14 @@ export async function listCostCentersPaged(
     prisma.costCenter.count({ where }),
   ]);
 
-  return { items, total, page, pageSize };
+  const audit = await getAuditSummaries(
+    organizationId,
+    "CostCenter",
+    items.map((i) => i.id),
+    new Map(items.map((i) => [i.id, { createdAt: i.createdAt, updatedAt: i.createdAt }])),
+  );
+
+  return { items: items.map((item) => ({ ...item, audit: audit.get(item.id)! })), total, page, pageSize };
 }
 
 export type CreateCostCenterInput = {

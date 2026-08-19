@@ -5,7 +5,7 @@ import { Modal } from "@/components/Modal";
 import { Tabs, type TabDef } from "@/components/Tabs";
 import { TrashIcon, DownloadIcon } from "@/components/icons";
 import { AddressFields } from "@/components/AddressFields";
-import { formatDocument, formatPhone } from "@/lib/br-validation";
+import { formatDocument, formatPhone, isValidDocument, isValidEmail } from "@/lib/br-validation";
 import { formatDateBR, formatDateTimeBR } from "@/lib/format";
 import {
   createCustomerAction,
@@ -49,6 +49,8 @@ export function CustomerModal({
   const [documentType, setDocumentType] = useState<"INDIVIDUAL" | "COMPANY">(
     customer?.type ?? "INDIVIDUAL",
   );
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const formAction = mode === "create" ? createCustomerAction : updateCustomerAction;
   const [state, dispatch, pending] = useActionState(formAction, initialState);
   const dadosFormRef = useRef<HTMLFormElement>(null);
@@ -93,11 +95,12 @@ export function CustomerModal({
       title={isEditing ? `Editar cliente — ${customer!.name}` : "Novo cliente"}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
           <button
             type="button"
+            className="inc-btn inc-btn--primary"
             disabled={pending}
             onClick={() => dadosFormRef.current?.requestSubmit()}
           >
@@ -107,7 +110,7 @@ export function CustomerModal({
       }
     >
       {isEditing && customer!.audit ? (
-        <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
+        <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
           Cadastrado por {customer!.audit.createdByName ?? "—"} em{" "}
           {formatDateTimeBR(customer!.audit.createdAt)}
           {customer!.audit.updatedAt !== customer!.audit.createdAt ? (
@@ -128,136 +131,161 @@ export function CustomerModal({
             <input type="hidden" name="customerId" value={customer.id} />
           ) : null}
 
-          <div className="field-section">
-            <h3>Identificação</h3>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="type">Tipo *</label>
-                <select
-                  id="type"
-                  name="type"
-                  defaultValue={customer?.type ?? "INDIVIDUAL"}
-                  onChange={(e) => {
-                    const next = e.target.value as "INDIVIDUAL" | "COMPANY";
-                    setDocumentType(next);
-                    if (documentInputRef.current) {
-                      documentInputRef.current.value = formatDocument(documentInputRef.current.value, next);
-                    }
-                  }}
-                >
-                  <option value="INDIVIDUAL">Pessoa física</option>
-                  <option value="COMPANY">Pessoa jurídica</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="name">Nome *</label>
-                <input id="name" name="name" required defaultValue={customer?.name ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="document">{documentType === "COMPANY" ? "CNPJ *" : "CPF *"}</label>
-                <input
-                  id="document"
-                  name="document"
-                  ref={documentInputRef}
-                  required
-                  placeholder={documentType === "COMPANY" ? "00.000.000/0000-00" : "000.000.000-00"}
-                  defaultValue={customer ? formatDocument(customer.document, customer.type) : ""}
-                  onBlur={(e) => {
-                    e.target.value = formatDocument(e.target.value, documentType);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {documentType === "INDIVIDUAL" ? (
-            <div className="field-section">
-              <h3>Qualificação civil</h3>
-              <p style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: "-0.5rem", marginBottom: "0.5rem" }}>
-                Usado pelo motor de templates de documento (qualificação das partes no contrato).
-              </p>
-              <div className="field-grid">
-                <div className="field">
-                  <label htmlFor="maritalStatus">Estado civil</label>
-                  <input id="maritalStatus" name="maritalStatus" defaultValue={customer?.maritalStatus ?? ""} />
-                </div>
-                <div className="field">
-                  <label htmlFor="nationality">Nacionalidade</label>
-                  <input id="nationality" name="nationality" defaultValue={customer?.nationality ?? ""} />
-                </div>
-                <div className="field">
-                  <label htmlFor="profession">Profissão</label>
-                  <input id="profession" name="profession" defaultValue={customer?.profession ?? ""} />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="field-section">
-            <h3>Contato</h3>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="email">E-mail *</label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  defaultValue={customer?.email ?? ""}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="phone">Telefone *</label>
-                <input
-                  id="phone"
-                  name="phone"
-                  ref={phoneInputRef}
-                  required
-                  placeholder="(00) 00000-0000"
-                  defaultValue={customer?.phone ? formatPhone(customer.phone) : ""}
-                  onBlur={(e) => {
-                    e.target.value = formatPhone(e.target.value);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <AddressFields
-            defaultValues={customer ?? undefined}
-            legacyNote={hasLegacyAddress ? `Endereço legado (cadastro anterior): ${customer!.address}` : null}
-          />
-
-          <div className="field-section">
-            <h3>Observações</h3>
-            <div className="field">
-              <textarea
-                id="notes"
-                name="notes"
-                rows={3}
-                defaultValue={customer?.notes ?? ""}
-              />
-            </div>
-          </div>
-
-          {state.error ? (
-            <p className="error-text">
-              {state.error}
-              {state.duplicateCustomerId ? (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    className="secondary"
-                    style={{ padding: "0.15rem 0.5rem", fontSize: "0.8rem" }}
-                    onClick={() => onOpenDuplicate(state.duplicateCustomerId!)}
+          <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+                <label className="inc-field">
+                  <span className="inc-label">Tipo *</span>
+                  <select
+                    id="type"
+                    name="type"
+                    className="inc-select"
+                    defaultValue={customer?.type ?? "INDIVIDUAL"}
+                    onChange={(e) => {
+                      const next = e.target.value as "INDIVIDUAL" | "COMPANY";
+                      setDocumentType(next);
+                      setDocumentError(null);
+                      if (documentInputRef.current) {
+                        documentInputRef.current.value = formatDocument(documentInputRef.current.value, next);
+                      }
+                    }}
                   >
-                    Abrir cadastro existente
-                  </button>
-                </>
-              ) : null}
-            </p>
-          ) : null}
+                    <option value="INDIVIDUAL">Pessoa física</option>
+                    <option value="COMPANY">Pessoa jurídica</option>
+                  </select>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Nome *</span>
+                  <input id="name" name="name" className="inc-input" required defaultValue={customer?.name ?? ""} />
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">{documentType === "COMPANY" ? "CNPJ *" : "CPF *"}</span>
+                  <input
+                    id="document"
+                    name="document"
+                    ref={documentInputRef}
+                    required
+                    className={`inc-input${documentError ? " inc-input--invalid" : ""}`}
+                    placeholder={documentType === "COMPANY" ? "00.000.000/0000-00" : "000.000.000-00"}
+                    defaultValue={customer ? formatDocument(customer.document, customer.type) : ""}
+                    onChange={() => setDocumentError(null)}
+                    onBlur={(e) => {
+                      const formatted = formatDocument(e.target.value, documentType);
+                      e.target.value = formatted;
+                      if (formatted.trim() && !isValidDocument(formatted, documentType)) {
+                        setDocumentError(documentType === "COMPANY" ? "CNPJ inválido." : "CPF inválido.");
+                      } else {
+                        setDocumentError(null);
+                      }
+                    }}
+                  />
+                  {documentError ? <span className="inc-help inc-help--error">{documentError}</span> : null}
+                </label>
+              </div>
+            </div>
+
+            {documentType === "INDIVIDUAL" ? (
+              <div>
+                <div className="inc-eyebrow" style={{ marginBottom: "4px" }}>Qualificação civil</div>
+                <p style={{ fontSize: "12px", color: "var(--inc-text-soft)", marginBottom: "8px" }}>
+                  Usado pelo motor de templates de documento (qualificação das partes no contrato).
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+                  <label className="inc-field">
+                    <span className="inc-label">Estado civil</span>
+                    <input id="maritalStatus" name="maritalStatus" className="inc-input" defaultValue={customer?.maritalStatus ?? ""} />
+                  </label>
+                  <label className="inc-field">
+                    <span className="inc-label">Nacionalidade</span>
+                    <input id="nationality" name="nationality" className="inc-input" defaultValue={customer?.nationality ?? ""} />
+                  </label>
+                  <label className="inc-field">
+                    <span className="inc-label">Profissão</span>
+                    <input id="profession" name="profession" className="inc-input" defaultValue={customer?.profession ?? ""} />
+                  </label>
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Contato</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <label className="inc-field">
+                  <span className="inc-label">E-mail *</span>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    className={`inc-input${emailError ? " inc-input--invalid" : ""}`}
+                    defaultValue={customer?.email ?? ""}
+                    onChange={() => setEmailError(null)}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && !isValidEmail(e.target.value)) {
+                        setEmailError("E-mail inválido.");
+                      } else {
+                        setEmailError(null);
+                      }
+                    }}
+                  />
+                  {emailError ? <span className="inc-help inc-help--error">{emailError}</span> : null}
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Telefone *</span>
+                  <input
+                    id="phone"
+                    name="phone"
+                    ref={phoneInputRef}
+                    required
+                    className="inc-input"
+                    placeholder="(00) 00000-0000"
+                    defaultValue={customer?.phone ? formatPhone(customer.phone) : ""}
+                    onBlur={(e) => {
+                      e.target.value = formatPhone(e.target.value);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <AddressFields
+              defaultValues={customer ?? undefined}
+              legacyNote={hasLegacyAddress ? `Endereço legado (cadastro anterior): ${customer!.address}` : null}
+              numberRequired
+            />
+
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Observações</div>
+              <label className="inc-field">
+                <textarea
+                  id="notes"
+                  name="notes"
+                  className="inc-input"
+                  rows={3}
+                  defaultValue={customer?.notes ?? ""}
+                />
+              </label>
+            </div>
+
+            {state.error ? (
+              <p className="error-text">
+                {state.error}
+                {state.duplicateCustomerId ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="inc-btn inc-btn--secondary inc-btn--sm"
+                      onClick={() => onOpenDuplicate(state.duplicateCustomerId!)}
+                    >
+                      Abrir cadastro existente
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
         </form>
       </div>
 
@@ -346,9 +374,9 @@ function ContactsTab({
   return (
     <div>
       {customer.contacts.length === 0 ? (
-        <p className="field-hint">Nenhum contato adicional cadastrado.</p>
+        <p style={{ fontSize: "13px", color: "var(--inc-text-soft)" }}>Nenhum contato adicional cadastrado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Nome</th>
@@ -361,17 +389,18 @@ function ContactsTab({
           <tbody>
             {customer.contacts.map((contact) => (
               <tr key={contact.id}>
-                <td>{contact.name}</td>
-                <td>{contact.role || "—"}</td>
+                <td className="is-key">{contact.name}</td>
+                <td className="is-muted">{contact.role || "—"}</td>
                 <td>{contact.email || "—"}</td>
                 <td>{contact.phone ? formatPhone(contact.phone) : "—"}</td>
                 <td>
                   <button
                     type="button"
-                    className="icon-btn danger"
+                    className="inc-btn-icon"
                     aria-label={`Remover ${contact.name}`}
                     disabled={busy}
                     onClick={() => handleDelete(contact.id)}
+                    style={{ color: "var(--inc-danger)" }}
                   >
                     <TrashIcon />
                   </button>
@@ -382,38 +411,39 @@ function ContactsTab({
         </table>
       )}
 
-      <div className="field-section">
-        <h3>Adicionar contato</h3>
-        <p className="field-hint" style={{ marginTop: 0 }}>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "4px" }}>Adicionar contato</div>
+        <p style={{ fontSize: "12px", color: "var(--inc-text-soft)", marginTop: 0, marginBottom: "10px" }}>
           Informe nome e pelo menos um e-mail ou telefone.
         </p>
-        <div className="field-grid">
-          <div className="field">
-            <label>Nome *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Cargo/Relação</label>
-            <input value={role} onChange={(e) => setRole(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>E-mail</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Telefone</label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "14px" }}>
+          <label className="inc-field">
+            <span className="inc-label">Nome *</span>
+            <input className="inc-input" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Cargo/Relação</span>
+            <input className="inc-input" value={role} onChange={(e) => setRole(e.target.value)} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">E-mail</span>
+            <input className="inc-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Telefone</span>
             <input
+              className="inc-input"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               onBlur={(e) => setPhone(formatPhone(e.target.value))}
             />
-          </div>
+          </label>
         </div>
         {error ? <p className="error-text">{error}</p> : null}
         <button
           type="button"
-          className="secondary"
-          style={{ marginTop: "0.75rem" }}
+          className="inc-btn inc-btn--secondary"
+          style={{ marginTop: "12px" }}
           disabled={busy}
           onClick={handleAdd}
         >
@@ -474,28 +504,31 @@ function DocumentsTab({
   return (
     <div>
       {customer.documents.length === 0 ? (
-        <p className="field-hint">Nenhum anexo enviado.</p>
+        <p style={{ fontSize: "13px", color: "var(--inc-text-soft)" }}>Nenhum anexo enviado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Arquivo</th>
               <th>Categoria</th>
-              <th>Enviado em</th>
+              <th>Enviado</th>
               <th aria-label="Ações" />
             </tr>
           </thead>
           <tbody>
             {customer.documents.map((doc) => (
               <tr key={doc.id}>
-                <td>{doc.fileName}</td>
+                <td className="is-key">{doc.fileName}</td>
                 <td>{DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
-                <td>{formatDateBR(doc.createdAt)}</td>
+                <td className="is-muted">
+                  {formatDateBR(doc.createdAt)}
+                  <div className="inc-table__sub">por {doc.uploadedByName ?? "—"}</div>
+                </td>
                 <td>
-                  <div className="row-actions">
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                     {doc.signedUrl ? (
                       <a
-                        className="icon-btn"
+                        className="inc-btn-icon"
                         href={doc.signedUrl}
                         target="_blank"
                         rel="noreferrer"
@@ -506,10 +539,11 @@ function DocumentsTab({
                     ) : null}
                     <button
                       type="button"
-                      className="icon-btn danger"
+                      className="inc-btn-icon"
                       aria-label={`Remover ${doc.fileName}`}
                       disabled={busy}
                       onClick={() => handleDelete(doc.id)}
+                      style={{ color: "var(--inc-danger)" }}
                     >
                       <TrashIcon />
                     </button>
@@ -521,29 +555,29 @@ function DocumentsTab({
         </table>
       )}
 
-      <div className="field-section">
-        <h3>Enviar anexo</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label>Categoria</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Enviar anexo</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+          <label className="inc-field">
+            <span className="inc-label">Categoria</span>
+            <select className="inc-select" value={category} onChange={(e) => setCategory(e.target.value)}>
               {Object.entries(DOCUMENT_CATEGORY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label>Arquivo</label>
-            <input ref={fileInputRef} type="file" />
-          </div>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Arquivo</span>
+            <input className="inc-input" ref={fileInputRef} type="file" />
+          </label>
         </div>
         {error ? <p className="error-text">{error}</p> : null}
         <button
           type="button"
-          className="secondary"
-          style={{ marginTop: "0.75rem" }}
+          className="inc-btn inc-btn--secondary"
+          style={{ marginTop: "12px" }}
           disabled={busy}
           onClick={handleUpload}
         >

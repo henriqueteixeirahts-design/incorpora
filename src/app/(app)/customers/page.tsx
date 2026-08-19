@@ -38,7 +38,12 @@ export default async function CustomersPage({
 
   return (
     <>
-      <h1>Clientes</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Cadastros</div>
+          <h1 className="inc-h1">Clientes</h1>
+        </div>
+      </div>
 
       <CustomersManager
         customers={items.map((c) => ({

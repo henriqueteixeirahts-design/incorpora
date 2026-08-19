@@ -91,119 +91,113 @@ export function CustomersManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/customers" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/customers" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
-          <input
-            type="search"
-            name="q"
-            placeholder="Buscar por nome, documento ou e-mail"
-            defaultValue={search}
-          />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
+          <input type="search" name="q" placeholder="Buscar por nome, documento ou e-mail" defaultValue={search} />
         </form>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} cliente{total === 1 ? "" : "s"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo cliente
-            </button>
-          ) : null}
-        </div>
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} cliente{total === 1 ? "" : "s"}
+        </span>
+
+        {canCreate ? (
+          <button type="button" className="inc-btn inc-btn--primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ mode: "create" })}>
+            + Novo cliente
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link href={sortLink(col.field)} style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}>
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
+                  </Link>
+                </th>
+              ))}
+              <th>Contato</th>
+              {canViewStatement ? <th>Extrato</th> : null}
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {customers.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="is-empty">
+                  {search ? "Nenhum cliente encontrado para essa busca." : "Nenhum cliente cadastrado."}
+                </td>
+              </tr>
+            ) : null}
+            {customers.map((customer) => (
+              <tr key={customer.id}>
+                <td className="is-key">{customer.name}</td>
+                <td className="is-muted">{customer.typeLabel}</td>
+                <td>{customer.document}</td>
+                <td className="is-muted">{[customer.email, customer.phone].filter(Boolean).join(" · ") || "—"}</td>
+                {canViewStatement ? (
+                  <td>
+                    <Link href={`/customers/${customer.id}/statement`} style={{ color: "var(--inc-brand-azul)", fontWeight: 500 }}>
+                      Ver extrato
+                    </Link>
+                  </td>
+                ) : null}
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${customer.name}`}
+                          disabled={loadingId === customer.id}
+                          onClick={() => openEdit(customer.id)}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${customer.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(customer.id, customer.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
             ))}
-            <th>Contato</th>
-            {canViewStatement ? <th>Extrato</th> : null}
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {customers.length === 0 ? (
-            <tr>
-              <td colSpan={6} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum cliente encontrado para essa busca." : "Nenhum cliente cadastrado."}
-              </td>
-            </tr>
-          ) : null}
-          {customers.map((customer) => (
-            <tr key={customer.id}>
-              <td>{customer.name}</td>
-              <td>{customer.typeLabel}</td>
-              <td>{customer.document}</td>
-              <td>{[customer.email, customer.phone].filter(Boolean).join(" · ") || "—"}</td>
-              {canViewStatement ? (
-                <td>
-                  <Link href={`/customers/${customer.id}/statement`}>Ver extrato</Link>
-                </td>
-              ) : null}
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${customer.name}`}
-                        disabled={loadingId === customer.id}
-                        onClick={() => openEdit(customer.id)}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${customer.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(customer.id, customer.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? (
-          <Link href={pageLink(page - 1)}>← Anterior</Link>
-        ) : (
-          <span className="disabled">← Anterior</span>
-        )}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (

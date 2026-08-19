@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { createSupplierAction, updateSupplierAction, deleteSupplierAction, type FormState } from "./actions";
 import type { SupplierSortField } from "@/server/finance-setup";
+import { formatDateTimeBR } from "@/lib/format";
 
 export type SupplierRow = {
   id: string;
@@ -13,6 +14,7 @@ export type SupplierRow = {
   document: string | null;
   email: string | null;
   phone: string | null;
+  audit: { createdByName: string | null; createdAt: Date; updatedByName: string | null; updatedAt: Date };
 };
 
 type ModalState = { mode: "create" } | { mode: "edit"; supplier: SupplierRow } | null;
@@ -75,100 +77,110 @@ export function SuppliersManager({
 
   return (
     <div id="fornecedores">
-      <div className="list-toolbar">
-        <form className="list-search" action="/settings/finance-setup" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/settings/finance-setup" method="get">
           <input type="hidden" name="ssort" value={sortBy} />
           <input type="hidden" name="sdir" value={sortDir} />
           <input type="search" name="sq" placeholder="Buscar por nome ou documento" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} fornecedor{total === 1 ? "" : "es"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo fornecedor
-            </button>
-          ) : null}
-        </div>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} fornecedor{total === 1 ? "" : "es"}
+        </span>
+
+        {canCreate ? (
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setModal({ mode: "create" })}
+          >
+            + Novo fornecedor
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th className="sortable-th">
-              <Link href={sortLink("name")}>
-                <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              <th>
+                <Link
+                  href={sortLink("name")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                >
                   Nome
                   <SortIcon direction={sortBy === "name" ? sortDir : null} />
-                </button>
-              </Link>
-            </th>
-            <th>Documento</th>
-            <th>Contato</th>
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {suppliers.length === 0 ? (
-            <tr>
-              <td colSpan={4} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum fornecedor encontrado." : "Nenhum fornecedor cadastrado."}
-              </td>
+                </Link>
+              </th>
+              <th>Documento</th>
+              <th>Contato</th>
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {suppliers.map((supplier) => (
-            <tr key={supplier.id}>
-              <td>{supplier.name}</td>
-              <td>{supplier.document ?? "—"}</td>
-              <td>{[supplier.email, supplier.phone].filter(Boolean).join(" · ") || "—"}</td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${supplier.name}`}
-                        onClick={() => setModal({ mode: "edit", supplier })}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${supplier.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(supplier.id, supplier.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {suppliers.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="is-empty">
+                  {search ? "Nenhum fornecedor encontrado." : "Nenhum fornecedor cadastrado."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {suppliers.map((supplier) => (
+              <tr key={supplier.id}>
+                <td className="is-key">{supplier.name}</td>
+                <td className="is-muted">{supplier.document ?? "—"}</td>
+                <td className="is-muted">{[supplier.email, supplier.phone].filter(Boolean).join(" · ") || "—"}</td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${supplier.name}`}
+                          onClick={() => setModal({ mode: "edit", supplier })}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${supplier.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(supplier.id, supplier.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (
@@ -208,10 +220,10 @@ function SupplierModal({
       width={480}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
             {pending ? "Salvando..." : "Salvar"}
           </button>
         </>
@@ -221,27 +233,33 @@ function SupplierModal({
         {mode === "edit" && supplier ? (
           <input type="hidden" name="supplierId" value={supplier.id} />
         ) : null}
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="supplier-name">Nome *</label>
-              <input id="supplier-name" name="name" required defaultValue={supplier?.name ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-document">Documento</label>
-              <input id="supplier-document" name="document" defaultValue={supplier?.document ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-email">E-mail</label>
-              <input id="supplier-email" name="email" type="email" defaultValue={supplier?.email ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="supplier-phone">Telefone</label>
-              <input id="supplier-phone" name="phone" defaultValue={supplier?.phone ?? ""} />
-            </div>
-          </div>
+        {mode === "edit" && supplier ? (
+          <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+            Cadastrado por {supplier.audit.createdByName ?? "—"} em {formatDateTimeBR(supplier.audit.createdAt)}
+            {" · "}Última alteração por {supplier.audit.updatedByName ?? "—"} em{" "}
+            {formatDateTimeBR(supplier.audit.updatedAt)}
+          </p>
+        ) : null}
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Nome *</span>
+            <input id="supplier-name" name="name" className="inc-input" required defaultValue={supplier?.name ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Documento</span>
+            <input id="supplier-document" name="document" className="inc-input" defaultValue={supplier?.document ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">E-mail</span>
+            <input id="supplier-email" name="email" type="email" className="inc-input" defaultValue={supplier?.email ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Telefone</span>
+            <input id="supplier-phone" name="phone" className="inc-input" defaultValue={supplier?.phone ?? ""} />
+          </label>
         </div>
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );

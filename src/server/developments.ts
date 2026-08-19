@@ -52,8 +52,8 @@ export async function listDevelopmentsPaged(
   return { items, total, page, pageSize };
 }
 
-export function getDevelopment(organizationId: string, developmentId: string) {
-  return prisma.development.findFirst({
+export async function getDevelopment(organizationId: string, developmentId: string) {
+  const development = await prisma.development.findFirst({
     where: { id: developmentId, organizationId },
     include: {
       spe: true,
@@ -61,6 +61,25 @@ export function getDevelopment(organizationId: string, developmentId: string) {
       buildings: { include: { floors: true }, orderBy: { name: "asc" } },
     },
   });
+  if (!development) return null;
+
+  const auditTrail = await prisma.auditEvent.findMany({
+    where: { organizationId, entityType: "Development", entityId: developmentId },
+    orderBy: { createdAt: "asc" },
+    include: { actor: true },
+  });
+  const createdEvent = auditTrail[0] ?? null;
+  const updatedEvent = auditTrail[auditTrail.length - 1] ?? null;
+
+  return {
+    ...development,
+    audit: {
+      createdByName: createdEvent?.actor?.fullName ?? null,
+      createdAt: createdEvent?.createdAt ?? development.createdAt,
+      updatedByName: updatedEvent?.actor?.fullName ?? null,
+      updatedAt: updatedEvent?.createdAt ?? development.updatedAt,
+    },
+  };
 }
 
 export type CreateDevelopmentInput = {

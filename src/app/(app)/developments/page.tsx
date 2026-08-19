@@ -37,7 +37,12 @@ export default async function DevelopmentsPage({
 
   return (
     <>
-      <h1>Empreendimentos</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Cadastros</div>
+          <h1 className="inc-h1">Empreendimentos</h1>
+        </div>
+      </div>
 
       {canCreate && spes.length === 0 ? (
         <p style={{ marginTop: "1rem", opacity: 0.7 }}>

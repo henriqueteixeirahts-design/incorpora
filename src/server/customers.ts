@@ -7,6 +7,7 @@ import {
   getSignedDocumentUrl,
   deleteEntityDocumentFile,
 } from "@/server/storage";
+import { ValidationError } from "@/lib/errors";
 import type { AccessContext } from "@/server/auth-context";
 import type { CustomerType, DocumentCategory, Prisma } from "@/generated/prisma/client";
 
@@ -70,10 +71,12 @@ export async function getCustomerDetail(organizationId: string, customerId: stri
   const documents = await prisma.document.findMany({
     where: { organizationId, entityType: ENTITY_TYPE, entityId: customerId },
     orderBy: { createdAt: "desc" },
+    include: { uploadedBy: true },
   });
   const documentsWithUrl = await Promise.all(
     documents.map(async (doc) => ({
       ...doc,
+      uploadedByName: doc.uploadedBy?.fullName ?? null,
       signedUrl: await getSignedDocumentUrl(doc.fileUrl).catch(() => null),
     })),
   );
@@ -137,7 +140,20 @@ async function assertDocumentNotDuplicated(
   if (existing) throw new DuplicateDocumentError(existing.id, existing.name);
 }
 
+/**
+ * Endereço com logradouro mas sem número é incompleto pra contrato
+ * (docs/RELATORIO_TESTDRIVE.md, achado 4) — só cobra o número quando um
+ * endereço de fato está sendo informado, não quando o cliente não tem
+ * endereço cadastrado ainda.
+ */
+function assertAddressNumberWhenAddressGiven(input: { street?: string; number?: string }) {
+  if (input.street?.trim() && !input.number?.trim()) {
+    throw new ValidationError("Informe o número do endereço — endereço sem número fica incompleto para o contrato.");
+  }
+}
+
 export async function createCustomer(context: AccessContext, input: CreateCustomerInput) {
+  assertAddressNumberWhenAddressGiven(input);
   await assertDocumentNotDuplicated(context.organizationId, input.document);
 
   return prisma.$transaction(async (tx) => {
@@ -161,10 +177,12 @@ export async function updateCustomer(
   customerId: string,
   input: CreateCustomerInput,
 ) {
+  assertAddressNumberWhenAddressGiven(input);
+
   const before = await prisma.customer.findFirst({
     where: { id: customerId, organizationId: context.organizationId },
   });
-  if (!before) throw new Error("Cliente não encontrado.");
+  if (!before) throw new ValidationError("Cliente não encontrado.");
 
   await assertDocumentNotDuplicated(context.organizationId, input.document, customerId);
 

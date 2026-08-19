@@ -103,39 +103,35 @@ export function DevelopmentsManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/developments" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/developments" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           <input type="search" name="q" placeholder="Buscar por nome ou cidade" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} empreendimento{total === 1 ? "" : "s"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo empreendimento
-            </button>
-          ) : null}
-        </div>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} empreendimento{total === 1 ? "" : "s"}
+        </span>
+
+        {canCreate ? (
+          <button type="button" className="inc-btn inc-btn--primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ mode: "create" })}>
+            + Novo empreendimento
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
         <thead>
           <tr>
             {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
-                    {col.label}
-                    <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
+              <th key={col.field}>
+                <Link href={sortLink(col.field)} style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}>
+                  {col.label}
+                  <SortIcon direction={sortBy === col.field ? sortDir : null} />
                 </Link>
               </th>
             ))}
@@ -147,24 +143,29 @@ export function DevelopmentsManager({
         <tbody>
           {developments.length === 0 ? (
             <tr>
-              <td colSpan={6} style={{ opacity: 0.7 }}>
+              <td colSpan={6} className="is-empty">
                 {search ? "Nenhum empreendimento encontrado." : "Nenhum empreendimento cadastrado."}
               </td>
             </tr>
           ) : null}
           {developments.map((development) => (
             <tr key={development.id}>
-              <td>{development.name}</td>
-              <td>{TYPE_LABELS[development.type] ?? development.type}</td>
+              <td className="is-key">{development.name}</td>
+              <td className="is-muted">{TYPE_LABELS[development.type] ?? development.type}</td>
+              <td className="is-muted">
+                {[development.city, development.state].filter(Boolean).join(" / ") || "—"}
+              </td>
               <td>{development.speName}</td>
               <td>{development.unitsCount}</td>
               <td>
-                <div className="row-actions">
-                  <Link href={`/developments/${development.id}`}>Abrir</Link>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
+                  <Link href={`/developments/${development.id}`} style={{ color: "var(--inc-brand-azul)", fontWeight: 500 }}>
+                    Abrir
+                  </Link>
                   {canEdit ? (
                     <button
                       type="button"
-                      className="icon-btn"
+                      className="inc-btn-icon"
                       aria-label={`Editar ${development.name}`}
                       onClick={() => setModal({ mode: "edit", development })}
                     >
@@ -174,10 +175,11 @@ export function DevelopmentsManager({
                   {canDelete ? (
                     <button
                       type="button"
-                      className="icon-btn danger"
+                      className="inc-btn-icon"
                       aria-label={`Excluir ${development.name}`}
                       disabled={isPending}
                       onClick={() => handleDelete(development.id, development.name)}
+                      style={{ color: "var(--inc-danger)" }}
                     >
                       <TrashIcon />
                     </button>
@@ -187,18 +189,23 @@ export function DevelopmentsManager({
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (
@@ -241,10 +248,10 @@ function DevelopmentModal({
       width={560}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
             {pending ? "Salvando..." : "Salvar"}
           </button>
         </>
@@ -254,53 +261,57 @@ function DevelopmentModal({
         {mode === "edit" && development ? (
           <input type="hidden" name="developmentId" value={development.id} />
         ) : null}
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="dev-name">Nome *</label>
-              <input id="dev-name" name="name" required defaultValue={development?.name ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="dev-type">Tipo *</label>
-              <select id="dev-type" name="type" required defaultValue={development?.type ?? ""}>
-                <option value="" disabled>
-                  Selecione...
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px", marginBottom: "18px" }}>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Nome *</span>
+            <input id="dev-name" name="name" className="inc-input" required defaultValue={development?.name ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Tipo *</span>
+            <select id="dev-type" name="type" className="inc-select" required defaultValue={development?.type ?? ""}>
+              <option value="" disabled>
+                Selecione...
+              </option>
+              {Object.entries(TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
-                {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="dev-spe">SPE *</label>
-              <select id="dev-spe" name="speId" required defaultValue={development?.speId ?? ""}>
-                <option value="" disabled>
-                  Selecione...
+              ))}
+            </select>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">SPE *</span>
+            <select id="dev-spe" name="speId" className="inc-select" required defaultValue={development?.speId ?? ""}>
+              <option value="" disabled>
+                Selecione...
+              </option>
+              {spes.map((spe) => (
+                <option key={spe.id} value={spe.id}>
+                  {spe.name}
                 </option>
-                {spes.map((spe) => (
-                  <option key={spe.id} value={spe.id}>
-                    {spe.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="dev-city">Cidade</label>
-              <input id="dev-city" name="city" defaultValue={development?.city ?? ""} />
-            </div>
-            <div className="field">
-              <label htmlFor="dev-state">UF</label>
-              <input id="dev-state" name="state" maxLength={2} defaultValue={development?.state ?? ""} />
-            </div>
-            <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="dev-address">Endereço</label>
-              <input id="dev-address" name="address" defaultValue={development?.address ?? ""} />
-            </div>
-          </div>
+              ))}
+            </select>
+          </label>
         </div>
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Localização</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
+          <label className="inc-field" style={{ gridColumn: "span 2" }}>
+            <span className="inc-label">Cidade</span>
+            <input id="dev-city" name="city" className="inc-input" defaultValue={development?.city ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">UF</span>
+            <input id="dev-state" name="state" className="inc-input" maxLength={2} style={{ textTransform: "uppercase" }} defaultValue={development?.state ?? ""} />
+          </label>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Endereço</span>
+            <input id="dev-address" name="address" className="inc-input" defaultValue={development?.address ?? ""} />
+          </label>
+        </div>
+
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );

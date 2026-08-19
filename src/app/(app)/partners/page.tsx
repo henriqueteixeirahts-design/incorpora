@@ -50,10 +50,15 @@ export default async function PartnersPage({
 
   return (
     <>
-      <h1>Imobiliárias e corretores</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Cadastros</div>
+          <h1 className="inc-h1">Imobiliárias e corretores</h1>
+        </div>
+      </div>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Imobiliárias</h2>
+      <section style={{ marginTop: "28px" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Imobiliárias</div>
         <AgenciesManager
           agencies={agenciesResult.items}
           total={agenciesResult.total}
@@ -68,8 +73,8 @@ export default async function PartnersPage({
         />
       </section>
 
-      <section style={{ marginTop: "2.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Corretores</h2>
+      <section style={{ marginTop: "40px" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Corretores</div>
         <BrokersManager
           brokers={brokersResult.items.map((b) => ({
             id: b.id,
@@ -79,6 +84,7 @@ export default async function PartnersPage({
             phone: b.phone,
             agencyId: b.agencyId,
             agencyName: b.agency?.name ?? null,
+            audit: b.audit,
           }))}
           agencies={allAgencies.map((a) => ({ id: a.id, name: a.name }))}
           total={brokersResult.total}

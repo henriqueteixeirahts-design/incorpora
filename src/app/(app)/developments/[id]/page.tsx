@@ -5,6 +5,8 @@ import { getDevelopment } from "@/server/developments";
 import { listUnits } from "@/server/units";
 import { listIndexRules } from "@/server/index-rules";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
+import { UNIT_TYPE_LABELS } from "@/lib/unit-labels";
+import { formatDateTimeBR } from "@/lib/format";
 import { NewBuildingForm, NewFloorForm } from "./building-floor-forms";
 import { CreateUnitForm } from "./create-unit-form";
 import { UnitStatusSelect } from "./unit-status-select";
@@ -39,6 +41,11 @@ export default async function DevelopmentDetailPage({
       <h1>{development.name}</h1>
       <p style={{ opacity: 0.7 }}>
         {development.spe.name} · {[development.city, development.state].filter(Boolean).join("/")}
+      </p>
+      <p style={{ marginTop: "4px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+        Cadastrado por {development.audit.createdByName ?? "—"} em {formatDateTimeBR(development.audit.createdAt)}
+        {" · "}Última alteração por {development.audit.updatedByName ?? "—"} em{" "}
+        {formatDateTimeBR(development.audit.updatedAt)}
       </p>
       <section style={{ marginTop: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Torres e pavimentos</h2>
@@ -80,7 +87,7 @@ export default async function DevelopmentDetailPage({
             {units.map((unit) => (
               <tr key={unit.id}>
                 <td>{unit.number}</td>
-                <td>{unit.unitType}</td>
+                <td>{UNIT_TYPE_LABELS[unit.unitType] ?? unit.unitType}</td>
                 <td>{unit.isAccessory ? "Sim" : "—"}</td>
                 <td>
                   {canEditUnit ? (

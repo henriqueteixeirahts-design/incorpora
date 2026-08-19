@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { recordAuditEvent } from "@/lib/audit";
+import { recordAuditEvent, getAuditSummaries } from "@/lib/audit";
 import type { AccessContext } from "@/server/auth-context";
 import type { CustomerType, Prisma } from "@/generated/prisma/client";
 
@@ -63,7 +63,14 @@ export async function listAgenciesPaged(
     prisma.realEstateAgency.count({ where }),
   ]);
 
-  return { items, total, page, pageSize };
+  const audit = await getAuditSummaries(
+    organizationId,
+    "RealEstateAgency",
+    items.map((i) => i.id),
+    new Map(items.map((i) => [i.id, { createdAt: i.createdAt, updatedAt: i.createdAt }])),
+  );
+
+  return { items: items.map((item) => ({ ...item, audit: audit.get(item.id)! })), total, page, pageSize };
 }
 
 export type CreateAgencyInput = { name: string; document?: string };
@@ -185,7 +192,14 @@ export async function listBrokersPaged(
     prisma.broker.count({ where }),
   ]);
 
-  return { items, total, page, pageSize };
+  const audit = await getAuditSummaries(
+    organizationId,
+    "Broker",
+    items.map((i) => i.id),
+    new Map(items.map((i) => [i.id, { createdAt: i.createdAt, updatedAt: i.createdAt }])),
+  );
+
+  return { items: items.map((item) => ({ ...item, audit: audit.get(item.id)! })), total, page, pageSize };
 }
 
 export type CreateBrokerInput = {

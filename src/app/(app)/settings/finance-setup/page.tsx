@@ -71,7 +71,12 @@ export default async function FinanceSetupPage({
 
   return (
     <>
-      <h1>Fornecedores, centros de custo e contas bancárias</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Fornecedores, centros de custo e contas bancárias</h1>
+        </div>
+      </div>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Fornecedores</h2>
@@ -97,6 +102,7 @@ export default async function FinanceSetupPage({
             name: cc.name,
             developmentId: cc.developmentId,
             developmentName: cc.development?.name ?? null,
+            audit: cc.audit,
           }))}
           developments={developments.map((d) => ({ id: d.id, name: d.name }))}
           total={costCentersResult.total}
