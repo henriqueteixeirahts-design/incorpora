@@ -844,6 +844,11 @@ enum AuditCheckCode {
 /// parcelas, não só uma amostra).
 model AuditRun {
   id             String      @id @default(uuid()) @db.Uuid
+  // Desempate monotônico pra "a auditoria mais recente" (getIndexFreshnessWarnings,
+  // getLatestAuditRun) — duas rodadas disparadas muito próximas (ou sob fake timer
+  // em teste) podem cair no mesmo `startedAt`; `id` é UUID aleatório, não ordena
+  // cronologicamente. `sequence` sempre cresce na ordem real de criação.
+  sequence       Int         @default(autoincrement())
   organizationId String      @db.Uuid
   status         AuditStatus @default(OK)
   triggeredBy    JobTrigger

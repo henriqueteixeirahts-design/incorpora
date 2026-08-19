@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Material de referência do handoff de design (docs/visual/design_handoff_incorpora/README.md:
+    // "os arquivos HTML/JS aqui são referências de design, não código de produção") — não é código
+    // deste projeto, só documentação vendorizada; nunca deveria ter sido varrido pelo lint.
+    "docs/visual/design_handoff_incorpora/referencia/**",
   ]),
 ]);
 

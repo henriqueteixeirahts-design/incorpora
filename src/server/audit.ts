@@ -383,7 +383,7 @@ export async function runAuditForOrganization(
 export async function getLatestAuditRun(organizationId: string) {
   const auditRun = await prisma.auditRun.findFirst({
     where: { organizationId },
-    orderBy: { startedAt: "desc" },
+    orderBy: [{ startedAt: "desc" }, { sequence: "desc" }],
     include: { checks: true },
   });
   return auditRun;
@@ -396,7 +396,7 @@ export async function listAuditRuns(organizationId: string, params: { page?: num
   const [items, total] = await Promise.all([
     prisma.auditRun.findMany({
       where: { organizationId },
-      orderBy: { startedAt: "desc" },
+      orderBy: [{ startedAt: "desc" }, { sequence: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: { checks: true },
@@ -423,7 +423,7 @@ export async function getAuditRunDetail(organizationId: string, auditRunId: stri
 export async function getIndexFreshnessWarnings(organizationId: string) {
   const latestRun = await prisma.auditRun.findFirst({
     where: { organizationId },
-    orderBy: { startedAt: "desc" },
+    orderBy: [{ startedAt: "desc" }, { sequence: "desc" }],
     include: { checks: { where: { code: "V1_INDEX_FRESHNESS" } } },
   });
   const v1 = latestRun?.checks[0];
