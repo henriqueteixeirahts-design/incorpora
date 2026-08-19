@@ -26,11 +26,15 @@ export default async function ReservationRulesPage({
 
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href={`/developments/${id}`}>← {development.name}</Link>
-      </p>
-      <h1>Regras de reserva</h1>
-      <p style={{ opacity: 0.7, maxWidth: 680 }}>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            <Link href={`/developments/${id}`}>← {development.name}</Link>
+          </div>
+          <h1 className="inc-h1">Regras de reserva</h1>
+        </div>
+      </div>
+      <p style={{ color: "var(--inc-text-soft)", fontSize: "13px", maxWidth: 680 }}>
         Parâmetros de reserva deste empreendimento (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2). Sem
         configuração salva, valem os padrões sugeridos pela especificação.
       </p>

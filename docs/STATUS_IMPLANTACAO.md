@@ -604,6 +604,25 @@ Nenhuma migration nem permissão nova — reaproveita 100% da infraestrutura da 
 
 **Testado**: `npx tsc --noEmit` e `npx eslint src tests --max-warnings=0` limpos. Novos testes unitários: `src/lib/format.test.ts` (8 casos, fixa o comportamento de fuso dos 4 helpers), `src/lib/unit-area.test.ts` (4 casos, prioridade de área), `src/lib/document-template-draft.test.ts` (3 casos, marca/reconhecimento de rascunho). Novos testes de integração: `tests/integration/document-template-seed.test.ts` (4 casos — cria os 3 rascunhos ativos e sinalizados, idempotente, cria o contrato quando o conteúdo real é passado, nunca sobrescreve um modelo cadastrado manualmente), mais um caso novo em `tests/integration/document-templates.test.ts` reproduzindo o achado 22 (unidade só com `privateArea`, gera contrato de verdade, confirma "área 80 m²" no texto). Suíte completa (unitária 137 + integração 182, mesma falha pré-existente e não relacionada em `audit.test.ts`) e `npm run build` verdes.
 
+**Aprovada pela TSH e seed aplicado em produção**: os 3 rascunhos (cessão, distrato, extrato) criados pra TSH pelo botão "Criar modelos padrão que faltam". Contrato de compra e venda segue aguardando o texto real validado (CT-2026-0001).
+
+---
+
+### Sprint V2 — Fluxo comercial: telas + nomenclatura/aprovação + visual
+✅ Concluído — reforma visual do bloco comercial (o mais crítico, é o que fecha venda) com as correções de nomenclatura e módulo de aprovação do relatório de test drive embutidas.
+
+**Nomenclatura corrigida (achado 17)**: "Avaliação de propostas" no submenu (que levava à tela de CONFIGURAÇÃO dos parâmetros do motor de VPL, não a uma lista de propostas — confuso, achado do próprio test drive) virou **"Parâmetros de avaliação"** (`src/app/(app)/sidebar.tsx`), e o `h1` da própria tela virou "Parâmetros de avaliação de propostas", com uma linha explícita deixando claro que as propostas aguardando análise ficam em Comercial, não ali.
+
+**Módulo de aprovação dedicado (achado 17, spec Parte 5.2)**: a spec descreve um lugar específico — "fila das propostas em Aguardando análise, visível só pra quem tem alçada" — que a tela antiga não tinha (propostas de todo status ficavam misturadas numa lista só). Nova seção "Aprovações pendentes" no topo de Comercial (`src/app/(app)/developments/[id]/commercial/page.tsx`), visualmente distinta (faixa dourada no topo do cartão, mesma linguagem dos KPIs de "dinheiro a decidir"), só aparece pra quem tem a permissão de aprovar e só lista propostas com alçada de fato pendente — comparativo de VPL completo e ação Aprovar/Reprovar por alçada, exatamente como a spec pede. Filtro extraído como função pura testável (`isPendingApproval`, `src/lib/proposal-status.ts`) em vez de ficar solto no JSX da página.
+
+**Contra-proposta do gestor (achado 18) — decisão: não implementar.** Conferido contra `docs/ESPEC_MODULO_COMERCIAL.md`, Parte 5.2: o módulo de aprovação previsto na spec é só "as ações Aprovar / Reprovar (com motivo)" — não há menção a um fluxo de contra-proposta do gestor (ajustar o fluxo e devolver pro corretor). Como o achado 18 pedia explicitamente "implementar se a spec previr, ou registrar a decisão de manter só aprovar/reprovar" — a spec não prevê, então a decisão é manter como está. Registrado aqui pra não ser reaberto sem necessidade.
+
+**Reserva migrada pra modal (achado R1)**: o formulário de nova reserva, antes inline empurrando a lista de reservas pra baixo, virou `ReservationModal` (`src/app/(app)/developments/[id]/commercial/reservation-modal.tsx`) — mesmo padrão já usado no modal de proposta (P0). O painel lateral de reserva que nasce da seleção de uma unidade no espelho de vendas (aprovado na Rodada 2 do visual) não mudou — continua painel, é o caso certo pra painel (nasce de uma seleção), a regra transversal 1 aceita os dois padrões conforme o contexto.
+
+**Handoff visual aplicado**: Comercial (reservas em `.inc-table` com chip de status, fila de espera, propostas em cartões com chip de status, os dois modais), Parâmetros de avaliação e Regras de reserva (formulários de configuração reskinados pra `.inc-field`/`.inc-input`/`.inc-select`/`.inc-btn`, cabeçalho `.inc-page-head`).
+
+**Testado**: `npx tsc --noEmit` e `npx eslint src --max-warnings=0` limpos. Novos casos em `src/lib/proposal-status.test.ts` (4 casos pra `isPendingApproval`, fixando exatamente o critério do módulo de aprovação: só `PENDING_APPROVAL` com alçada `PENDING` de fato, nunca proposta já decidida ou sem alçada configurada). Suíte completa (unitária 141 + integração 182, mesma falha pré-existente e não relacionada em `audit.test.ts`) e `npm run build` verdes. Sem smoke test visual autenticado (mesma limitação de sempre — sem credenciais de teste).
+
 ---
 
 ## 2. Decisões que se afastaram do PRD/arquitetura original

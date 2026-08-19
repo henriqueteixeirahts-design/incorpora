@@ -33,7 +33,7 @@ const DEVELOPMENT_SUBITEMS: { label: string; suffix: string }[] = [
   { label: "Comercial", suffix: "/commercial" },
   { label: "Permuta", suffix: "/exchange-contracts" },
   { label: "Regras de reserva", suffix: "/reservation-rules" },
-  { label: "Avaliação de propostas", suffix: "/proposal-evaluation-rules" },
+  { label: "Parâmetros de avaliação", suffix: "/proposal-evaluation-rules" },
   { label: "Liberação de comissão", suffix: "/commission-release-rule" },
   { label: "Regra de distrato", suffix: "/distrato-rule" },
   { label: "Régua de cobrança", suffix: "/collection-rule" },

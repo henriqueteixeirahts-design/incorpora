@@ -8,9 +8,9 @@ import { listSalesTables } from "@/server/sales-tables";
 import { listReservations, listWaitlistForOrganization } from "@/server/reservations";
 import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import { listProposals } from "@/server/proposals";
-import { canSubmitForApproval } from "@/lib/proposal-status";
+import { canSubmitForApproval, isPendingApproval } from "@/lib/proposal-status";
 import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
-import { NewReservationForm } from "./new-reservation-form";
+import { ReservationModal } from "./reservation-modal";
 import { ProposalModal } from "./proposal-modal";
 import {
   cancelReservationAction,
@@ -20,13 +20,29 @@ import {
   decideApprovalAction,
   convertToSaleAction,
 } from "./actions";
-import { formatCurrencyBRL, formatDateTimeBR } from "@/lib/format";
+import { formatCurrencyBRL, formatDateTimeBR, formatPercent } from "@/lib/format";
+
+const RESERVATION_STATUS_CHIP: Record<string, string> = {
+  ACTIVE: "inc-chip--reserva",
+  EXPIRED: "inc-chip--atraso",
+  CONVERTED: "inc-chip--contrato",
+  CANCELLED: "inc-chip--permuta",
+};
 
 const RESERVATION_STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Ativa",
   EXPIRED: "Expirada",
   CONVERTED: "Convertida",
   CANCELLED: "Cancelada",
+};
+
+const PROPOSAL_STATUS_CHIP: Record<string, string> = {
+  DRAFT: "inc-chip--permuta",
+  PENDING_APPROVAL: "inc-chip--reserva",
+  APPROVED: "inc-chip--contrato",
+  REJECTED: "inc-chip--atraso",
+  CONVERTED: "inc-chip--contrato",
+  CANCELLED: "inc-chip--permuta",
 };
 
 const PROPOSAL_STATUS_LABELS: Record<string, string> = {
@@ -39,9 +55,9 @@ const PROPOSAL_STATUS_LABELS: Record<string, string> = {
 };
 
 const EVALUATION_STATUS_LABELS: Record<string, string> = {
-  APPROVED_AUTO: "✅ Aprovada automaticamente",
-  PENDING_ANALYSIS: "🟡 Aguardando análise do gestor",
-  REJECTED_AUTO: "❌ Reprovada automaticamente",
+  APPROVED_AUTO: "Aprovada automaticamente",
+  PENDING_ANALYSIS: "Aguardando análise do gestor",
+  REJECTED_AUTO: "Reprovada automaticamente",
 };
 
 const APPROVAL_LEVEL_LABELS: Record<string, string> = {
@@ -101,16 +117,97 @@ export default async function CommercialPage({
 
   const canRenewReservation = rule.requiresApprovalForRenewal ? canRenewAsApprover : canRenewAsEditor;
 
+  // Módulo de aprovação (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2: "fila das
+  // propostas em Aguardando análise, visível só pra quem tem alçada") — lugar
+  // dedicado e visualmente distinto, separado da lista geral de propostas
+  // (docs/RELATORIO_TESTDRIVE.md, achado 17).
+  const pendingApprovalProposals = canApproveProposal ? proposals.filter(isPendingApproval) : [];
+
+  const unitOptions = availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${u.status})` }));
+  const customerOptions = customers.map((c) => ({ id: c.id, label: c.name }));
+  const brokerOptions = brokers.map((b) => ({ id: b.id, label: b.name }));
+  const agencyOptions = agencies.map((a) => ({ id: a.id, label: a.name }));
+  const salesTableOptions = salesTables.map((t) => ({ id: t.id, label: t.name }));
+
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href={`/developments/${id}`}>← {development.name}</Link>
-      </p>
-      <h1>Comercial</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            <Link href={`/developments/${id}`}>← {development.name}</Link>
+          </div>
+          <h1 className="inc-h1">Comercial</h1>
+        </div>
+      </div>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Reservas</h2>
-        <table style={{ marginTop: "0.5rem", maxWidth: 900 }}>
+      {pendingApprovalProposals.length > 0 ? (
+        <div className="inc-card" style={{ borderTop: "3px solid var(--inc-brand-dourado)" }}>
+          <div className="inc-card__head">
+            <div className="inc-card__title">Aprovações pendentes</div>
+            <div className="inc-card__meta">{pendingApprovalProposals.length} proposta(s) aguardando sua decisão</div>
+          </div>
+          <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {pendingApprovalProposals.map((proposal) => (
+              <div key={proposal.id} style={{ padding: "14px 16px", border: "1px solid var(--inc-border-card)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <strong style={{ color: "var(--inc-brand-azul)" }}>{proposal.unit.number}</strong>
+                  <span style={{ fontSize: "13.5px" }}>{proposal.customer.name}</span>
+                  <span className="inc-chip inc-chip--reserva" style={{ marginLeft: "auto" }}>
+                    {EVALUATION_STATUS_LABELS[proposal.evaluationStatus ?? ""] ?? proposal.evaluationStatus}
+                  </span>
+                </div>
+                <p style={{ marginTop: "8px", fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                  VPL tabela {formatCurrencyBRL(Number(proposal.npvStandard))} vs. proposto{" "}
+                  {formatCurrencyBRL(Number(proposal.npvProposed))} (
+                  {Number(proposal.npvDeviationPercent) >= 0 ? "+" : ""}
+                  {formatPercent(Number(proposal.npvDeviationPercent))}) — {proposal.evaluationReason}
+                </p>
+                {proposal.approvals
+                  .filter((a) => a.decision === "PENDING")
+                  .map((approval) => (
+                    <form
+                      key={approval.id}
+                      action={decideApprovalAction}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "8px", marginTop: "10px" }}
+                    >
+                      <input type="hidden" name="developmentId" value={id} />
+                      <input type="hidden" name="proposalId" value={proposal.id} />
+                      <input type="hidden" name="level" value={approval.level} />
+                      <span style={{ fontSize: "12px", color: "var(--inc-text-soft)" }}>
+                        Alçada: {APPROVAL_LEVEL_LABELS[approval.level]}
+                      </span>
+                      <button type="submit" name="decision" value="APPROVED" className="inc-btn inc-btn--primary inc-btn--sm">
+                        Aprovar
+                      </button>
+                      <button type="submit" name="decision" value="REJECTED" className="inc-btn inc-btn--danger inc-btn--sm">
+                        Reprovar
+                      </button>
+                    </form>
+                  ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Reservas</div>
+          {canCreateReservation ? (
+            <div style={{ marginLeft: "auto" }}>
+              <ReservationModal
+                developmentId={id}
+                units={unitOptions}
+                customers={customerOptions}
+                brokers={brokerOptions}
+                agencies={agencyOptions}
+                salesTables={salesTableOptions}
+                defaultValidityHours={rule.validityHours}
+              />
+            </div>
+          ) : null}
+        </div>
+        <table className="inc-table" style={{ border: 0 }}>
           <thead>
             <tr>
               <th>Unidade</th>
@@ -129,20 +226,24 @@ export default async function CommercialPage({
                 reservation.renewalCount < rule.maxRenewals;
               return (
                 <tr key={reservation.id}>
-                  <td>{reservation.unit.number}</td>
+                  <td className="is-key">{reservation.unit.number}</td>
                   <td>
                     {reservation.customer.name}
-                    {reservation.fromWaitlist ? " (fila de espera)" : ""}
+                    {reservation.fromWaitlist ? <span className="inc-table__sub">Fila de espera</span> : null}
                   </td>
-                  <td>{RESERVATION_STATUS_LABELS[reservation.status]}</td>
-                  <td>{formatDateTimeBR(reservation.expiresAt)}</td>
                   <td>
-                    <div className="row-actions">
+                    <span className={`inc-chip ${RESERVATION_STATUS_CHIP[reservation.status] ?? ""}`}>
+                      {RESERVATION_STATUS_LABELS[reservation.status]}
+                    </span>
+                  </td>
+                  <td className="is-muted">{formatDateTimeBR(reservation.expiresAt)}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                       {canRenewThis ? (
                         <form action={renewReservationAction}>
                           <input type="hidden" name="developmentId" value={id} />
                           <input type="hidden" name="reservationId" value={reservation.id} />
-                          <button type="submit" className="secondary">
+                          <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
                             Renovar
                           </button>
                         </form>
@@ -151,7 +252,7 @@ export default async function CommercialPage({
                         <form action={cancelReservationAction}>
                           <input type="hidden" name="developmentId" value={id} />
                           <input type="hidden" name="reservationId" value={reservation.id} />
-                          <button type="submit" className="secondary">
+                          <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
                             Cancelar
                           </button>
                         </form>
@@ -163,7 +264,7 @@ export default async function CommercialPage({
             })}
             {reservations.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ opacity: 0.7 }}>
+                <td colSpan={5} className="is-empty">
                   Nenhuma reserva.
                 </td>
               </tr>
@@ -172,9 +273,11 @@ export default async function CommercialPage({
         </table>
 
         {waitlist.length > 0 ? (
-          <div style={{ marginTop: "1.5rem" }}>
-            <h3 style={{ fontSize: "0.95rem" }}>Fila de espera</h3>
-            <table style={{ marginTop: "0.5rem", maxWidth: 700 }}>
+          <>
+            <div className="inc-card__head" style={{ borderTop: "1px solid var(--inc-border-divider)" }}>
+              <div className="inc-card__title" style={{ fontSize: "13.5px" }}>Fila de espera</div>
+            </div>
+            <table className="inc-table" style={{ border: 0 }}>
               <thead>
                 <tr>
                   <th>Unidade</th>
@@ -186,136 +289,109 @@ export default async function CommercialPage({
               <tbody>
                 {waitlist.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{entry.unit.number}</td>
+                    <td className="is-key">{entry.unit.number}</td>
                     <td>{entry.customer.name}</td>
-                    <td>{formatDateTimeBR(entry.createdAt)}</td>
+                    <td className="is-muted">{formatDateTimeBR(entry.createdAt)}</td>
                     <td>
                       {canCancelReservation ? (
-                        <form action={cancelWaitlistEntryAction}>
-                          <input type="hidden" name="developmentId" value={id} />
-                          <input type="hidden" name="entryId" value={entry.id} />
-                          <button type="submit" className="secondary">
-                            Remover da fila
-                          </button>
-                        </form>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <form action={cancelWaitlistEntryAction}>
+                            <input type="hidden" name="developmentId" value={id} />
+                            <input type="hidden" name="entryId" value={entry.id} />
+                            <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+                              Remover da fila
+                            </button>
+                          </form>
+                        </div>
                       ) : null}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         ) : null}
+      </div>
 
-        {canCreateReservation ? (
-          <div style={{ marginTop: "1rem" }}>
-            <NewReservationForm
-              developmentId={id}
-              units={availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${u.status})` }))}
-              customers={customers.map((c) => ({ id: c.id, label: c.name }))}
-              brokers={brokers.map((b) => ({ id: b.id, label: b.name }))}
-              agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
-              salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
-              defaultValidityHours={rule.validityHours}
-            />
-          </div>
-        ) : null}
-      </section>
-
-      <section style={{ marginTop: "2.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Propostas</h2>
-
-        {proposals.map((proposal) => (
-          <div
-            key={proposal.id}
-            style={{
-              border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-              borderRadius: 8,
-              padding: "0.75rem 1rem",
-              marginTop: "0.75rem",
-              maxWidth: 700,
-            }}
-          >
-            <p>
-              <strong>{proposal.unit.number}</strong> — {proposal.customer.name} —{" "}
-              {PROPOSAL_STATUS_LABELS[proposal.status]}
-            </p>
-            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              Preço de tabela {formatCurrency(Number(proposal.listPrice))} · desconto{" "}
-              {Number(proposal.discountPercent)}% · venda {formatCurrency(Number(proposal.salePrice))}
-            </p>
-
-            {proposal.evaluationStatus ? (
-              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                {EVALUATION_STATUS_LABELS[proposal.evaluationStatus] ?? proposal.evaluationStatus} — VPL tabela{" "}
-                {formatCurrency(Number(proposal.npvStandard))} vs. proposto{" "}
-                {formatCurrency(Number(proposal.npvProposed))} ({Number(proposal.npvDeviationPercent) >= 0 ? "+" : ""}
-                {Number(proposal.npvDeviationPercent)}%)
-                <br />
-                {proposal.evaluationReason}
-              </p>
-            ) : null}
-
-            {proposal.approvals.length > 0 ? (
-              <ul style={{ marginTop: "0.5rem", paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
-                {proposal.approvals.map((approval) => (
-                  <li key={approval.id}>
-                    {APPROVAL_LEVEL_LABELS[approval.level]}: {approval.decision}
-                    {canApproveProposal && approval.decision === "PENDING" ? (
-                      <form action={decideApprovalAction} style={{ display: "inline-flex", gap: "0.4rem", marginLeft: "0.5rem" }}>
-                        <input type="hidden" name="developmentId" value={id} />
-                        <input type="hidden" name="proposalId" value={proposal.id} />
-                        <input type="hidden" name="level" value={approval.level} />
-                        <button type="submit" name="decision" value="APPROVED">
-                          Aprovar
-                        </button>
-                        <button type="submit" name="decision" value="REJECTED" className="secondary">
-                          Reprovar
-                        </button>
-                      </form>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.6rem" }}>
-              {canEditProposal && canSubmitForApproval(proposal) ? (
-                <form action={submitProposalAction}>
-                  <input type="hidden" name="developmentId" value={id} />
-                  <input type="hidden" name="proposalId" value={proposal.id} />
-                  <button type="submit">Enviar para aprovação</button>
-                </form>
-              ) : null}
-
-              {canCreateSale && proposal.status === "APPROVED" ? (
-                <form action={convertToSaleAction}>
-                  <input type="hidden" name="developmentId" value={id} />
-                  <input type="hidden" name="proposalId" value={proposal.id} />
-                  <button type="submit">Converter em venda</button>
-                </form>
-              ) : null}
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Propostas</div>
+          {canCreateProposal ? (
+            <div style={{ marginLeft: "auto" }}>
+              <ProposalModal
+                developmentId={id}
+                units={unitOptions}
+                customers={customerOptions}
+                brokers={brokerOptions}
+                agencies={agencyOptions}
+                salesTables={salesTableOptions}
+                defaultUnitId={defaultUnitId}
+              />
             </div>
-          </div>
-        ))}
-        {proposals.length === 0 ? <p style={{ opacity: 0.7, marginTop: "0.5rem" }}>Nenhuma proposta.</p> : null}
+          ) : null}
+        </div>
+        <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {proposals.map((proposal) => (
+            <div key={proposal.id} style={{ padding: "14px 16px", border: "1px solid var(--inc-border-card)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <strong style={{ color: "var(--inc-brand-azul)" }}>{proposal.unit.number}</strong>
+                <span style={{ fontSize: "13.5px" }}>{proposal.customer.name}</span>
+                <span className={`inc-chip ${PROPOSAL_STATUS_CHIP[proposal.status] ?? ""}`} style={{ marginLeft: "auto" }}>
+                  {PROPOSAL_STATUS_LABELS[proposal.status]}
+                </span>
+              </div>
+              <p style={{ marginTop: "6px", fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                Preço de tabela {formatCurrencyBRL(Number(proposal.listPrice))} · desconto{" "}
+                {formatPercent(Number(proposal.discountPercent))} · venda {formatCurrencyBRL(Number(proposal.salePrice))}
+              </p>
 
-        {canCreateProposal ? (
-          <div style={{ marginTop: "1.5rem" }}>
-            <ProposalModal
-              developmentId={id}
-              units={availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${u.status})` }))}
-              customers={customers.map((c) => ({ id: c.id, label: c.name }))}
-              brokers={brokers.map((b) => ({ id: b.id, label: b.name }))}
-              agencies={agencies.map((a) => ({ id: a.id, label: a.name }))}
-              salesTables={salesTables.map((t) => ({ id: t.id, label: t.name }))}
-              defaultUnitId={defaultUnitId}
-            />
-          </div>
-        ) : null}
-      </section>
+              {proposal.evaluationStatus ? (
+                <p style={{ marginTop: "4px", fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+                  {EVALUATION_STATUS_LABELS[proposal.evaluationStatus] ?? proposal.evaluationStatus} — VPL tabela{" "}
+                  {formatCurrencyBRL(Number(proposal.npvStandard))} vs. proposto{" "}
+                  {formatCurrencyBRL(Number(proposal.npvProposed))} ({Number(proposal.npvDeviationPercent) >= 0 ? "+" : ""}
+                  {formatPercent(Number(proposal.npvDeviationPercent))})
+                  <br />
+                  {proposal.evaluationReason}
+                </p>
+              ) : null}
+
+              {proposal.approvals.length > 0 ? (
+                <ul style={{ marginTop: "8px", paddingLeft: "18px", fontSize: "12.5px" }}>
+                  {proposal.approvals.map((approval) => (
+                    <li key={approval.id}>
+                      {APPROVAL_LEVEL_LABELS[approval.level]}: {approval.decision}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                {canEditProposal && canSubmitForApproval(proposal) ? (
+                  <form action={submitProposalAction}>
+                    <input type="hidden" name="developmentId" value={id} />
+                    <input type="hidden" name="proposalId" value={proposal.id} />
+                    <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+                      Enviar para aprovação
+                    </button>
+                  </form>
+                ) : null}
+
+                {canCreateSale && proposal.status === "APPROVED" ? (
+                  <form action={convertToSaleAction}>
+                    <input type="hidden" name="developmentId" value={id} />
+                    <input type="hidden" name="proposalId" value={proposal.id} />
+                    <button type="submit" className="inc-btn inc-btn--primary inc-btn--sm">
+                      Converter em venda
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            </div>
+          ))}
+          {proposals.length === 0 ? <p className="is-empty" style={{ fontSize: "13px" }}>Nenhuma proposta.</p> : null}
+        </div>
+      </div>
     </>
   );
 }
-
-const formatCurrency = formatCurrencyBRL;
