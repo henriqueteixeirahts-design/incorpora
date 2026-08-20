@@ -692,6 +692,16 @@ Ao aprovar a V3, você pediu confirmação de que o fix do achado 3 (trocar o CE
 
 ---
 
+### Incidente pós-V5 — Dashboard fora do ar em produção (schema drift)
+
+**O que aconteceu**: logo após a V5, `/dashboard` passou a retornar erro de servidor em produção. Investigação (não era código da V5 — nenhum arquivo do Dashboard foi tocado nela) encontrou a causa raiz real: a migration `audit_run_sequence_tiebreaker` (criada durante a correção do CI, antes da V3, que adicionou a coluna `AuditRun.sequence` usada como desempate) tinha sido aplicada no banco local e no Postgres efêmero do CI (que roda `prisma migrate deploy` do zero a cada execução), mas **nunca no banco real de produção** — o pipeline de build da Vercel não tinha nenhum passo de migração, só `next build`. O bug ficou latente em produção desde a correção do CI (bem antes da V3); só foi notado depois da V5 porque, aparentemente, foi a primeira vez que alguém com permissão de auditoria abriu o Dashboard desde então. Confirmado direto no Supabase de produção: a tabela `audit_runs` não tinha a coluna `sequence`. Mesmo bug também afetava (silenciosamente) `/settings/audit` e o aviso de índice desatualizado na tela da venda — as 3 funções de `src/server/audit.ts` que usam esse `orderBy`.
+
+**Por que o CI não pegou**: CI só tem acesso ao seu próprio banco efêmero, sempre recriado do zero — nunca ao banco de produção. Não existia (e estruturalmente não pode existir via CI) nenhuma verificação de que "o schema que o código espera bate com o que está de fato em produção".
+
+**Correção**: (1) migration aplicada direto em produção via MCP do Supabase (aditiva, `ALTER TABLE ... ADD COLUMN`, sem risco de perda de dado), confirmado o Dashboard/Auditoria voltaram a funcionar; (2) trava estrutural pra nunca mais acontecer — `prisma migrate deploy` passou a rodar como parte do próprio script de build (`package.json`, `"build": "prisma migrate deploy && next build"`), então todo deploy futuro na Vercel aplica qualquer migration pendente antes de compilar, fechando a lacuna de vez (produção não pode mais "ficar pra trás" do código). Teste de guarda novo (`tests/deploy-pipeline.test.ts`) garante que ninguém remove esse passo do build sem perceber — confirmado que pega a regressão (revertido o script, o teste falhou; restaurado, voltou a passar).
+
+---
+
 ## 2. Decisões que se afastaram do PRD/arquitetura original
 
 | Decisão | O que diz o PRD/arquitetura | O que foi implementado | Motivo | Precisa revisão? |
