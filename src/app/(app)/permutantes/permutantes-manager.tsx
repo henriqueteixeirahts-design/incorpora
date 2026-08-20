@@ -91,108 +91,117 @@ export function PermutantesManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/permutantes" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/permutantes" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           <input type="search" name="q" placeholder="Buscar por nome ou documento" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} permutante{total === 1 ? "" : "s"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Novo permutante
-            </button>
-          ) : null}
-        </div>
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} permutante{total === 1 ? "" : "s"}
+        </span>
+
+        {canCreate ? (
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setModal({ mode: "create" })}
+          >
+            + Novo permutante
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link
+                    href={sortLink(col.field)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                  >
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
-            ))}
-            <th>Contato</th>
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {permutantes.length === 0 ? (
-            <tr>
-              <td colSpan={5} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum permutante encontrado para essa busca." : "Nenhum permutante cadastrado."}
-              </td>
+                  </Link>
+                </th>
+              ))}
+              <th>Contato</th>
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {permutantes.map((permutante) => (
-            <tr key={permutante.id}>
-              <td>{permutante.name}</td>
-              <td>{permutante.typeLabel}</td>
-              <td>{formatDocument(permutante.document, permutante.type as "INDIVIDUAL" | "COMPANY")}</td>
-              <td>
-                {[permutante.email, permutante.phone ? formatPhone(permutante.phone) : null]
-                  .filter(Boolean)
-                  .join(" · ") || "—"}
-              </td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${permutante.name}`}
-                        disabled={loadingId === permutante.id}
-                        onClick={() => openEdit(permutante.id)}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${permutante.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(permutante.id, permutante.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {permutantes.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="is-empty">
+                  {search ? "Nenhum permutante encontrado para essa busca." : "Nenhum permutante cadastrado."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {permutantes.map((permutante) => (
+              <tr key={permutante.id}>
+                <td className="is-key">{permutante.name}</td>
+                <td className="is-muted">{permutante.typeLabel}</td>
+                <td>{formatDocument(permutante.document, permutante.type as "INDIVIDUAL" | "COMPANY")}</td>
+                <td className="is-muted">
+                  {[permutante.email, permutante.phone ? formatPhone(permutante.phone) : null]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${permutante.name}`}
+                          disabled={loadingId === permutante.id}
+                          onClick={() => openEdit(permutante.id)}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${permutante.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(permutante.id, permutante.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (

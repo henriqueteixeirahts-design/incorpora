@@ -249,6 +249,12 @@ export function SaleDetailTabs({
   distratoRetentionPercent: number;
 }) {
   const [activeTab, setActiveTab] = useState("resumo");
+  const [createContractOpen, setCreateContractOpen] = useState(false);
+  const [correctionRuleOpen, setCorrectionRuleOpen] = useState(false);
+  const [downPaymentDestOpen, setDownPaymentDestOpen] = useState(false);
+  const [newAmendmentOpen, setNewAmendmentOpen] = useState(false);
+  const [newAssignmentOpen, setNewAssignmentOpen] = useState(false);
+  const [newDistratoOpen, setNewDistratoOpen] = useState(false);
 
   const tabs: TabDef[] = [
     { id: "resumo", label: "Resumo" },
@@ -397,16 +403,28 @@ export function SaleDetailTabs({
           canCreateContract ? (
             <div className="inc-card">
               <div className="inc-card__head">
-                <span className="inc-card__title">Gerar minuta</span>
+                <span className="inc-card__title">Contrato</span>
               </div>
               <div className="inc-card__body">
-                <CreateContractForm saleId={saleId} />
+                <p className="inc-help">Nenhum contrato gerado ainda.</p>
+                <button
+                  type="button"
+                  className="inc-btn inc-btn--primary"
+                  style={{ marginTop: "var(--inc-space-6)" }}
+                  onClick={() => setCreateContractOpen(true)}
+                >
+                  + Gerar minuta
+                </button>
               </div>
             </div>
           ) : (
             <p className="inc-help">Nenhum contrato gerado ainda.</p>
           )
-        ) : (
+        ) : null}
+        {createContractOpen ? (
+          <CreateContractForm saleId={saleId} onClose={() => setCreateContractOpen(false)} />
+        ) : null}
+        {contract ? (
           <>
             <div className="inc-card">
               <div className="inc-card__head">
@@ -470,12 +488,22 @@ export function SaleDetailTabs({
                     vigente nesse momento.
                   </p>
                   <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <button
+                      type="button"
+                      className="inc-btn inc-btn--secondary inc-btn--sm"
+                      onClick={() => setDownPaymentDestOpen(true)}
+                    >
+                      + Definir destino da entrada
+                    </button>
+                  </div>
+                  {downPaymentDestOpen ? (
                     <DownPaymentDestinationForm
                       saleId={saleId}
                       tableDefault={downPaymentTableDefault}
                       override={downPaymentOverride}
+                      onClose={() => setDownPaymentDestOpen(false)}
                     />
-                  </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -492,13 +520,23 @@ export function SaleDetailTabs({
                     para todos os contratos dele) — veja a página do empreendimento.
                   </p>
                   <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <button
+                      type="button"
+                      className="inc-btn inc-btn--secondary inc-btn--sm"
+                      onClick={() => setCorrectionRuleOpen(true)}
+                    >
+                      + Definir regra de correção
+                    </button>
+                  </div>
+                  {correctionRuleOpen ? (
                     <CorrectionRuleForm
                       saleId={saleId}
                       contractId={contract.id}
                       indexRules={indexRules}
                       current={correctionCurrent}
+                      onClose={() => setCorrectionRuleOpen(false)}
                     />
-                  </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -596,7 +634,21 @@ export function SaleDetailTabs({
 
                   {canEditContract ? (
                     <div style={{ marginTop: "var(--inc-space-8)" }}>
-                      <NewAmendmentForm saleId={saleId} contractId={contract.id} remainingBalance={remainingBalance} />
+                      <button
+                        type="button"
+                        className="inc-btn inc-btn--primary inc-btn--sm"
+                        onClick={() => setNewAmendmentOpen(true)}
+                      >
+                        + Novo aditivo
+                      </button>
+                      {newAmendmentOpen ? (
+                        <NewAmendmentForm
+                          saleId={saleId}
+                          contractId={contract.id}
+                          remainingBalance={remainingBalance}
+                          onClose={() => setNewAmendmentOpen(false)}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -689,12 +741,22 @@ export function SaleDetailTabs({
 
                   {canEditContract ? (
                     <div style={{ marginTop: "var(--inc-space-8)" }}>
-                      <NewAssignmentForm
-                        saleId={saleId}
-                        contractId={contract.id}
-                        customers={customers}
-                        currentCustomerName={contract.customerName}
-                      />
+                      <button
+                        type="button"
+                        className="inc-btn inc-btn--primary inc-btn--sm"
+                        onClick={() => setNewAssignmentOpen(true)}
+                      >
+                        + Nova cessão
+                      </button>
+                      {newAssignmentOpen ? (
+                        <NewAssignmentForm
+                          saleId={saleId}
+                          contractId={contract.id}
+                          customers={customers}
+                          currentCustomerName={contract.customerName}
+                          onClose={() => setNewAssignmentOpen(false)}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -814,14 +876,28 @@ export function SaleDetailTabs({
 
                   {canEditContract && contract.status === "SIGNED" && !distrato ? (
                     <div style={{ marginTop: "var(--inc-space-8)" }}>
-                      <NewDistratoForm saleId={saleId} contractId={contract.id} retentionPercent={distratoRetentionPercent} />
+                      <button
+                        type="button"
+                        className="inc-btn inc-btn--primary inc-btn--sm"
+                        onClick={() => setNewDistratoOpen(true)}
+                      >
+                        + Novo distrato
+                      </button>
+                      {newDistratoOpen ? (
+                        <NewDistratoForm
+                          saleId={saleId}
+                          contractId={contract.id}
+                          retentionPercent={distratoRetentionPercent}
+                          onClose={() => setNewDistratoOpen(false)}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
               </div>
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
 
       <div hidden={activeTab !== "comissoes"} style={{ marginTop: "1.25rem" }}>

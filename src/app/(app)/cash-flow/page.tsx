@@ -3,6 +3,7 @@ import { getCashFlow, type CashFlowGranularity } from "@/server/cash-flow";
 import { listDevelopments } from "@/server/developments";
 import { listSpes } from "@/server/spes";
 import { CashFlowFiltersForm } from "./cash-flow-filters-form";
+import { formatCurrencyBRL } from "@/lib/format";
 
 const GRANULARITY_LABELS: Record<CashFlowGranularity, string> = {
   monthly: "do mês",
@@ -130,6 +131,4 @@ function formatPeriod(key: string, granularity: CashFlowGranularity) {
   return key; // "YYYY-Www"
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;

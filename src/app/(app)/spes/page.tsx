@@ -32,7 +32,12 @@ export default async function SpesPage({
 
   return (
     <>
-      <h1>SPEs</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Cadastros</div>
+          <h1 className="inc-h1">SPEs</h1>
+        </div>
+      </div>
 
       <SpesManager
         spes={items.map((spe) => ({

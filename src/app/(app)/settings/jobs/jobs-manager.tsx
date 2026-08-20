@@ -24,10 +24,10 @@ const STATUS_LABELS: Record<string, string> = {
   FAILURE: "Falha",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  RUNNING: "var(--text-muted, #666)",
-  SUCCESS: "var(--success-color, #15803d)",
-  FAILURE: "var(--danger-color, #b91c1c)",
+const STATUS_CHIP_CLASS: Record<string, string> = {
+  RUNNING: "inc-chip inc-chip--proposta",
+  SUCCESS: "inc-chip inc-chip--contrato",
+  FAILURE: "inc-chip inc-chip--atraso",
 };
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -51,13 +51,13 @@ function RunJobButton({ jobName, canRun }: { jobName: string; canRun: boolean })
   if (!canRun) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-end" }}>
-      <button type="button" disabled={busy} onClick={handleClick}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end" }}>
+      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" disabled={busy} onClick={handleClick}>
         {busy ? "Executando..." : "Executar agora"}
       </button>
       {message ? (
         <span
-          style={{ fontSize: "0.78rem", opacity: 0.85, maxWidth: 260, textAlign: "right" }}
+          style={{ fontSize: "12px", opacity: 0.85, maxWidth: 260, textAlign: "right" }}
           className={message.includes("sucesso") ? undefined : "error-text"}
         >
           {message}
@@ -110,9 +110,11 @@ export function JobsManager({
 
   return (
     <>
-      <div className="field-section" style={{ marginTop: "1.5rem" }}>
-        <h3>Catálogo de jobs</h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Catálogo de jobs</div>
+        </div>
+        <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {jobs.map((job) => (
             <div
               key={job.name}
@@ -120,15 +122,15 @@ export function JobsManager({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "flex-start",
-                gap: "1rem",
-                padding: "0.75rem",
-                border: "1px solid var(--border-color)",
-                borderRadius: 8,
+                gap: "16px",
+                padding: "12px",
+                border: "1px solid var(--inc-border-card)",
+                borderRadius: "var(--inc-radius-2)",
               }}
             >
               <div>
                 <strong>{job.label}</strong>
-                <p style={{ fontSize: "0.85rem", opacity: 0.75, marginTop: "0.25rem", maxWidth: 480 }}>
+                <p style={{ fontSize: "13px", color: "var(--inc-text-soft)", marginTop: "4px", maxWidth: 480 }}>
                   {job.description}
                 </p>
               </div>
@@ -138,30 +140,32 @@ export function JobsManager({
         </div>
       </div>
 
-      <div className="field-section" style={{ marginTop: "2rem" }}>
-        <h3>Histórico de execuções</h3>
-
-        <div className="list-toolbar">
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+      <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+        <div className="inc-card__head" style={{ flexWrap: "wrap", gap: "10px" }}>
+          <div className="inc-card__title">Histórico de execuções</div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             <Link href={filterLink("")}>
-              <button type="button" className={jobNameFilter ? "secondary" : undefined}>
+              <button type="button" className={`inc-btn inc-btn--sm ${jobNameFilter ? "inc-btn--secondary" : "inc-btn--primary"}`}>
                 Todos
               </button>
             </Link>
             {jobs.map((job) => (
               <Link key={job.name} href={filterLink(job.name)}>
-                <button type="button" className={jobNameFilter === job.name ? undefined : "secondary"}>
+                <button
+                  type="button"
+                  className={`inc-btn inc-btn--sm ${jobNameFilter === job.name ? "inc-btn--primary" : "inc-btn--secondary"}`}
+                >
                   {job.label}
                 </button>
               </Link>
             ))}
           </div>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
+          <span className="inc-card__meta">
             {total} execuç{total === 1 ? "ão" : "ões"}
-          </p>
+          </span>
         </div>
 
-        <table className="data-table">
+        <table className="inc-table" style={{ border: 0 }}>
           <thead>
             <tr>
               <th>Job</th>
@@ -175,7 +179,7 @@ export function JobsManager({
           <tbody>
             {jobRuns.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ opacity: 0.7 }}>
+                <td colSpan={6} className="is-empty">
                   Nenhuma execução registrada ainda.
                 </td>
               </tr>
@@ -184,18 +188,20 @@ export function JobsManager({
               const durationMs = run.finishedAt ? new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime() : null;
               return (
                 <tr key={run.id}>
-                  <td>{jobs.find((j) => j.name === run.jobName)?.label ?? run.jobName}</td>
-                  <td style={{ color: STATUS_COLORS[run.status], fontWeight: 500 }}>
-                    {STATUS_LABELS[run.status] ?? run.status}
+                  <td className="is-key">{jobs.find((j) => j.name === run.jobName)?.label ?? run.jobName}</td>
+                  <td>
+                    <span className={STATUS_CHIP_CLASS[run.status] ?? "inc-chip inc-chip--permuta"}>
+                      {STATUS_LABELS[run.status] ?? run.status}
+                    </span>
                   </td>
-                  <td>{TRIGGER_LABELS[run.triggeredBy] ?? run.triggeredBy}</td>
-                  <td>{formatDateTimeBR(run.startedAt)}</td>
-                  <td>{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "—"}</td>
+                  <td className="is-muted">{TRIGGER_LABELS[run.triggeredBy] ?? run.triggeredBy}</td>
+                  <td className="is-muted">{formatDateTimeBR(run.startedAt)}</td>
+                  <td className="is-muted">{durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : "—"}</td>
                   <td style={{ maxWidth: 360 }}>
                     {run.status === "FAILURE" ? (
                       <span className="error-text">{run.error ?? "Falha sem detalhe registrado."}</span>
                     ) : (
-                      <span style={{ fontSize: "0.85rem" }}>{summaryText(run.summary)}</span>
+                      <span className="is-muted" style={{ fontSize: "13px" }}>{summaryText(run.summary)}</span>
                     )}
                   </td>
                 </tr>
@@ -204,16 +210,20 @@ export function JobsManager({
           </tbody>
         </table>
 
-        <div className="pagination">
-          {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-          <span>
-            Página {page} de {totalPages}
-          </span>
-          {page < totalPages ? (
-            <Link href={pageLink(page + 1)}>Próxima →</Link>
-          ) : (
-            <span className="disabled">Próxima →</span>
-          )}
+        <div className="inc-table-foot">
+          Página {page} de {totalPages}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
         </div>
       </div>
     </>

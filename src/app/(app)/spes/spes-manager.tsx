@@ -22,6 +22,12 @@ const STATUS_LABELS: Record<string, string> = {
   CLOSED: "Encerrada",
 };
 
+const STATUS_CHIP_CLASSES: Record<string, string> = {
+  ACTIVE: "inc-chip--contrato",
+  IN_FORMATION: "inc-chip--reserva",
+  CLOSED: "inc-chip--permuta",
+};
+
 type ModalState = { mode: "create" } | { mode: "edit"; spe: SpeDetail } | null;
 
 const SORTABLE_COLUMNS: { field: SpeSortField; label: string }[] = [
@@ -93,105 +99,110 @@ export function SpesManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/spes" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/spes" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           <input type="search" name="q" placeholder="Buscar por nome ou CNPJ" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} SPE{total === 1 ? "" : "s"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Nova SPE
-            </button>
-          ) : null}
-        </div>
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} SPE{total === 1 ? "" : "s"}
+        </span>
+
+        {canCreate ? (
+          <button type="button" className="inc-btn inc-btn--primary" style={{ marginLeft: "auto" }} onClick={() => setModal({ mode: "create" })}>
+            + Nova SPE
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link href={sortLink(col.field)} style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}>
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
-            ))}
-            <th>Situação</th>
-            <th>Cidade/UF</th>
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {spes.length === 0 ? (
-            <tr>
-              <td colSpan={5} style={{ opacity: 0.7 }}>
-                {search ? "Nenhuma SPE encontrada para essa busca." : "Nenhuma SPE cadastrada."}
-              </td>
+                  </Link>
+                </th>
+              ))}
+              <th>Situação</th>
+              <th>Cidade/UF</th>
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {spes.map((spe) => (
-            <tr key={spe.id}>
-              <td>{spe.name}</td>
-              <td>{spe.document}</td>
-              <td>{STATUS_LABELS[spe.status] ?? spe.status}</td>
-              <td>{[spe.city, spe.state].filter(Boolean).join("/") || "—"}</td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${spe.name}`}
-                        disabled={loadingId === spe.id}
-                        onClick={() => openEdit(spe.id)}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Excluir ${spe.name}`}
-                        disabled={isPending}
-                        onClick={() => handleDelete(spe.id, spe.name)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {spes.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="is-empty">
+                  {search ? "Nenhuma SPE encontrada para essa busca." : "Nenhuma SPE cadastrada."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {spes.map((spe) => (
+              <tr key={spe.id}>
+                <td className="is-key">{spe.name}</td>
+                <td className="is-muted">{spe.document}</td>
+                <td>
+                  <span className={`inc-chip ${STATUS_CHIP_CLASSES[spe.status] ?? "inc-chip--investidor"}`}>
+                    {STATUS_LABELS[spe.status] ?? spe.status}
+                  </span>
+                </td>
+                <td className="is-muted">{[spe.city, spe.state].filter(Boolean).join("/") || "—"}</td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${spe.name}`}
+                          disabled={loadingId === spe.id}
+                          onClick={() => openEdit(spe.id)}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Excluir ${spe.name}`}
+                          disabled={isPending}
+                          onClick={() => handleDelete(spe.id, spe.name)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (

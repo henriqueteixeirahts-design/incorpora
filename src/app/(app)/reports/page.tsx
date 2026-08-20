@@ -10,6 +10,8 @@ import { listDevelopments } from "@/server/developments";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
 import { formatCurrencyBRL } from "@/lib/format";
 
+const formatCurrency = formatCurrencyBRL;
+
 export default async function ReportsPage() {
   const context = await requireAccessContext();
   const [sales, inventory, receivables, payables, developments] = await Promise.all([
@@ -35,84 +37,80 @@ export default async function ReportsPage() {
 
   return (
     <>
-      <h1>Relatórios executivos</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Relatórios</div>
+          <h1 className="inc-h1">Relatórios executivos</h1>
+        </div>
+      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "1rem",
-          marginTop: "1.5rem",
-          maxWidth: 1000,
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--inc-gap-kpi)" }}>
         {cards.map((card) => (
-          <div
-            key={card.label}
-            style={{
-              border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-              borderRadius: 8,
-              padding: "1rem",
-            }}
-          >
-            <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>{card.label}</p>
-            <p style={{ fontSize: "1.3rem", fontWeight: 600 }}>{card.value}</p>
+          <div key={card.label} className="inc-kpi">
+            <div className="inc-kpi__label">{card.label}</div>
+            <div className="inc-kpi__value" style={{ fontSize: "20px" }}>{card.value}</div>
           </div>
         ))}
       </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Posição de estoque</h2>
-        <table style={{ marginTop: "0.5rem", maxWidth: 500 }}>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Posição de estoque</div>
+        </div>
+        <table className="inc-table" style={{ border: 0 }}>
           <thead>
             <tr>
               <th>Status</th>
-              <th>Unidades</th>
-              <th>Valor</th>
+              <th className="is-num">Unidades</th>
+              <th className="is-num">Valor</th>
             </tr>
           </thead>
           <tbody>
-            {inventory.rows.map((row) => (
-              <tr key={row.status}>
-                <td style={{ color: UNIT_STATUS_META[row.status as keyof typeof UNIT_STATUS_META]?.color }}>
-                  {UNIT_STATUS_META[row.status as keyof typeof UNIT_STATUS_META]?.label ?? row.status}
-                </td>
-                <td>{row.count}</td>
-                <td>{formatCurrency(row.value)}</td>
-              </tr>
-            ))}
+            {inventory.rows.map((row) => {
+              const meta = UNIT_STATUS_META[row.status as keyof typeof UNIT_STATUS_META];
+              return (
+                <tr key={row.status}>
+                  <td>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "7px" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: meta?.color, flex: "none" }} />
+                      {meta?.label ?? row.status}
+                    </span>
+                  </td>
+                  <td className="is-num">{row.count}</td>
+                  <td className="is-num is-strong">{formatCurrency(row.value)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-      </section>
+      </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Outros relatórios</h2>
-        <ul style={{ marginTop: "0.5rem" }}>
-          <li>
-            <Link href="/receivables/overdue">Inadimplência (detalhado)</Link>
-          </li>
-          <li>
-            <Link href="/payables">Contas a pagar (detalhado)</Link>
-          </li>
-          <li>
-            <Link href="/cash-flow">Fluxo de caixa</Link>
-          </li>
-        </ul>
-      </section>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Outros relatórios</div>
+        </div>
+        <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-4)" }}>
+          <Link href="/receivables/overdue">Inadimplência (detalhado)</Link>
+          <Link href="/payables">Contas a pagar (detalhado)</Link>
+          <Link href="/cash-flow">Fluxo de caixa</Link>
+        </div>
+      </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Relatório do investidor por empreendimento</h2>
-        <ul style={{ marginTop: "0.5rem" }}>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Relatório do investidor por empreendimento</div>
+        </div>
+        <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-4)" }}>
           {developments.map((development) => (
-            <li key={development.id}>
-              <Link href={`/reports/${development.id}`}>{development.name}</Link>
-            </li>
+            <Link key={development.id} href={`/reports/${development.id}`}>
+              {development.name}
+            </Link>
           ))}
-          {developments.length === 0 ? <li style={{ opacity: 0.7 }}>Nenhum empreendimento cadastrado.</li> : null}
-        </ul>
-      </section>
+          {developments.length === 0 ? (
+            <p className="inc-help">Nenhum empreendimento cadastrado.</p>
+          ) : null}
+        </div>
+      </div>
     </>
   );
 }
-
-const formatCurrency = formatCurrencyBRL;

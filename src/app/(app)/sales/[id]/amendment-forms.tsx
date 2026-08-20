@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { Modal } from "@/components/Modal";
 import { createAmendmentAction, signAmendmentAction, type AmendmentFormState } from "./actions";
 import { GenerateDocumentForm } from "./generate-document-form";
 import { formatCurrencyBRL } from "@/lib/format";
@@ -20,62 +21,87 @@ export function NewAmendmentForm({
   saleId,
   contractId,
   remainingBalance,
+  onClose,
 }: {
   saleId: string;
   contractId: string;
   remainingBalance: number;
+  onClose: () => void;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createAmendmentAction, initialState);
   const [type, setType] = useState("FLOW_RENEGOTIATION");
 
+  useEffect(() => {
+    if (state.success) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
   return (
-    <form action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)", maxWidth: 420 }}>
-      <input type="hidden" name="saleId" value={saleId} />
-      <input type="hidden" name="contractId" value={contractId} />
-
-      <label className="inc-field">
-        <span className="inc-label">Tipo</span>
-        <select id="am-type" name="type" className="inc-select" value={type} onChange={(e) => setType(e.target.value)}>
-          {Object.entries(AMENDMENT_TYPE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {type === "FLOW_RENEGOTIATION" ? (
+    <Modal
+      open
+      onClose={onClose}
+      title="Novo aditivo"
+      width={460}
+      footer={
         <>
-          <p className="inc-help">
-            Saldo ainda não recebido (o que será redistribuído): {formatCurrency(remainingBalance)}
-          </p>
-          <label className="inc-field">
-            <span className="inc-label">Entrada do novo fluxo (%)</span>
-            <input id="am-down" name="downPaymentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
-          </label>
-          <label className="inc-field">
-            <span className="inc-label">Parcelas mensais</span>
-            <input id="am-installments" name="monthlyInstallments" type="number" required className="inc-input" />
-          </label>
-          <label className="inc-field">
-            <span className="inc-label">Chaves (%)</span>
-            <input id="am-keys" name="keysInstallmentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
-          </label>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
+            Fechar
+          </button>
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            disabled={pending}
+            onClick={() => formRef.current?.requestSubmit()}
+          >
+            {pending ? "Criando..." : "Criar aditivo"}
+          </button>
         </>
-      ) : null}
+      }
+    >
+      <form ref={formRef} action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)" }}>
+        <input type="hidden" name="saleId" value={saleId} />
+        <input type="hidden" name="contractId" value={contractId} />
 
-      <label className="inc-field">
-        <span className="inc-label">Observações</span>
-        <textarea id="am-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
-      </label>
+        <label className="inc-field">
+          <span className="inc-label">Tipo</span>
+          <select id="am-type" name="type" className="inc-select" value={type} onChange={(e) => setType(e.target.value)}>
+            {Object.entries(AMENDMENT_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
-      {state.success ? <p className="inc-help">Aditivo criado como rascunho.</p> : null}
+        {type === "FLOW_RENEGOTIATION" ? (
+          <>
+            <p className="inc-help">
+              Saldo ainda não recebido (o que será redistribuído): {formatCurrency(remainingBalance)}
+            </p>
+            <label className="inc-field">
+              <span className="inc-label">Entrada do novo fluxo (%)</span>
+              <input id="am-down" name="downPaymentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Parcelas mensais</span>
+              <input id="am-installments" name="monthlyInstallments" type="number" required className="inc-input" />
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Chaves (%)</span>
+              <input id="am-keys" name="keysInstallmentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
+            </label>
+          </>
+        ) : null}
 
-      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary">
-        {pending ? "Criando..." : "Criar aditivo"}
-      </button>
-    </form>
+        <label className="inc-field">
+          <span className="inc-label">Observações</span>
+          <textarea id="am-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
+        </label>
+
+        {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
+      </form>
+    </Modal>
   );
 }
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { Modal } from "@/components/Modal";
+import { formatCurrencyBRL } from "@/lib/format";
 import {
   createRenegotiationAction,
   decideRenegotiationApprovalAction,
@@ -15,9 +17,7 @@ const generateInitialState: GenerateStatementState = {};
 
 type Option = { id: string; label: string };
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
+const formatCurrency = formatCurrencyBRL;
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Rascunho (assinável)",
@@ -42,6 +42,14 @@ const APPROVAL_LEVEL_LABELS: Record<string, string> = {
   FINANCIAL: "Financeiro",
   LEGAL: "Jurídico",
   PARTNERS: "Sócios",
+};
+
+const INSTALLMENT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "A vencer",
+  PARTIALLY_PAID: "Parcialmente paga",
+  PAID: "Paga",
+  OVERDUE: "Vencida",
+  CANCELLED: "Cancelada",
 };
 
 export type RenegotiationApprovalRow = { level: string; decision: string; comment: string | null };
@@ -77,21 +85,25 @@ export type RenegotiationRow = {
 
 export type OpenInstallmentOption = { id: string; label: string; dueDateLabel: string; resultValue: number };
 
-function NewRenegotiationForm({
+function NewRenegotiationModal({
   customerId,
   contractId,
   openInstallments,
+  onClose,
 }: {
   customerId: string;
   contractId: string;
   openInstallments: OpenInstallmentOption[];
+  onClose: () => void;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createRenegotiationAction, createInitialState);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  if (openInstallments.length === 0) {
-    return <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>Nenhuma parcela em aberto pra renegociar.</p>;
-  }
+  useEffect(() => {
+    if (state.success) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -103,67 +115,86 @@ function NewRenegotiationForm({
   }
 
   return (
-    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: 480 }}>
-      <input type="hidden" name="customerId" value={customerId} />
-      <input type="hidden" name="contractId" value={contractId} />
+    <Modal
+      open
+      onClose={onClose}
+      title="Novo acordo de renegociação"
+      width={520}
+      footer={
+        <>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
+            Fechar
+          </button>
+          {openInstallments.length > 0 ? (
+            <button
+              type="button"
+              className="inc-btn inc-btn--primary"
+              disabled={pending}
+              onClick={() => formRef.current?.requestSubmit()}
+            >
+              {pending ? "Calculando..." : "Montar acordo"}
+            </button>
+          ) : null}
+        </>
+      }
+    >
+      {openInstallments.length === 0 ? (
+        <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>Nenhuma parcela em aberto pra renegociar.</p>
+      ) : (
+        <form ref={formRef} action={formAction} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <input type="hidden" name="customerId" value={customerId} />
+          <input type="hidden" name="contractId" value={contractId} />
 
-      <span className="inc-label">Selecione as parcelas a renegociar</span>
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-        {openInstallments.map((installment) => (
-          <label key={installment.id} style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "var(--inc-fs-sm)" }}>
-            <input
-              type="checkbox"
-              name="installmentIds"
-              value={installment.id}
-              checked={selected.has(installment.id)}
-              onChange={() => toggle(installment.id)}
-            />
-            {installment.label} — vence {installment.dueDateLabel} — {formatCurrency(installment.resultValue)}
+          <span className="inc-label">Selecione as parcelas a renegociar</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {openInstallments.map((installment) => (
+              <label key={installment.id} style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "var(--inc-fs-sm)" }}>
+                <input
+                  type="checkbox"
+                  name="installmentIds"
+                  value={installment.id}
+                  checked={selected.has(installment.id)}
+                  onChange={() => toggle(installment.id)}
+                />
+                {installment.label} — vence {installment.dueDateLabel} — {formatCurrency(installment.resultValue)}
+              </label>
+            ))}
+          </div>
+
+          <label className="inc-field" htmlFor="rn-date">
+            <span className="inc-label">Data do acordo</span>
+            <input id="rn-date" className="inc-input" name="agreementDate" type="date" required />
           </label>
-        ))}
-      </div>
 
-      <label className="inc-field" htmlFor="rn-date">
-        <span className="inc-label">Data do acordo</span>
-        <input id="rn-date" className="inc-input" name="agreementDate" type="date" required />
-      </label>
+          <label className="inc-field" htmlFor="rn-discount">
+            <span className="inc-label">Desconto sobre encargos (%)</span>
+            <input id="rn-discount" className="inc-input" name="chargesDiscountPercent" type="number" step="0.01" min="0" max="100" defaultValue={0} />
+          </label>
 
-      <label className="inc-field" htmlFor="rn-discount">
-        <span className="inc-label">Desconto sobre encargos (%)</span>
-        <input id="rn-discount" className="inc-input" name="chargesDiscountPercent" type="number" step="0.01" min="0" max="100" defaultValue={0} />
-      </label>
+          <label className="inc-field" htmlFor="rn-down">
+            <span className="inc-label">Entrada do acordo (opcional)</span>
+            <input id="rn-down" className="inc-input" name="downPayment" type="number" step="0.01" min="0" />
+          </label>
 
-      <label className="inc-field" htmlFor="rn-down">
-        <span className="inc-label">Entrada do acordo (opcional)</span>
-        <input id="rn-down" className="inc-input" name="downPayment" type="number" step="0.01" min="0" />
-      </label>
+          <label className="inc-field" htmlFor="rn-installments">
+            <span className="inc-label">Novo parcelamento — quantidade de parcelas</span>
+            <input id="rn-installments" className="inc-input" name="monthlyInstallments" type="number" min="1" required />
+          </label>
 
-      <label className="inc-field" htmlFor="rn-installments">
-        <span className="inc-label">Novo parcelamento — quantidade de parcelas</span>
-        <input id="rn-installments" className="inc-input" name="monthlyInstallments" type="number" min="1" required />
-      </label>
+          <label htmlFor="rn-correction" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--inc-fs-sm)" }}>
+            <input id="rn-correction" name="applyFutureCorrection" type="checkbox" defaultChecked />
+            Aplicar correção (índice/juros) nas novas parcelas
+          </label>
 
-      <label htmlFor="rn-correction" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--inc-fs-sm)" }}>
-        <input id="rn-correction" name="applyFutureCorrection" type="checkbox" defaultChecked />
-        Aplicar correção (índice/juros) nas novas parcelas
-      </label>
+          <label className="inc-field" htmlFor="rn-reason">
+            <span className="inc-label">Motivo/observações</span>
+            <textarea id="rn-reason" className="inc-input" name="reason" rows={2} style={{ height: "auto", padding: "8px 12px" }} />
+          </label>
 
-      <label className="inc-field" htmlFor="rn-reason">
-        <span className="inc-label">Motivo/observações</span>
-        <textarea id="rn-reason" className="inc-input" name="reason" rows={2} style={{ height: "auto", padding: "8px 12px" }} />
-      </label>
-
-      {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? (
-        <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-secondary)" }}>
-          Acordo calculado — confira o demonstrativo antes de assinar.
-        </p>
-      ) : null}
-
-      <button type="submit" className="inc-btn inc-btn--primary" disabled={pending} style={{ alignSelf: "flex-start" }}>
-        {pending ? "Calculando..." : "Montar acordo"}
-      </button>
-    </form>
+          {state.error ? <p className="error-text">{state.error}</p> : null}
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -312,7 +343,7 @@ function AgreementCard({
             <ul style={{ paddingLeft: "18px", marginTop: "6px", fontSize: "var(--inc-fs-xs)", color: "var(--inc-text-secondary)" }}>
               {agreement.originInstallments.map((i) => (
                 <li key={i.id}>
-                  {i.label} — venceria {i.dueDateLabel} — {formatCurrency(i.originalValue)} — {i.status === "CANCELLED" ? "Renegociada" : i.status}
+                  {i.label} — venceria {i.dueDateLabel} — {formatCurrency(i.originalValue)} — {i.status === "CANCELLED" ? "Renegociada" : (INSTALLMENT_STATUS_LABELS[i.status] ?? i.status)}
                 </li>
               ))}
             </ul>
@@ -327,7 +358,7 @@ function AgreementCard({
             <ul style={{ paddingLeft: "18px", marginTop: "6px", fontSize: "var(--inc-fs-xs)", color: "var(--inc-text-secondary)" }}>
               {agreement.destinationInstallments.map((i) => (
                 <li key={i.id}>
-                  {i.label} — {i.dueDateLabel} — {formatCurrency(i.originalValue)} — {i.status}
+                  {i.label} — {i.dueDateLabel} — {formatCurrency(i.originalValue)} — {INSTALLMENT_STATUS_LABELS[i.status] ?? i.status}
                 </li>
               ))}
             </ul>
@@ -402,13 +433,24 @@ export function RenegotiationSection({
   canEdit: boolean;
   canGenerateDocument: boolean;
 }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <div style={{ marginTop: "20px" }}>
-      <div className="inc-eyebrow">Renegociação de parcelas</div>
-      <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)", maxWidth: 560, marginTop: "4px" }}>
-        Acordo sobre dívida vencida/a vencer já existente — desconto sobre encargos (multa/mora, nunca sobre o
-        principal) e novo parcelamento. Diferente do aditivo (que redesenha o fluxo futuro inteiro).
-      </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+        <div>
+          <div className="inc-eyebrow">Renegociação de parcelas</div>
+          <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)", maxWidth: 560, marginTop: "4px" }}>
+            Acordo sobre dívida vencida/a vencer já existente — desconto sobre encargos (multa/mora, nunca sobre o
+            principal) e novo parcelamento. Diferente do aditivo (que redesenha o fluxo futuro inteiro).
+          </p>
+        </div>
+        {canEdit ? (
+          <button type="button" className="inc-btn inc-btn--primary inc-btn--sm" onClick={() => setModalOpen(true)}>
+            + Novo acordo
+          </button>
+        ) : null}
+      </div>
 
       {agreements.length > 0 ? (
         <div>
@@ -428,15 +470,13 @@ export function RenegotiationSection({
         <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)", marginTop: "8px" }}>Nenhum acordo criado ainda.</p>
       )}
 
-      {canEdit ? (
-        <div className="inc-card" style={{ marginTop: "14px" }}>
-          <div className="inc-card__head">
-            <div className="inc-card__title">Novo acordo de renegociação</div>
-          </div>
-          <div className="inc-card__body">
-            <NewRenegotiationForm customerId={customerId} contractId={contractId} openInstallments={openInstallments} />
-          </div>
-        </div>
+      {modalOpen ? (
+        <NewRenegotiationModal
+          customerId={customerId}
+          contractId={contractId}
+          openInstallments={openInstallments}
+          onClose={() => setModalOpen(false)}
+        />
       ) : null}
     </div>
   );

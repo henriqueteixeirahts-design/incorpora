@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAccessContext } from "@/server/auth-context";
 import { getInvestorReport } from "@/server/reports";
+import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
+
+const formatCurrency = formatCurrencyBRL;
 
 export default async function InvestorReportPage({
   params,
@@ -22,91 +25,111 @@ export default async function InvestorReportPage({
 
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href="/reports">← Relatórios</Link>
-      </p>
-      <h1>Relatório do investidor — {development.name}</h1>
-      <p style={{ opacity: 0.7 }}>
-        {development.spe.name} ({development.spe.document})
-      </p>
-
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Resumo executivo</h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "1rem",
-            marginTop: "0.75rem",
-            maxWidth: 900,
-          }}
-        >
-          {[
-            { label: "VGV total", value: formatCurrency(sales.vgvTotal) },
-            { label: "VGV vendido", value: formatCurrency(sales.vgvSold) },
-            { label: "VGV disponível", value: formatCurrency(sales.vgvAvailable) },
-            { label: "% vendido", value: `${sales.percentSold}%` },
-            { label: "Unidades vendidas", value: `${sales.unitsSold} / ${sales.unitsTotal}` },
-            { label: "Ticket médio", value: formatCurrency(sales.averageTicket) },
-          ].map((card) => (
-            <div
-              key={card.label}
-              style={{
-                border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-                borderRadius: 8,
-                padding: "1rem",
-              }}
-            >
-              <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>{card.label}</p>
-              <p style={{ fontSize: "1.2rem", fontWeight: 600 }}>{card.value}</p>
-            </div>
-          ))}
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            <Link href="/reports">← Relatórios</Link>
+          </div>
+          <h1 className="inc-h1">Relatório do investidor — {development.name}</h1>
+          <p className="inc-lede">
+            {development.spe.name} ({development.spe.document})
+          </p>
         </div>
-      </section>
+      </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Carteira</h2>
-        <p>Recebido: {formatCurrency(receivables.totalReceived)}</p>
-        <p>A receber: {formatCurrency(receivables.totalOutstanding)}</p>
-        <p>
-          Inadimplência: {formatCurrency(receivables.overdueAmount)} ({receivables.overdueCount}{" "}
-          parcela{receivables.overdueCount === 1 ? "" : "s"})
-        </p>
-      </section>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Resumo executivo</div>
+        </div>
+        <div className="inc-card__body">
+          <div className="inc-grid-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+            {[
+              { label: "VGV total", value: formatCurrency(sales.vgvTotal) },
+              { label: "VGV vendido", value: formatCurrency(sales.vgvSold) },
+              { label: "VGV disponível", value: formatCurrency(sales.vgvAvailable) },
+              { label: "% vendido", value: `${sales.percentSold}%` },
+              { label: "Unidades vendidas", value: `${sales.unitsSold} / ${sales.unitsTotal}` },
+              { label: "Ticket médio", value: formatCurrency(sales.averageTicket) },
+            ].map((card) => (
+              <div key={card.label} className="inc-kpi">
+                <div className="inc-kpi__label">{card.label}</div>
+                <div className="inc-kpi__value" style={{ fontSize: "20px" }}>{card.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Despesas</h2>
-        <p>Pago: {formatCurrency(payables.totalPaid)}</p>
-        <p>A pagar: {formatCurrency(payables.totalPending)}</p>
-      </section>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--inc-gap-grid)" }}>
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <div className="inc-card__title">Carteira</div>
+          </div>
+          <div className="inc-card__body inc-dl" style={{ gridTemplateColumns: "1fr" }}>
+            <div>
+              <dt className="inc-help">Recebido</dt>
+              <dd style={{ margin: 0, fontWeight: 600 }}>{formatCurrency(receivables.totalReceived)}</dd>
+            </div>
+            <div>
+              <dt className="inc-help">A receber</dt>
+              <dd style={{ margin: 0, fontWeight: 600 }}>{formatCurrency(receivables.totalOutstanding)}</dd>
+            </div>
+            <div>
+              <dt className="inc-help">Inadimplência</dt>
+              <dd style={{ margin: 0, fontWeight: 600, color: receivables.overdueAmount > 0 ? "var(--inc-danger)" : undefined }}>
+                {formatCurrency(receivables.overdueAmount)} ({receivables.overdueCount} parcela
+                {receivables.overdueCount === 1 ? "" : "s"})
+              </dd>
+            </div>
+          </div>
+        </div>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Fluxo de caixa (últimos e próximos meses)</h2>
-        <table style={{ marginTop: "0.5rem", maxWidth: 800 }}>
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <div className="inc-card__title">Despesas</div>
+          </div>
+          <div className="inc-card__body inc-dl" style={{ gridTemplateColumns: "1fr" }}>
+            <div>
+              <dt className="inc-help">Pago</dt>
+              <dd style={{ margin: 0, fontWeight: 600 }}>{formatCurrency(payables.totalPaid)}</dd>
+            </div>
+            <div>
+              <dt className="inc-help">A pagar</dt>
+              <dd style={{ margin: 0, fontWeight: 600 }}>{formatCurrency(payables.totalPending)}</dd>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Fluxo de caixa (últimos e próximos meses)</div>
+        </div>
+        <table className="inc-table" style={{ border: 0 }}>
           <thead>
             <tr>
               <th>Mês</th>
-              <th>A receber</th>
-              <th>A pagar</th>
-              <th>Saldo previsto</th>
+              <th className="is-num">A receber</th>
+              <th className="is-num">A pagar</th>
+              <th className="is-num">Saldo previsto</th>
             </tr>
           </thead>
           <tbody>
             {cashFlow.map((month) => (
               <tr key={month.period}>
-                <td>{formatMonth(month.period)}</td>
-                <td>{formatCurrency(month.receivablesForecast)}</td>
-                <td>{formatCurrency(month.payablesForecast)}</td>
-                <td style={{ color: month.netForecast < 0 ? "#e03131" : undefined }}>
+                <td className="is-key">{formatMonth(month.period)}</td>
+                <td className="is-num is-muted">{formatCurrency(month.receivablesForecast)}</td>
+                <td className="is-num is-muted">{formatCurrency(month.payablesForecast)}</td>
+                <td className="is-num is-strong" style={{ color: month.netForecast < 0 ? "var(--inc-danger)" : undefined }}>
                   {formatCurrency(month.netForecast)}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </section>
+      </div>
 
-      <p style={{ marginTop: "2rem", fontSize: "0.8rem", opacity: 0.6 }}>
+      <p className="inc-help" style={{ maxWidth: 700 }}>
         Este relatório consolida os dados já cadastrados no sistema. A gestão de participações e
         aportes de investidores (Fase 13 do PRD) ainda não foi modelada — este é o resumo
         executivo do empreendimento, não um extrato individual por investidor.
@@ -116,10 +139,5 @@ export default async function InvestorReportPage({
 }
 
 function formatMonth(key: string) {
-  const [year, month] = key.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
-}
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return formatCalendarDateBR(key, { month: "short", year: "numeric" });
 }

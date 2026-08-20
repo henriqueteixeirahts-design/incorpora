@@ -25,8 +25,13 @@ export default async function JobsPage({
 
   return (
     <>
-      <h1>Jobs</h1>
-      <p style={{ opacity: 0.7, maxWidth: 640, marginTop: "0.5rem" }}>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Jobs</h1>
+        </div>
+      </div>
+      <p className="inc-lede">
         Trabalhos em segundo plano do sistema (correção de parcelas, busca de índices no Banco
         Central...). Rodam automaticamente pelo Vercel Cron; use &quot;Executar agora&quot; se um
         cron falhar ou pra rodar fora do horário agendado.

@@ -93,101 +93,111 @@ export function UsersManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/settings/users" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/settings/users" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           <input type="search" name="q" placeholder="Buscar por nome ou e-mail" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} usuário{total === 1 ? "" : "s"}
-          </p>
-          {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
-              + Convidar usuário
-            </button>
-          ) : null}
-        </div>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} usuário{total === 1 ? "" : "s"}
+        </span>
+
+        {canCreate ? (
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setModal({ mode: "create" })}
+          >
+            + Convidar usuário
+          </button>
+        ) : null}
       </div>
 
-      {deleteError ? <p className="error-text" style={{ marginBottom: "0.75rem" }}>{deleteError}</p> : null}
+      {deleteError ? <p className="error-text" style={{ marginBottom: "12px" }}>{deleteError}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link
+                    href={sortLink(col.field)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                  >
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
-            ))}
-            {canEdit || canDelete ? <th aria-label="Ações" /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {grants.length === 0 ? (
-            <tr>
-              <td colSpan={4} style={{ opacity: 0.7 }}>
-                {search ? "Nenhum usuário encontrado." : "Nenhum usuário com acesso à organização ainda."}
-              </td>
+                  </Link>
+                </th>
+              ))}
+              {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
-          ) : null}
-          {grants.map((grant) => (
-            <tr key={grant.id}>
-              <td>{grant.fullName}</td>
-              <td>{grant.email}</td>
-              <td>{grant.roleName}</td>
-              {canEdit || canDelete ? (
-                <td>
-                  <div className="row-actions">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label={`Editar ${grant.fullName}`}
-                        onClick={() => setModal({ mode: "edit", grant })}
-                      >
-                        <EditIcon />
-                      </button>
-                    ) : null}
-                    {canDelete ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        aria-label={`Revogar acesso de ${grant.fullName}`}
-                        disabled={isPending || grant.userId === currentUserId}
-                        title={grant.userId === currentUserId ? "Você não pode revogar o seu próprio acesso." : undefined}
-                        onClick={() => handleRevoke(grant.id, grant.fullName)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    ) : null}
-                  </div>
+          </thead>
+          <tbody>
+            {grants.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="is-empty">
+                  {search ? "Nenhum usuário encontrado." : "Nenhum usuário com acesso à organização ainda."}
                 </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </tr>
+            ) : null}
+            {grants.map((grant) => (
+              <tr key={grant.id}>
+                <td className="is-key">{grant.fullName}</td>
+                <td className="is-muted">{grant.email}</td>
+                <td>{grant.roleName}</td>
+                {canEdit || canDelete ? (
+                  <td>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Editar ${grant.fullName}`}
+                          onClick={() => setModal({ mode: "edit", grant })}
+                        >
+                          <EditIcon />
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="inc-btn-icon"
+                          aria-label={`Revogar acesso de ${grant.fullName}`}
+                          disabled={isPending || grant.userId === currentUserId}
+                          title={grant.userId === currentUserId ? "Você não pode revogar o seu próprio acesso." : undefined}
+                          onClick={() => handleRevoke(grant.id, grant.fullName)}
+                          style={{ color: "var(--inc-danger)" }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (
@@ -230,10 +240,15 @@ function UserModal({
       width={440}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            disabled={pending}
+            onClick={() => formRef.current?.requestSubmit()}
+          >
             {pending ? "Salvando..." : mode === "create" ? "Enviar convite" : "Salvar"}
           </button>
         </>
@@ -243,53 +258,45 @@ function UserModal({
         {mode === "edit" && grant ? (
           <>
             <input type="hidden" name="grantId" value={grant.id} />
-            <div className="field-section">
-              <div className="field-grid">
-                <div className="field">
-                  <label>Nome</label>
-                  <input value={grant.fullName} disabled />
-                </div>
-                <div className="field">
-                  <label>E-mail</label>
-                  <input value={grant.email} disabled />
-                </div>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
+              <label className="inc-field">
+                <span className="inc-label">Nome</span>
+                <input className="inc-input" value={grant.fullName} disabled />
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">E-mail</span>
+                <input className="inc-input" value={grant.email} disabled />
+              </label>
             </div>
           </>
         ) : (
-          <div className="field-section">
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="fullName">Nome *</label>
-                <input id="fullName" name="fullName" required />
-              </div>
-              <div className="field">
-                <label htmlFor="email">E-mail *</label>
-                <input id="email" name="email" type="email" required />
-              </div>
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
+            <label className="inc-field">
+              <span className="inc-label">Nome *</span>
+              <input id="fullName" name="fullName" className="inc-input" required />
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">E-mail *</span>
+              <input id="email" name="email" type="email" className="inc-input" required />
+            </label>
           </div>
         )}
 
-        <div className="field-section">
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="roleId">Papel *</label>
-              <select id="roleId" name="roleId" required defaultValue={grant?.roleId ?? ""}>
-                <option value="" disabled>
-                  Selecione...
-                </option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+        <label className="inc-field">
+          <span className="inc-label">Papel *</span>
+          <select id="roleId" name="roleId" className="inc-select" required defaultValue={grant?.roleId ?? ""}>
+            <option value="" disabled>
+              Selecione...
+            </option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );

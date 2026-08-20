@@ -62,8 +62,13 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <h1>Configurações</h1>
-      <p style={{ opacity: 0.7, maxWidth: 600, marginTop: "0.5rem" }}>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Configurações do sistema</h1>
+        </div>
+      </div>
+      <p className="inc-lede">
         Itens de configuração do sistema, separados do uso operacional do dia a dia.
       </p>
 
@@ -72,19 +77,13 @@ export default async function SettingsPage() {
         if (visibleItems.length === 0) return null;
 
         return (
-          <div key={section.title} className="field-section" style={{ marginTop: "2rem" }}>
-            <h3>{section.title}</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div key={section.title} className="inc-card">
+            <div className="inc-card__head">
+              <div className="inc-card__title">{section.title}</div>
+            </div>
+            <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-4)" }}>
               {visibleItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  style={{
-                    padding: "0.75rem 1rem",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: 8,
-                  }}
-                >
+                <Link key={item.href} href={item.href}>
                   {item.label}
                 </Link>
               ))}

@@ -35,7 +35,12 @@ export default async function UsersPage({
 
   return (
     <>
-      <h1>Usuários</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Usuários</h1>
+        </div>
+      </div>
 
       <UsersManager
         grants={items.map((g) => ({

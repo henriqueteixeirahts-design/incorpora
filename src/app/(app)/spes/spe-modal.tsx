@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Modal } from "@/components/Modal";
 import { Tabs, type TabDef } from "@/components/Tabs";
 import { AddressFields } from "@/components/AddressFields";
@@ -48,6 +48,8 @@ const initialState: CreateSpeState = {};
 
 const accountingFormInitialState: FormState = {};
 
+const FIELD_GRID: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" };
+
 function SpeAccountingTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, dispatch, pending] = useActionState(updateSpeAccountingAction, accountingFormInitialState);
@@ -64,14 +66,15 @@ function SpeAccountingTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () =>
     <form ref={formRef} action={dispatch}>
       <input type="hidden" name="speId" value={spe.id} />
 
-      <div className="field-section">
-        <h3>Regime tributário</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="taxRegime">Regime</label>
+      <div style={{ marginBottom: "18px" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Regime tributário</div>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span className="inc-label">Regime</span>
             <select
               id="taxRegime"
               name="taxRegime"
+              className="inc-select"
               value={taxRegime}
               onChange={(e) => setTaxRegime(e.target.value)}
             >
@@ -81,22 +84,24 @@ function SpeAccountingTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () =>
               <option value="SIMPLES_NACIONAL">Simples Nacional</option>
               <option value="RET">RET (Regime Especial de Tributação)</option>
             </select>
-          </div>
-          <div className="field">
-            <label htmlFor="retOptionSince">Optante pelo RET desde</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Optante pelo RET desde</span>
             <input
               id="retOptionSince"
               name="retOptionSince"
               type="date"
+              className="inc-input"
               disabled={!isRet}
               defaultValue={spe.retOptionSince ? new Date(spe.retOptionSince).toISOString().slice(0, 10) : ""}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="event109Cnpj">CNPJ do evento 109</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">CNPJ do evento 109</span>
             <input
               id="event109Cnpj"
               name="event109Cnpj"
+              className="inc-input"
               disabled={!isRet}
               placeholder="Inscrição da incorporação afetada"
               defaultValue={spe.event109Cnpj ? formatCnpj(spe.event109Cnpj) : ""}
@@ -104,85 +109,94 @@ function SpeAccountingTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () =>
                 if (e.target.value) e.target.value = formatCnpj(e.target.value);
               }}
             />
-          </div>
+          </label>
         </div>
       </div>
 
-      <div className="field-section">
-        <h3>Escrituração e responsáveis</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="accountantName">Contador responsável</label>
-            <input id="accountantName" name="accountantName" defaultValue={spe.accountantName ?? ""} />
-          </div>
-          <div className="field">
-            <label htmlFor="accountantCrc">CRC</label>
-            <input id="accountantCrc" name="accountantCrc" defaultValue={spe.accountantCrc ?? ""} />
-          </div>
-          <div className="field">
-            <label htmlFor="accountantEmail">E-mail do contador</label>
-            <input id="accountantEmail" name="accountantEmail" type="email" defaultValue={spe.accountantEmail ?? ""} />
-          </div>
-          <div className="field">
-            <label htmlFor="accountantPhone">Telefone do contador</label>
+      <div style={{ marginBottom: "18px" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Escrituração e responsáveis</div>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span className="inc-label">Contador responsável</span>
+            <input id="accountantName" name="accountantName" className="inc-input" defaultValue={spe.accountantName ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">CRC</span>
+            <input id="accountantCrc" name="accountantCrc" className="inc-input" defaultValue={spe.accountantCrc ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">E-mail do contador</span>
+            <input id="accountantEmail" name="accountantEmail" type="email" className="inc-input" defaultValue={spe.accountantEmail ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Telefone do contador</span>
             <input
               id="accountantPhone"
               name="accountantPhone"
+              className="inc-input"
               defaultValue={spe.accountantPhone ? formatPhone(spe.accountantPhone) : ""}
               onBlur={(e) => {
                 if (e.target.value) e.target.value = formatPhone(e.target.value);
               }}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="accountingFirm">Escritório de contabilidade</label>
-            <input id="accountingFirm" name="accountingFirm" defaultValue={spe.accountingFirm ?? ""} />
-          </div>
-          <div className="field">
-            <label htmlFor="externalAccountingCode">Código no sistema contábil externo</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Escritório de contabilidade</span>
+            <input id="accountingFirm" name="accountingFirm" className="inc-input" defaultValue={spe.accountingFirm ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Código no sistema contábil externo</span>
             <input
               id="externalAccountingCode"
               name="externalAccountingCode"
+              className="inc-input"
               placeholder="Chave do De-Para (Fase 2)"
               defaultValue={spe.externalAccountingCode ?? ""}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="chartOfAccountsRef">Plano de contas — código de referência</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Plano de contas — código de referência</span>
             <input
               id="chartOfAccountsRef"
               name="chartOfAccountsRef"
+              className="inc-input"
               placeholder="Outra chave do De-Para (Fase 2)"
               defaultValue={spe.chartOfAccountsRef ?? ""}
             />
-          </div>
+          </label>
         </div>
       </div>
 
-      <div className="field-section">
-        <h3>Obrigações</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <div style={{ marginBottom: "18px" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Obrigações</div>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "13px" }}>
               <input type="checkbox" name="dimobRequired" defaultChecked={spe.dimobRequired} />
               Entrega DIMOB
-            </label>
-          </div>
-          <div className="field">
-            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            </span>
+          </label>
+          <label className="inc-field">
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "13px" }}>
               <input type="checkbox" name="efdContributionsRequired" defaultChecked={spe.efdContributionsRequired} />
               EFD-Contribuições
-            </label>
-          </div>
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="accountingNotes">Observações contábeis</label>
-            <input id="accountingNotes" name="accountingNotes" defaultValue={spe.accountingNotes ?? ""} />
-          </div>
+            </span>
+          </label>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Observações contábeis</span>
+            <input id="accountingNotes" name="accountingNotes" className="inc-input" defaultValue={spe.accountingNotes ?? ""} />
+          </label>
         </div>
       </div>
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
-      <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()} style={{ marginTop: "0.75rem" }}>
+      <button
+        type="button"
+        className="inc-btn inc-btn--primary"
+        disabled={pending}
+        onClick={() => formRef.current?.requestSubmit()}
+        style={{ marginTop: "0.75rem" }}
+      >
         {pending ? "Salvando..." : "Salvar dados contábeis"}
       </button>
     </form>
@@ -257,7 +271,7 @@ function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
       {spe.documents.length === 0 ? (
         <p className="field-hint">Nenhum anexo enviado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Arquivo</th>
@@ -272,19 +286,19 @@ function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
               const expired = doc.expiresAt ? new Date(doc.expiresAt).toISOString().slice(0, 10) < today : false;
               return (
                 <tr key={doc.id}>
-                  <td>{doc.fileName}</td>
+                  <td className="is-key">{doc.fileName}</td>
                   <td>{SPE_DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
-                  <td>{doc.description ?? "—"}</td>
-                  <td style={expired ? { color: "var(--danger-color, #b91c1c)" } : undefined}>
+                  <td className="is-muted">{doc.description ?? "—"}</td>
+                  <td style={expired ? { color: "var(--inc-danger)" } : undefined}>
                     {doc.expiresAt
                       ? formatCalendarDateBR(doc.expiresAt) + (expired ? " (vencida)" : "")
                       : "—"}
                   </td>
                   <td>
-                    <div className="row-actions">
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                       {doc.signedUrl ? (
                         <a
-                          className="icon-btn"
+                          className="inc-btn-icon"
                           href={doc.signedUrl}
                           target="_blank"
                           rel="noreferrer"
@@ -295,10 +309,11 @@ function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
                       ) : null}
                       <button
                         type="button"
-                        className="icon-btn danger"
+                        className="inc-btn-icon"
                         aria-label={`Remover ${doc.fileName}`}
                         disabled={busy}
                         onClick={() => handleDelete(doc.id)}
+                        style={{ color: "var(--inc-danger)" }}
                       >
                         <TrashIcon />
                       </button>
@@ -311,45 +326,47 @@ function SpeDocumentsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
         </table>
       )}
 
-      <div className="field-section">
-        <h3>Enviar anexo</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="spe-doc-category">Categoria</label>
-            <select id="spe-doc-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Enviar anexo</div>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span className="inc-label">Categoria</span>
+            <select id="spe-doc-category" className="inc-select" value={category} onChange={(e) => setCategory(e.target.value)}>
               {Object.entries(SPE_DOCUMENT_CATEGORY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label htmlFor="spe-doc-description">Descrição</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Descrição</span>
             <input
               id="spe-doc-description"
+              className="inc-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="spe-doc-expires">Data de validade</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Data de validade</span>
             <input
               id="spe-doc-expires"
               type="date"
+              className="inc-input"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="spe-doc-file">Arquivo</label>
-            <input id="spe-doc-file" ref={fileInputRef} type="file" />
-          </div>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Arquivo</span>
+            <input id="spe-doc-file" ref={fileInputRef} type="file" className="inc-input" />
+          </label>
         </div>
         {error ? <p className="error-text">{error}</p> : null}
         <button
           type="button"
-          className="secondary"
+          className="inc-btn inc-btn--secondary"
           style={{ marginTop: "0.75rem" }}
           disabled={busy}
           onClick={handleUpload}
@@ -401,16 +418,17 @@ function SpePartnerForm({
   }, [state.success]);
 
   return (
-    <form ref={formRef} action={dispatch} className="field-section">
-      <h3>{partner ? "Editar sócio" : "Adicionar sócio"}</h3>
+    <form ref={formRef} action={dispatch} style={{ marginBottom: "18px" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>{partner ? "Editar sócio" : "Adicionar sócio"}</div>
       <input type="hidden" name="speId" value={speId} />
       {partner ? <input type="hidden" name="partnerId" value={partner.id} /> : null}
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="partner-type">Tipo *</label>
+      <div style={FIELD_GRID}>
+        <label className="inc-field">
+          <span className="inc-label">Tipo *</span>
           <select
             id="partner-type"
             name="type"
+            className="inc-select"
             required
             value={type}
             onChange={(e) => setType(e.target.value as "INDIVIDUAL" | "COMPANY")}
@@ -418,25 +436,26 @@ function SpePartnerForm({
             <option value="INDIVIDUAL">Pessoa física</option>
             <option value="COMPANY">Pessoa jurídica</option>
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="partner-name">Nome / Razão social *</label>
-          <input id="partner-name" name="name" required defaultValue={partner?.name ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor="partner-document">{type === "COMPANY" ? "CNPJ *" : "CPF *"}</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Nome / Razão social *</span>
+          <input id="partner-name" name="name" className="inc-input" required defaultValue={partner?.name ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">{type === "COMPANY" ? "CNPJ *" : "CPF *"}</span>
           <input
             id="partner-document"
             name="document"
+            className="inc-input"
             required
             defaultValue={partner ? formatDocument(partner.document, partner.type) : ""}
             onBlur={(e) => {
               e.target.value = formatDocument(e.target.value, type);
             }}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="partner-pct">Participação (%) *</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Participação (%) *</span>
           <input
             id="partner-pct"
             name="participationPct"
@@ -444,44 +463,47 @@ function SpePartnerForm({
             step="0.001"
             min="0"
             max="100"
+            className="inc-input"
             required
             defaultValue={partner?.participationPct ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="partner-role">Papel</label>
-          <select id="partner-role" name="role" defaultValue={partner?.role ?? ""}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Papel</span>
+          <select id="partner-role" name="role" className="inc-select" defaultValue={partner?.role ?? ""}>
             <option value="">—</option>
             <option value="ADMINISTRATOR">Sócio administrador</option>
             <option value="QUOTAHOLDER">Sócio quotista</option>
             <option value="OTHER">Outro</option>
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="partner-start">Data de entrada</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data de entrada</span>
           <input
             id="partner-start"
             name="startDate"
             type="date"
+            className="inc-input"
             defaultValue={partner?.startDate ? new Date(partner.startDate).toISOString().slice(0, 10) : ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="partner-end">Data de saída</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data de saída</span>
           <input
             id="partner-end"
             name="endDate"
             type="date"
+            className="inc-input"
             defaultValue={partner?.endDate ? new Date(partner.endDate).toISOString().slice(0, 10) : ""}
           />
-        </div>
+        </label>
       </div>
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-        <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+        <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
           {pending ? "Salvando..." : "Salvar sócio"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -510,7 +532,7 @@ function SpePartnersTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => v
   return (
     <div>
       {totalIsOff ? (
-        <p className="field-hint" style={{ color: "var(--warning-color, #b45309)" }}>
+        <p className="field-hint" style={{ color: "var(--inc-warning-text)" }}>
           Atenção: a soma da participação dos sócios ativos é {total.toLocaleString("pt-BR")}%, diferente de
           100%. Isso é esperado durante uma alteração societária em andamento, mas confira antes de fechar o
           quadro.
@@ -522,7 +544,7 @@ function SpePartnersTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => v
       {spe.partners.length === 0 ? (
         <p className="field-hint">Nenhum sócio cadastrado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Nome</th>
@@ -537,18 +559,18 @@ function SpePartnersTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => v
           <tbody>
             {spe.partners.map((partner) => (
               <tr key={partner.id}>
-                <td>{partner.name}</td>
-                <td>{formatDocument(partner.document, partner.type)}</td>
-                <td>{partner.participationPct.toLocaleString("pt-BR")}%</td>
+                <td className="is-key">{partner.name}</td>
+                <td className="is-muted">{formatDocument(partner.document, partner.type)}</td>
+                <td className="is-num">{partner.participationPct.toLocaleString("pt-BR")}%</td>
                 <td>{partner.role ? PARTNER_ROLE_LABELS[partner.role] : "—"}</td>
-                <td>{partner.startDate ? formatCalendarDateBR(partner.startDate) : "—"}</td>
-                <td>{partner.endDate ? formatCalendarDateBR(partner.endDate) : "—"}</td>
+                <td className="is-muted">{partner.startDate ? formatCalendarDateBR(partner.startDate) : "—"}</td>
+                <td className="is-muted">{partner.endDate ? formatCalendarDateBR(partner.endDate) : "—"}</td>
                 <td>
-                  <div className="row-actions">
-                    <button type="button" className="secondary" onClick={() => setEditing(partner)}>
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                    <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setEditing(partner)}>
                       Editar
                     </button>
-                    <button type="button" className="secondary" onClick={() => handleDelete(partner)}>
+                    <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleDelete(partner)}>
                       Remover
                     </button>
                   </div>
@@ -571,7 +593,7 @@ function SpePartnersTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => v
           onCancel={() => setEditing(null)}
         />
       ) : (
-        <button type="button" onClick={() => setEditing("new")}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setEditing("new")}>
           + Adicionar sócio
         </button>
       )}
@@ -611,16 +633,17 @@ function SpeInvestorForm({
   }, [state.success]);
 
   return (
-    <form ref={formRef} action={dispatch} className="field-section">
-      <h3>{investor ? "Editar investidor" : "Adicionar investidor"}</h3>
+    <form ref={formRef} action={dispatch} style={{ marginBottom: "18px" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>{investor ? "Editar investidor" : "Adicionar investidor"}</div>
       <input type="hidden" name="speId" value={speId} />
       {investor ? <input type="hidden" name="investorId" value={investor.id} /> : null}
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="investor-type">Tipo *</label>
+      <div style={FIELD_GRID}>
+        <label className="inc-field">
+          <span className="inc-label">Tipo *</span>
           <select
             id="investor-type"
             name="type"
+            className="inc-select"
             required
             value={type}
             onChange={(e) => setType(e.target.value as "INDIVIDUAL" | "COMPANY")}
@@ -628,44 +651,47 @@ function SpeInvestorForm({
             <option value="INDIVIDUAL">Pessoa física</option>
             <option value="COMPANY">Pessoa jurídica</option>
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="investor-name">Nome / Razão social *</label>
-          <input id="investor-name" name="name" required defaultValue={investor?.name ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-document">{type === "COMPANY" ? "CNPJ *" : "CPF *"}</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Nome / Razão social *</span>
+          <input id="investor-name" name="name" className="inc-input" required defaultValue={investor?.name ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">{type === "COMPANY" ? "CNPJ *" : "CPF *"}</span>
           <input
             id="investor-document"
             name="document"
+            className="inc-input"
             required
             defaultValue={investor ? formatDocument(investor.document, investor.type) : ""}
             onBlur={(e) => {
               e.target.value = formatDocument(e.target.value, type);
             }}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-email">E-mail *</label>
-          <input id="investor-email" name="email" type="email" required defaultValue={investor?.email ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-phone">Telefone *</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">E-mail *</span>
+          <input id="investor-email" name="email" type="email" className="inc-input" required defaultValue={investor?.email ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Telefone *</span>
           <input
             id="investor-phone"
             name="phone"
+            className="inc-input"
             required
             defaultValue={investor?.phone ? formatPhone(investor.phone) : ""}
             onBlur={(e) => {
               e.target.value = formatPhone(e.target.value);
             }}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-modality">Modalidade *</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Modalidade *</span>
           <select
             id="investor-modality"
             name="modality"
+            className="inc-select"
             required
             value={modality}
             onChange={(e) => setModality(e.target.value as typeof modality)}
@@ -676,32 +702,34 @@ function SpeInvestorForm({
             <option value="FINANCIAL_EXCHANGE">Permuta financeira</option>
             <option value="OTHER">Outro</option>
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="investor-capital">Capital aportado (R$) — legado</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Capital aportado (R$) — legado</span>
           <input
             id="investor-capital"
             name="contributedCapital"
             type="number"
             step="0.01"
             min="0"
+            className="inc-input"
             defaultValue={investor?.contributedCapital ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-committed-capital">Capital comprometido total (R$)</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Capital comprometido total (R$)</span>
           <input
             id="investor-committed-capital"
             name="committedCapital"
             type="number"
             step="0.01"
             min="0"
+            className="inc-input"
             placeholder="Deixe em branco se não houver teto definido"
             defaultValue={investor?.committedCapital ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-result-pct">Participação no resultado (%)</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Participação no resultado (%)</span>
           <input
             id="investor-result-pct"
             name="resultParticipationPct"
@@ -709,94 +737,103 @@ function SpeInvestorForm({
             step="0.001"
             min="0"
             max="100"
+            className="inc-input"
             defaultValue={investor?.resultParticipationPct ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-date">Data do aporte</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data do aporte</span>
           <input
             id="investor-date"
             name="contributionDate"
             type="date"
+            className="inc-input"
             defaultValue={
               investor?.contributionDate ? new Date(investor.contributionDate).toISOString().slice(0, 10) : ""
             }
           />
-        </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label htmlFor="investor-notes">Observações</label>
-          <input id="investor-notes" name="notes" defaultValue={investor?.notes ?? ""} />
-        </div>
+        </label>
+        <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+          <span className="inc-label">Observações</span>
+          <input id="investor-notes" name="notes" className="inc-input" defaultValue={investor?.notes ?? ""} />
+        </label>
       </div>
 
-      <h4 style={{ marginTop: "1rem" }}>Conta bancária de devolução</h4>
-      <p className="field-hint">Para onde vão distribuições e devoluções — conta externa do investidor, não do cadastro central.</p>
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="investor-return-bank-name">Banco</label>
-          <input id="investor-return-bank-name" name="returnBankName" defaultValue={investor?.returnBankName ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-return-bank-agency">Agência</label>
+      <div className="inc-eyebrow" style={{ marginTop: "1rem", marginBottom: "4px" }}>Conta bancária de devolução</div>
+      <p className="field-hint" style={{ padding: 0, marginBottom: "8px" }}>
+        Para onde vão distribuições e devoluções — conta externa do investidor, não do cadastro central.
+      </p>
+      <div style={FIELD_GRID}>
+        <label className="inc-field">
+          <span className="inc-label">Banco</span>
+          <input id="investor-return-bank-name" name="returnBankName" className="inc-input" defaultValue={investor?.returnBankName ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Agência</span>
           <input
             id="investor-return-bank-agency"
             name="returnBankAgency"
+            className="inc-input"
             defaultValue={investor?.returnBankAgency ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-return-bank-account">Conta</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Conta</span>
           <input
             id="investor-return-bank-account"
             name="returnBankAccount"
+            className="inc-input"
             defaultValue={investor?.returnBankAccount ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-return-pix-type">Tipo de chave Pix</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Tipo de chave Pix</span>
           <input
             id="investor-return-pix-type"
             name="returnPixKeyType"
+            className="inc-input"
             placeholder="CPF/CNPJ/e-mail/telefone/aleatória"
             defaultValue={investor?.returnPixKeyType ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="investor-return-pix-value">Chave Pix</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Chave Pix</span>
           <input
             id="investor-return-pix-value"
             name="returnPixKeyValue"
+            className="inc-input"
             defaultValue={investor?.returnPixKeyValue ?? ""}
           />
-        </div>
+        </label>
       </div>
 
       {modality === "LOAN" ? (
         <>
-          <h4 style={{ marginTop: "1rem" }}>Condições do mútuo</h4>
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="investor-loan-rate">Taxa de juros (%)</label>
+          <div className="inc-eyebrow" style={{ marginTop: "1rem", marginBottom: "8px" }}>Condições do mútuo</div>
+          <div style={FIELD_GRID}>
+            <label className="inc-field">
+              <span className="inc-label">Taxa de juros (%)</span>
               <input
                 id="investor-loan-rate"
                 name="loanInterestRate"
                 type="number"
                 step="0.001"
                 min="0"
+                className="inc-input"
                 defaultValue={investor?.loanInterestRate ?? ""}
               />
-            </div>
-            <div className="field">
-              <label htmlFor="investor-loan-period">Periodicidade</label>
-              <select id="investor-loan-period" name="loanInterestPeriod" defaultValue={investor?.loanInterestPeriod ?? ""}>
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Periodicidade</span>
+              <select id="investor-loan-period" name="loanInterestPeriod" className="inc-select" defaultValue={investor?.loanInterestPeriod ?? ""}>
                 <option value="">—</option>
                 <option value="MONTHLY">% ao mês</option>
                 <option value="YEARLY">% ao ano</option>
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="investor-loan-index">Correção por índice</label>
-              <select id="investor-loan-index" name="loanIndexRuleId" defaultValue={investor?.loanIndexRuleId ?? ""}>
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Correção por índice</span>
+              <select id="investor-loan-index" name="loanIndexRuleId" className="inc-select" defaultValue={investor?.loanIndexRuleId ?? ""}>
                 <option value="">Sem correção</option>
                 {indexRules.map((rule) => (
                   <option key={rule.id} value={rule.id}>
@@ -804,39 +841,41 @@ function SpeInvestorForm({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="investor-loan-grace">Carência (meses)</label>
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Carência (meses)</span>
               <input
                 id="investor-loan-grace"
                 name="loanGraceMonths"
                 type="number"
                 step="1"
                 min="0"
+                className="inc-input"
                 defaultValue={investor?.loanGraceMonths ?? ""}
               />
-            </div>
-            <div className="field">
-              <label htmlFor="investor-loan-term">Prazo (meses)</label>
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Prazo (meses)</span>
               <input
                 id="investor-loan-term"
                 name="loanTermMonths"
                 type="number"
                 step="1"
                 min="1"
+                className="inc-input"
                 defaultValue={investor?.loanTermMonths ?? ""}
               />
-            </div>
+            </label>
           </div>
         </>
       ) : null}
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-        <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+        <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
           {pending ? "Salvando..." : "Salvar investidor"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -856,24 +895,24 @@ function SpeContributionSummaryPanel({ speId, refreshKey }: { speId: string; ref
   const format = formatCurrencyBRL;
 
   return (
-    <div className="field-section" style={{ marginBottom: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+    <div style={{ marginBottom: "16px", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
       <div>
-        <p className="field-hint">Comprometido</p>
+        <p className="field-hint" style={{ padding: 0 }}>Comprometido</p>
         <strong>
           {format(summary.committed)}
           {summary.hasOpenCommitment ? " +" : ""}
         </strong>
       </div>
       <div>
-        <p className="field-hint">Previsto</p>
+        <p className="field-hint" style={{ padding: 0 }}>Previsto</p>
         <strong>{format(summary.totalForecast)}</strong>
       </div>
       <div>
-        <p className="field-hint">Realizado</p>
+        <p className="field-hint" style={{ padding: 0 }}>Realizado</p>
         <strong>{format(summary.totalRealized)}</strong>
       </div>
       <div>
-        <p className="field-hint">% integralizado</p>
+        <p className="field-hint" style={{ padding: 0 }}>% integralizado</p>
         <strong>{summary.integralizedPct !== null ? `${summary.integralizedPct.toFixed(1)}%` : "—"}</strong>
       </div>
     </div>
@@ -911,7 +950,7 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
       {spe.investors.length === 0 ? (
         <p className="field-hint">Nenhum investidor cadastrado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Nome</th>
@@ -927,37 +966,37 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
             {spe.investors.map((investor) => (
               <>
                 <tr key={investor.id}>
-                  <td>{investor.name}</td>
-                  <td>{formatDocument(investor.document, investor.type)}</td>
+                  <td className="is-key">{investor.name}</td>
+                  <td className="is-muted">{formatDocument(investor.document, investor.type)}</td>
                   <td>
                     {investor.email}
                     <br />
                     {formatPhone(investor.phone)}
                   </td>
                   <td>{INVESTOR_MODALITY_LABELS[investor.modality] ?? investor.modality}</td>
-                  <td>
+                  <td className="is-num">
                     {investor.committedCapital !== null
                       ? formatCurrencyBRL(investor.committedCapital)
                       : "Sem teto"}
                   </td>
-                  <td>
+                  <td className="is-num">
                     {investor.resultParticipationPct !== null
                       ? `${investor.resultParticipationPct.toLocaleString("pt-BR")}%`
                       : "—"}
                   </td>
                   <td>
-                    <div className="row-actions">
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                       <button
                         type="button"
-                        className="secondary"
+                        className="inc-btn inc-btn--secondary inc-btn--sm"
                         onClick={() => setExpandedInvestorId(expandedInvestorId === investor.id ? null : investor.id)}
                       >
                         {expandedInvestorId === investor.id ? "Ocultar aportes" : "Aportes"}
                       </button>
-                      <button type="button" className="secondary" onClick={() => setEditing(investor)}>
+                      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setEditing(investor)}>
                         Editar
                       </button>
-                      <button type="button" className="secondary" onClick={() => handleDelete(investor)}>
+                      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleDelete(investor)}>
                         Remover
                       </button>
                     </div>
@@ -992,7 +1031,7 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
           onCancel={() => setEditing(null)}
         />
       ) : (
-        <button type="button" onClick={() => setEditing("new")}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setEditing("new")}>
           + Adicionar investidor
         </button>
       )}
@@ -1026,57 +1065,60 @@ function SpeLandForm({
   }, [state.success]);
 
   return (
-    <form ref={formRef} action={dispatch} className="field-section">
-      <h3>{land ? "Editar terreno" : "Adicionar terreno"}</h3>
+    <form ref={formRef} action={dispatch} style={{ marginBottom: "18px" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>{land ? "Editar terreno" : "Adicionar terreno"}</div>
       <input type="hidden" name="speId" value={speId} />
       {land ? <input type="hidden" name="landId" value={land.id} /> : null}
 
-      <h4>Identificação do imóvel</h4>
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="land-registration">Matrícula nº *</label>
-          <input id="land-registration" name="registrationNumber" required defaultValue={land?.registrationNumber ?? ""} />
-        </div>
-        <div className="field">
-          <label htmlFor="land-registry-office">Cartório de registro *</label>
+      <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--inc-text-soft)", marginBottom: "8px" }}>Identificação do imóvel</p>
+      <div style={FIELD_GRID}>
+        <label className="inc-field">
+          <span className="inc-label">Matrícula nº *</span>
+          <input id="land-registration" name="registrationNumber" className="inc-input" required defaultValue={land?.registrationNumber ?? ""} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Cartório de registro *</span>
           <input
             id="land-registry-office"
             name="registryOffice"
+            className="inc-input"
             required
             placeholder="Nome / comarca"
             defaultValue={land?.registryOffice ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="land-total-area">Área total (m²) *</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Área total (m²) *</span>
           <input
             id="land-total-area"
             name="totalArea"
             type="number"
             step="0.01"
             min="0"
+            className="inc-input"
             required
             defaultValue={land?.totalArea ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="land-municipal-registration">Inscrição municipal / IPTU</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Inscrição municipal / IPTU</span>
           <input
             id="land-municipal-registration"
             name="municipalRegistration"
+            className="inc-input"
             defaultValue={land?.municipalRegistration ?? ""}
           />
-        </div>
+        </label>
       </div>
 
       <AddressFields defaultValues={land ?? undefined} idPrefix="land-" />
 
-      <div className="field-section">
-        <h4>Aquisição</h4>
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="land-acquisition-method">Forma de aquisição</label>
-            <select id="land-acquisition-method" name="acquisitionMethod" defaultValue={land?.acquisitionMethod ?? ""}>
+      <div style={{ marginTop: "18px" }}>
+        <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--inc-text-soft)", marginBottom: "8px" }}>Aquisição</p>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span className="inc-label">Forma de aquisição</span>
+            <select id="land-acquisition-method" name="acquisitionMethod" className="inc-select" defaultValue={land?.acquisitionMethod ?? ""}>
               <option value="">—</option>
               <option value="PURCHASE">Compra</option>
               <option value="PHYSICAL_EXCHANGE">Permuta física</option>
@@ -1084,39 +1126,41 @@ function SpeLandForm({
               <option value="CAPITAL_CONTRIBUTION">Integralização</option>
               <option value="OTHER">Outro</option>
             </select>
-          </div>
-          <div className="field">
-            <label htmlFor="land-previous-owner">Vendedor/permutante anterior</label>
-            <input id="land-previous-owner" name="previousOwner" defaultValue={land?.previousOwner ?? ""} />
-          </div>
-          <div className="field">
-            <label htmlFor="land-acquisition-value">Valor de aquisição (R$)</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Vendedor/permutante anterior</span>
+            <input id="land-previous-owner" name="previousOwner" className="inc-input" defaultValue={land?.previousOwner ?? ""} />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Valor de aquisição (R$)</span>
             <input
               id="land-acquisition-value"
               name="acquisitionValue"
               type="number"
               step="0.01"
               min="0"
+              className="inc-input"
               defaultValue={land?.acquisitionValue ?? ""}
             />
-          </div>
-          <div className="field">
-            <label htmlFor="land-acquisition-date">Data de aquisição</label>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Data de aquisição</span>
             <input
               id="land-acquisition-date"
               name="acquisitionDate"
               type="date"
+              className="inc-input"
               defaultValue={land?.acquisitionDate ? new Date(land.acquisitionDate).toISOString().slice(0, 10) : ""}
             />
-          </div>
+          </label>
         </div>
       </div>
 
-      <div className="field-section">
-        <h4>Situação legal</h4>
-        <div className="field-grid">
-          <div className="field">
-            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <div style={{ marginTop: "18px" }}>
+        <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--inc-text-soft)", marginBottom: "8px" }}>Situação legal</p>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "13px" }}>
               <input
                 type="checkbox"
                 name="affectationEstablished"
@@ -1124,38 +1168,40 @@ function SpeLandForm({
                 onChange={(e) => setAffectationEstablished(e.target.checked)}
               />
               Patrimônio de afetação constituído?
-            </label>
-          </div>
-          <div className="field">
-            <label htmlFor="land-affectation-date">Data da averbação da afetação</label>
+            </span>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Data da averbação da afetação</span>
             <input
               id="land-affectation-date"
               name="affectationRegisteredAt"
               type="date"
+              className="inc-input"
               disabled={!affectationEstablished}
               defaultValue={
                 land?.affectationRegisteredAt ? new Date(land.affectationRegisteredAt).toISOString().slice(0, 10) : ""
               }
             />
-          </div>
-          <div className="field" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="land-encumbrances">Ônus/gravames</label>
+          </label>
+          <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+            <span className="inc-label">Ônus/gravames</span>
             <input
               id="land-encumbrances"
               name="encumbrances"
+              className="inc-input"
               placeholder="Hipoteca, alienação fiduciária..."
               defaultValue={land?.encumbrances ?? ""}
             />
-          </div>
+          </label>
         </div>
       </div>
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-        <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+        <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
           {pending ? "Salvando..." : "Salvar terreno"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -1185,7 +1231,7 @@ function SpeLandsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void
       {spe.lands.length === 0 ? (
         <p className="field-hint">Nenhum terreno cadastrado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Matrícula</th>
@@ -1199,17 +1245,17 @@ function SpeLandsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void
           <tbody>
             {spe.lands.map((land) => (
               <tr key={land.id}>
-                <td>{land.registrationNumber}</td>
-                <td>{[land.city, land.state].filter(Boolean).join("/") || "—"}</td>
-                <td>{land.totalArea.toLocaleString("pt-BR")}</td>
+                <td className="is-key">{land.registrationNumber}</td>
+                <td className="is-muted">{[land.city, land.state].filter(Boolean).join("/") || "—"}</td>
+                <td className="is-num">{land.totalArea.toLocaleString("pt-BR")}</td>
                 <td>{land.acquisitionMethod ? LAND_ACQUISITION_METHOD_LABELS[land.acquisitionMethod] : "—"}</td>
                 <td>{land.affectationEstablished ? "Constituída" : "—"}</td>
                 <td>
-                  <div className="row-actions">
-                    <button type="button" className="secondary" onClick={() => setEditing(land)}>
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                    <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setEditing(land)}>
                       Editar
                     </button>
-                    <button type="button" className="secondary" onClick={() => handleDelete(land)}>
+                    <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleDelete(land)}>
                       Remover
                     </button>
                   </div>
@@ -1232,7 +1278,7 @@ function SpeLandsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => void
           onCancel={() => setEditing(null)}
         />
       ) : (
-        <button type="button" onClick={() => setEditing("new")}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setEditing("new")}>
           + Adicionar terreno
         </button>
       )}
@@ -1312,7 +1358,7 @@ function SpeBankAccountsTab({
       {spe.bankAccountLinks.length === 0 ? (
         <p className="field-hint">Nenhuma conta vinculada a esta SPE.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Banco</th>
@@ -1325,8 +1371,8 @@ function SpeBankAccountsTab({
           <tbody>
             {spe.bankAccountLinks.map((link) => (
               <tr key={link.id}>
-                <td>{link.bankAccount.bankName}</td>
-                <td>
+                <td className="is-key">{link.bankAccount.bankName}</td>
+                <td className="is-muted">
                   {link.bankAccount.agency} / {link.bankAccount.account}
                 </td>
                 <td>{BANK_ACCOUNT_TYPE_LABELS[link.bankAccount.type] ?? link.bankAccount.type}</td>
@@ -1334,7 +1380,7 @@ function SpeBankAccountsTab({
                   {link.isPrimary ? (
                     "Principal"
                   ) : (
-                    <button type="button" className="secondary" onClick={() => handleSetPrimary(link.bankAccountId)}>
+                    <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleSetPrimary(link.bankAccountId)}>
                       Tornar principal
                     </button>
                   )}
@@ -1342,7 +1388,7 @@ function SpeBankAccountsTab({
                 <td>
                   <button
                     type="button"
-                    className="secondary"
+                    className="inc-btn inc-btn--secondary inc-btn--sm"
                     onClick={() => handleUnlink(link.bankAccountId, link.bankAccount.bankName)}
                   >
                     Desvincular
@@ -1354,13 +1400,14 @@ function SpeBankAccountsTab({
         </table>
       )}
 
-      <div className="field-section">
-        <h3>Vincular conta</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label htmlFor="bank-account-select">Conta cadastrada</label>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Vincular conta</div>
+        <div style={FIELD_GRID}>
+          <label className="inc-field">
+            <span className="inc-label">Conta cadastrada</span>
             <select
               id="bank-account-select"
+              className="inc-select"
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
             >
@@ -1372,17 +1419,17 @@ function SpeBankAccountsTab({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="field" style={{ justifyContent: "flex-end" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          </label>
+          <label className="inc-field" style={{ justifyContent: "flex-end" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "13px" }}>
               <input
                 type="checkbox"
                 checked={markPrimary}
                 onChange={(e) => setMarkPrimary(e.target.checked)}
               />
               Definir como principal
-            </label>
-          </div>
+            </span>
+          </label>
         </div>
         {linkableAccounts.length === 0 && availableAccounts.length > 0 ? (
           <p className="field-hint">Todas as contas cadastradas já estão vinculadas a esta SPE.</p>
@@ -1393,7 +1440,7 @@ function SpeBankAccountsTab({
             bancárias.
           </p>
         ) : null}
-        <button type="button" disabled={pending || !selectedAccountId} onClick={handleLink} style={{ marginTop: "0.75rem" }}>
+        <button type="button" className="inc-btn inc-btn--primary" disabled={pending || !selectedAccountId} onClick={handleLink} style={{ marginTop: "0.75rem" }}>
           {pending ? "Vinculando..." : "Vincular conta"}
         </button>
         {error ? <p className="error-text">{error}</p> : null}
@@ -1457,17 +1504,17 @@ export function SpeModal({
       width={720}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
-          <button type="button" disabled={pending} onClick={() => dadosFormRef.current?.requestSubmit()}>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => dadosFormRef.current?.requestSubmit()}>
             {pending ? "Salvando..." : "Salvar"}
           </button>
         </>
       }
     >
       {isEditing && spe!.audit ? (
-        <p className="field-hint" style={{ marginTop: 0, marginBottom: "0.75rem" }}>
+        <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
           Cadastrado por {spe!.audit.createdByName ?? "—"} em{" "}
           {formatDateTimeBR(spe!.audit.createdAt)}
           {spe!.audit.updatedAt !== spe!.audit.createdAt ? (
@@ -1486,23 +1533,24 @@ export function SpeModal({
         <form id="spe-dados-form" ref={dadosFormRef} action={dispatch}>
           {mode === "edit" && spe ? <input type="hidden" name="speId" value={spe.id} /> : null}
 
-          <div className="field-section">
-            <h3>Identificação</h3>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="name">Razão social *</label>
-                <input id="name" name="name" required defaultValue={spe?.name ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="tradeName">Nome fantasia</label>
-                <input id="tradeName" name="tradeName" defaultValue={spe?.tradeName ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="document">CNPJ *</label>
+          <div style={{ marginBottom: "18px" }}>
+            <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+            <div style={FIELD_GRID}>
+              <label className="inc-field">
+                <span className="inc-label">Razão social *</span>
+                <input id="name" name="name" className="inc-input" required defaultValue={spe?.name ?? ""} />
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Nome fantasia</span>
+                <input id="tradeName" name="tradeName" className="inc-input" defaultValue={spe?.tradeName ?? ""} />
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">CNPJ *</span>
                 <input
                   id="document"
                   name="document"
                   ref={documentInputRef}
+                  className="inc-input"
                   required
                   placeholder="00.000.000/0000-00"
                   defaultValue={spe ? formatCnpj(spe.document) : ""}
@@ -1510,33 +1558,35 @@ export function SpeModal({
                     e.target.value = formatCnpj(e.target.value);
                   }}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="nire">NIRE</label>
-                <input id="nire" name="nire" defaultValue={spe?.nire ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="foundedAt">Data de constituição</label>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">NIRE</span>
+                <input id="nire" name="nire" className="inc-input" defaultValue={spe?.nire ?? ""} />
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Data de constituição</span>
                 <input
                   id="foundedAt"
                   name="foundedAt"
                   type="date"
+                  className="inc-input"
                   defaultValue={spe?.foundedAt ? new Date(spe.foundedAt).toISOString().slice(0, 10) : ""}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="status">Situação *</label>
-                <select id="status" name="status" required defaultValue={spe?.status ?? "ACTIVE"}>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Situação *</span>
+                <select id="status" name="status" className="inc-select" required defaultValue={spe?.status ?? "ACTIVE"}>
                   <option value="ACTIVE">Ativa</option>
                   <option value="IN_FORMATION">Em constituição</option>
                   <option value="CLOSED">Encerrada</option>
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="legalNature">Natureza jurídica</label>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Natureza jurídica</span>
                 <input
                   id="legalNature"
                   name="legalNature"
+                  className="inc-input"
                   list="legal-nature-options"
                   defaultValue={spe?.legalNature ?? ""}
                 />
@@ -1545,32 +1595,34 @@ export function SpeModal({
                     <option key={option} value={option} />
                   ))}
                 </datalist>
-              </div>
-              <div className="field">
-                <label htmlFor="cnae">CNAE principal</label>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">CNAE principal</span>
                 <input
                   id="cnae"
                   name="cnae"
+                  className="inc-input"
                   placeholder="41.10-7-00 Incorporação de empreendimentos imobiliários"
                   defaultValue={spe?.cnae ?? ""}
                 />
-              </div>
+              </label>
             </div>
           </div>
 
-          <div className="field-section">
-            <h3>Contato</h3>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="email">E-mail *</label>
-                <input id="email" name="email" type="email" required defaultValue={spe?.email ?? ""} />
-              </div>
-              <div className="field">
-                <label htmlFor="phone">Telefone *</label>
+          <div style={{ marginBottom: "18px" }}>
+            <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Contato</div>
+            <div style={FIELD_GRID}>
+              <label className="inc-field">
+                <span className="inc-label">E-mail *</span>
+                <input id="email" name="email" type="email" className="inc-input" required defaultValue={spe?.email ?? ""} />
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Telefone *</span>
                 <input
                   id="phone"
                   name="phone"
                   ref={phoneInputRef}
+                  className="inc-input"
                   required
                   placeholder="(00) 00000-0000"
                   defaultValue={spe?.phone ? formatPhone(spe.phone) : ""}
@@ -1578,11 +1630,11 @@ export function SpeModal({
                     e.target.value = formatPhone(e.target.value);
                   }}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="website">Site</label>
-                <input id="website" name="website" defaultValue={spe?.website ?? ""} />
-              </div>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Site</span>
+                <input id="website" name="website" className="inc-input" defaultValue={spe?.website ?? ""} />
+              </label>
             </div>
           </div>
 
@@ -1599,8 +1651,7 @@ export function SpeModal({
                   {" "}
                   <button
                     type="button"
-                    className="secondary"
-                    style={{ padding: "0.15rem 0.5rem", fontSize: "0.8rem" }}
+                    className="inc-btn inc-btn--secondary inc-btn--sm"
                     onClick={() => onOpenDuplicate(state.duplicateSpeId!)}
                   >
                     Abrir cadastro existente

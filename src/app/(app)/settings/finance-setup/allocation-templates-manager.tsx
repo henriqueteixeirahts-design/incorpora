@@ -33,46 +33,54 @@ export function AllocationTemplatesManager({
 
   if (rows.length === 0) {
     return (
-      <p className="field-hint">
-        Nenhum modelo salvo ainda — modelos são criados a partir da aba &quot;Rateio&quot; de uma conta a pagar
-        (ex.: &quot;Administrativo 50/30/20&quot;), pra reaplicar em contas futuras.
-      </p>
+      <div className="inc-card">
+        <div className="inc-card__body">
+          <p style={{ margin: 0, fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+            Nenhum modelo salvo ainda — modelos são criados a partir da aba &quot;Rateio&quot; de uma conta a pagar
+            (ex.: &quot;Administrativo 50/30/20&quot;), pra reaplicar em contas futuras.
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Destinos</th>
-          <th aria-label="Ações" />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((t) => (
-          <tr key={t.id}>
-            <td>{t.name}</td>
-            <td>
-              {t.destinations
-                .map((d) => `${d.developmentName ?? "Organização"} (${d.percent}%)`)
-                .join(", ")}
-            </td>
-            <td>
-              {canDelete ? (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={busyId === t.id}
-                  onClick={() => handleDelete(t.id)}
-                >
-                  Remover
-                </button>
-              ) : null}
-            </td>
+    <div className="inc-card">
+      <table className="inc-table" style={{ border: 0 }}>
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Destinos</th>
+            <th aria-label="Ações" />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((t) => (
+            <tr key={t.id}>
+              <td className="is-key">{t.name}</td>
+              <td className="is-muted">
+                {t.destinations
+                  .map((d) => `${d.developmentName ?? "Organização"} (${d.percent}%)`)
+                  .join(", ")}
+              </td>
+              <td>
+                {canDelete ? (
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      className="inc-btn inc-btn--danger inc-btn--sm"
+                      disabled={busyId === t.id}
+                      onClick={() => handleDelete(t.id)}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

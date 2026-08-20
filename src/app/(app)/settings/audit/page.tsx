@@ -19,13 +19,18 @@ export default async function AuditPage({
 
   return (
     <>
-      <h1>Auditoria de atualização</h1>
-      <p style={{ opacity: 0.7, maxWidth: 680, marginTop: "0.5rem" }}>
-        O double-check independente do motor de correção: 5 verificações que conferem se os índices
-        estão em dia, se toda parcela foi recalculada no ciclo, se o valor calculado bate com um
-        recálculo por caminho de código separado, se os jobs agendados rodaram, e se o índice
-        gravado bate com a fonte oficial do Banco Central. Roda automaticamente e sob demanda.
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Auditoria de atualização</h1>
+          <p className="inc-lede">
+            O double-check independente do motor de correção: 5 verificações que conferem se os índices
+            estão em dia, se toda parcela foi recalculada no ciclo, se o valor calculado bate com um
+            recálculo por caminho de código separado, se os jobs agendados rodaram, e se o índice
+            gravado bate com a fonte oficial do Banco Central. Roda automaticamente e sob demanda.
+          </p>
+        </div>
+      </div>
 
       <AuditManager
         auditRuns={auditRuns.items}

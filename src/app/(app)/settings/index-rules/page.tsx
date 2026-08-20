@@ -1,7 +1,7 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listIndexRules } from "@/server/index-rules";
 import { NewIndexRuleForm, NewIndexValueForm, SyncIndexRuleButton } from "./index-rule-forms";
-import { formatCalendarDateBR } from "@/lib/format";
+import { formatCalendarDateBR, formatPercent } from "@/lib/format";
 
 const CODE_LABELS: Record<string, string> = {
   INCC: "INCC",
@@ -20,62 +20,64 @@ export default async function IndexRulesPage() {
 
   return (
     <>
-      <h1>Índices</h1>
-      <p style={{ opacity: 0.7, maxWidth: 600 }}>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Índices de correção</h1>
+        </div>
+      </div>
+      <p className="inc-lede">
         Catálogo de índices usados para corrigir as carteiras. INCC, IPCA e IGP-M podem ser
         buscados automaticamente do Banco Central (semanalmente, e sob demanda aqui); lançamento
         manual continua disponível e nunca é sobrescrito por uma busca automática.
       </p>
 
-      {rules.map((rule) => (
-        <div
-          key={rule.id}
-          style={{
-            border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-            borderRadius: 8,
-            padding: "0.75rem 1rem",
-            marginTop: "1rem",
-            maxWidth: 600,
-          }}
-        >
-          <p>
-            <strong>{rule.name}</strong> — {CODE_LABELS[rule.code]}
-          </p>
-          {rule.values.length > 0 ? (
-            <table style={{ marginTop: "0.5rem" }}>
-              <thead>
-                <tr>
-                  <th>Mês</th>
-                  <th>%</th>
-                  <th>Origem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rule.values.map((value) => (
-                  <tr key={value.id}>
-                    <td>{formatCalendarDateBR(value.referenceMonth, { month: "2-digit", year: "numeric" })}</td>
-                    <td>{Number(value.ratePercent)}%</td>
-                    <td style={{ fontSize: "0.8rem", opacity: 0.75 }}>
-                      {value.source === "OFFICIAL" ? "Banco Central" : "Manual"}
-                    </td>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-10)" }}>
+        {rules.map((rule) => (
+          <div key={rule.id} className="inc-card">
+            <div className="inc-card__head">
+              <div className="inc-card__title">
+                {rule.name} <span className="is-muted" style={{ fontWeight: 400 }}>— {CODE_LABELS[rule.code]}</span>
+              </div>
+              {canEdit && OFFICIAL_SOURCE_CODES.has(rule.code) ? (
+                <div className="inc-page-head__actions" style={{ marginLeft: "auto" }}>
+                  <SyncIndexRuleButton indexRuleId={rule.id} />
+                </div>
+              ) : null}
+            </div>
+            {rule.values.length > 0 ? (
+              <table className="inc-table" style={{ border: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Mês</th>
+                    <th>%</th>
+                    <th>Origem</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p style={{ fontSize: "0.85rem", opacity: 0.7, marginTop: "0.4rem" }}>
-              Nenhum valor mensal lançado ainda.
-            </p>
-          )}
-          {canEdit && OFFICIAL_SOURCE_CODES.has(rule.code) ? (
-            <SyncIndexRuleButton indexRuleId={rule.id} />
-          ) : null}
-        </div>
-      ))}
-      {rules.length === 0 ? <p style={{ opacity: 0.7, marginTop: "1rem" }}>Nenhum índice cadastrado.</p> : null}
+                </thead>
+                <tbody>
+                  {rule.values.map((value) => (
+                    <tr key={value.id}>
+                      <td>{formatCalendarDateBR(value.referenceMonth, { month: "2-digit", year: "numeric" })}</td>
+                      <td>{formatPercent(Number(value.ratePercent), 4)}</td>
+                      <td className="is-muted">
+                        {value.source === "OFFICIAL" ? "Banco Central" : "Manual"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="inc-card__body">
+                <p className="inc-help">Nenhum valor mensal lançado ainda.</p>
+              </div>
+            )}
+          </div>
+        ))}
+        {rules.length === 0 ? <p className="inc-help">Nenhum índice cadastrado.</p> : null}
+      </div>
 
       {canManage ? (
-        <div style={{ marginTop: "2rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-8)" }}>
           <NewIndexRuleForm />
           {rules.length > 0 ? (
             <NewIndexValueForm rules={rules.map((r) => ({ id: r.id, name: r.name }))} />

@@ -21,6 +21,7 @@ import {
   convertToSaleAction,
 } from "./actions";
 import { formatCurrencyBRL, formatDateTimeBR, formatPercent } from "@/lib/format";
+import { UNIT_STATUS_META } from "@/lib/unit-status";
 
 const RESERVATION_STATUS_CHIP: Record<string, string> = {
   ACTIVE: "inc-chip--reserva",
@@ -123,7 +124,7 @@ export default async function CommercialPage({
   // (docs/RELATORIO_TESTDRIVE.md, achado 17).
   const pendingApprovalProposals = canApproveProposal ? proposals.filter(isPendingApproval) : [];
 
-  const unitOptions = availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${u.status})` }));
+  const unitOptions = availableUnits.map((u) => ({ id: u.id, label: `${u.number} (${UNIT_STATUS_META[u.status].label})` }));
   const customerOptions = customers.map((c) => ({ id: c.id, label: c.name }));
   const brokerOptions = brokers.map((b) => ({ id: b.id, label: b.name }));
   const agencyOptions = agencies.map((a) => ({ id: a.id, label: a.name }));

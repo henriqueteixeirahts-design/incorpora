@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { Modal } from "@/components/Modal";
 import {
   createContractAction,
   confirmSignatureAction,
@@ -10,21 +11,50 @@ import {
 
 const initialState: FormState = {};
 
-export function CreateContractForm({ saleId }: { saleId: string }) {
+export function CreateContractForm({ saleId, onClose }: { saleId: string; onClose: () => void }) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(createContractAction, initialState);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (hasSubmitted && !pending && !state.error) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
 
   return (
-    <form action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)", maxWidth: 360 }}>
-      <input type="hidden" name="saleId" value={saleId} />
-      <label className="inc-field">
-        <span className="inc-label">Observações da minuta (opcional)</span>
-        <textarea id="contract-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
-      </label>
-      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
-      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary">
-        {pending ? "Gerando..." : "Gerar minuta"}
-      </button>
-    </form>
+    <Modal
+      open
+      onClose={onClose}
+      title="Gerar minuta"
+      width={420}
+      footer={
+        <>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
+            Fechar
+          </button>
+          <button
+            type="button"
+            className="inc-btn inc-btn--primary"
+            disabled={pending}
+            onClick={() => {
+              setHasSubmitted(true);
+              formRef.current?.requestSubmit();
+            }}
+          >
+            {pending ? "Gerando..." : "Gerar minuta"}
+          </button>
+        </>
+      }
+    >
+      <form ref={formRef} action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)" }}>
+        <input type="hidden" name="saleId" value={saleId} />
+        <label className="inc-field">
+          <span className="inc-label">Observações da minuta (opcional)</span>
+          <textarea id="contract-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
+        </label>
+        {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
+      </form>
+    </Modal>
   );
 }
 

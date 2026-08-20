@@ -53,52 +53,54 @@ function ForecastForm({
   }, [state.success]);
 
   return (
-    <form action={dispatch} className="field-section" style={{ marginTop: "0.5rem" }}>
-      <h4>{forecast ? "Editar previsão" : "Lançar previsão de aporte"}</h4>
+    <form action={dispatch} style={{ marginTop: "0.5rem", marginBottom: "0.75rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>{forecast ? "Editar previsão" : "Lançar previsão de aporte"}</div>
       <input type="hidden" name="investorId" value={investorId} />
       {forecast ? <input type="hidden" name="forecastId" value={forecast.id} /> : null}
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="forecast-amount">Valor previsto (R$) *</label>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">Valor previsto (R$) *</span>
           <input
             id="forecast-amount"
             name="amount"
             type="number"
             step="0.01"
             min="0.01"
+            className="inc-input"
             required
             defaultValue={forecast?.amount ?? ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="forecast-date">Data prevista *</label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data prevista *</span>
           <input
             id="forecast-date"
             name="expectedDate"
             type="date"
+            className="inc-input"
             required
             defaultValue={forecast ? new Date(forecast.expectedDate).toISOString().slice(0, 10) : ""}
           />
-        </div>
-        <div className="field">
-          <label htmlFor="forecast-origin">Origem *</label>
-          <select id="forecast-origin" name="origin" required defaultValue={forecast?.origin ?? "CASH_FLOW_PLANNING"}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Origem *</span>
+          <select id="forecast-origin" name="origin" className="inc-select" required defaultValue={forecast?.origin ?? "CASH_FLOW_PLANNING"}>
             <option value="CASH_FLOW_PLANNING">Planejamento de caixa</option>
             <option value="PUNCTUAL_AGREEMENT">Acordo pontual</option>
             <option value="CAPITAL_CALL">Chamada de capital</option>
           </select>
-        </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label htmlFor="forecast-notes">Observações</label>
-          <input id="forecast-notes" name="notes" defaultValue={forecast?.notes ?? ""} />
-        </div>
+        </label>
+        <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+          <span className="inc-label">Observações</span>
+          <input id="forecast-notes" name="notes" className="inc-input" defaultValue={forecast?.notes ?? ""} />
+        </label>
       </div>
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="inc-btn inc-btn--primary" disabled={pending}>
           {pending ? "Salvando..." : "Salvar previsão"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -130,21 +132,21 @@ function ContributionForm({
   }, [state.success]);
 
   return (
-    <form action={dispatch} className="field-section" style={{ marginTop: "0.5rem" }} encType="multipart/form-data">
-      <h4>Registrar aporte realizado</h4>
+    <form action={dispatch} style={{ marginTop: "0.5rem", marginBottom: "0.75rem" }} encType="multipart/form-data">
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Registrar aporte realizado</div>
       <input type="hidden" name="investorId" value={investorId} />
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="contribution-amount">Valor (R$) *</label>
-          <input id="contribution-amount" name="amount" type="number" step="0.01" min="0.01" required />
-        </div>
-        <div className="field">
-          <label htmlFor="contribution-date">Data do crédito *</label>
-          <input id="contribution-date" name="creditDate" type="date" required />
-        </div>
-        <div className="field">
-          <label htmlFor="contribution-account">Conta da SPE que recebeu *</label>
-          <select id="contribution-account" name="bankAccountId" required defaultValue="">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">Valor (R$) *</span>
+          <input id="contribution-amount" name="amount" type="number" step="0.01" min="0.01" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data do crédito *</span>
+          <input id="contribution-date" name="creditDate" type="date" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Conta da SPE que recebeu *</span>
+          <select id="contribution-account" name="bankAccountId" className="inc-select" required defaultValue="">
             <option value="" disabled>
               Selecione
             </option>
@@ -154,14 +156,14 @@ function ContributionForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="contribution-method">Forma</label>
-          <input id="contribution-method" name="method" placeholder="TED/Pix/outro" />
-        </div>
-        <div className="field">
-          <label htmlFor="contribution-forecast">Vínculo com previsão</label>
-          <select id="contribution-forecast" name="forecastId" defaultValue="">
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Forma</span>
+          <input id="contribution-method" name="method" className="inc-input" placeholder="TED/Pix/outro" />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Vínculo com previsão</span>
+          <select id="contribution-forecast" name="forecastId" className="inc-select" defaultValue="">
             <option value="">Sem vínculo (espontâneo)</option>
             {linkableForecasts.map((f) => (
               <option key={f.id} value={f.id}>
@@ -170,22 +172,22 @@ function ContributionForm({
               </option>
             ))}
           </select>
-        </div>
-        <div className="field">
-          <label htmlFor="contribution-receipt">Comprovante</label>
-          <input id="contribution-receipt" name="receiptFile" type="file" />
-        </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label htmlFor="contribution-notes">Observações</label>
-          <input id="contribution-notes" name="notes" />
-        </div>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Comprovante</span>
+          <input id="contribution-receipt" name="receiptFile" type="file" className="inc-input" />
+        </label>
+        <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+          <span className="inc-label">Observações</span>
+          <input id="contribution-notes" name="notes" className="inc-input" />
+        </label>
       </div>
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="inc-btn inc-btn--primary" disabled={pending}>
           {pending ? "Salvando..." : "Registrar aporte"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -252,30 +254,30 @@ export function InvestorContributionsPanel({
 
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
         <div>
-          <p className="field-hint">Comprometido</p>
+          <p className="field-hint" style={{ padding: 0 }}>Comprometido</p>
           <strong>{detail.summary.committed !== null ? formatCurrency(detail.summary.committed) : "Sem teto"}</strong>
         </div>
         <div>
-          <p className="field-hint">Previsto</p>
+          <p className="field-hint" style={{ padding: 0 }}>Previsto</p>
           <strong>{formatCurrency(detail.summary.totalForecast)}</strong>
         </div>
         <div>
-          <p className="field-hint">Realizado</p>
+          <p className="field-hint" style={{ padding: 0 }}>Realizado</p>
           <strong>{formatCurrency(detail.summary.totalRealized)}</strong>
         </div>
         <div>
-          <p className="field-hint">% integralizado</p>
+          <p className="field-hint" style={{ padding: 0 }}>% integralizado</p>
           <strong>
             {detail.summary.integralizedPct !== null ? `${detail.summary.integralizedPct.toFixed(1)}%` : "—"}
           </strong>
         </div>
       </div>
 
-      <h4>Previsões</h4>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Previsões</div>
       {detail.forecasts.length === 0 ? (
         <p className="field-hint">Nenhuma previsão lançada.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "0.5rem" }}>
+        <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
           <thead>
             <tr>
               <th>Valor</th>
@@ -288,17 +290,17 @@ export function InvestorContributionsPanel({
           <tbody>
             {detail.forecasts.map((f) => (
               <tr key={f.id}>
-                <td>{formatCurrency(f.amount)}</td>
-                <td>{formatCalendarDateBR(f.expectedDate)}</td>
+                <td className="is-num">{formatCurrency(f.amount)}</td>
+                <td className="is-muted">{formatCalendarDateBR(f.expectedDate)}</td>
                 <td>{ORIGIN_LABELS[f.origin] ?? f.origin}</td>
                 <td>{FORECAST_STATUS_LABELS[f.status] ?? f.status}</td>
                 <td>
                   {f.status !== "CANCELLED" && f.status !== "FULFILLED" ? (
-                    <div className="row-actions">
-                      <button type="button" className="secondary" onClick={() => setEditingForecast(f)}>
+                    <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setEditingForecast(f)}>
                         Editar
                       </button>
-                      <button type="button" className="secondary" onClick={() => handleCancelForecast(f)}>
+                      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleCancelForecast(f)}>
                         Cancelar
                       </button>
                     </div>
@@ -322,16 +324,16 @@ export function InvestorContributionsPanel({
           onCancel={() => setEditingForecast(null)}
         />
       ) : (
-        <button type="button" className="secondary" onClick={() => setEditingForecast("new")}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setEditingForecast("new")}>
           + Lançar previsão
         </button>
       )}
 
-      <h4 style={{ marginTop: "1.5rem" }}>Aportes realizados</h4>
+      <div className="inc-eyebrow" style={{ marginTop: "1.5rem", marginBottom: "8px" }}>Aportes realizados</div>
       {detail.contributions.length === 0 ? (
         <p className="field-hint">Nenhum aporte registrado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "0.5rem" }}>
+        <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
           <thead>
             <tr>
               <th>Valor</th>
@@ -345,8 +347,8 @@ export function InvestorContributionsPanel({
           <tbody>
             {detail.contributions.map((c) => (
               <tr key={c.id}>
-                <td>{formatCurrency(c.amount)}</td>
-                <td>{formatCalendarDateBR(c.creditDate)}</td>
+                <td className="is-num">{formatCurrency(c.amount)}</td>
+                <td className="is-muted">{formatCalendarDateBR(c.creditDate)}</td>
                 <td>
                   {c.bankAccount.bankName} — ag. {c.bankAccount.agency} / cc {c.bankAccount.account}
                 </td>
@@ -361,7 +363,7 @@ export function InvestorContributionsPanel({
                   )}
                 </td>
                 <td>
-                  <button type="button" className="secondary" onClick={() => handleDeleteContribution(c.id)}>
+                  <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => handleDeleteContribution(c.id)}>
                     Remover
                   </button>
                 </td>
@@ -383,7 +385,7 @@ export function InvestorContributionsPanel({
           onCancel={() => setAddingContribution(false)}
         />
       ) : (
-        <button type="button" className="secondary" onClick={() => setAddingContribution(true)}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setAddingContribution(true)}>
           + Registrar aporte
         </button>
       )}

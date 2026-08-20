@@ -36,19 +36,24 @@ export default async function DocumentTemplatesPage() {
 
   return (
     <>
-      <h1>Modelos de documento</h1>
-      <p style={{ opacity: 0.7, maxWidth: 700 }}>
-        Biblioteca de modelos com variáveis — o sistema preenche automaticamente com os dados da
-        venda/contrato na hora de gerar. Editar um modelo cria uma nova versão; versões antigas nunca
-        são apagadas e o documento gerado sempre referencia a versão exata usada.
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Configurações</div>
+          <h1 className="inc-h1">Modelos de documento</h1>
+          <p className="inc-lede">
+            Biblioteca de modelos com variáveis — o sistema preenche automaticamente com os dados da
+            venda/contrato na hora de gerar. Editar um modelo cria uma nova versão; versões antigas nunca
+            são apagadas e o documento gerado sempre referencia a versão exata usada.
+          </p>
+        </div>
+      </div>
 
       {canCreate ? (
-        <form action={seedDefaultDocumentTemplatesAction} style={{ marginTop: "1rem" }}>
-          <button type="submit" className="secondary">
+        <form action={seedDefaultDocumentTemplatesAction} style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <button type="submit" className="inc-btn inc-btn--secondary">
             Criar modelos padrão que faltam
           </button>
-          <span style={{ marginLeft: "0.6rem", fontSize: "0.8rem", opacity: 0.7 }}>
+          <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
             Cria um modelo por tipo (contrato, cessão, distrato, extrato) que ainda não existir — não duplica os já cadastrados.
           </span>
         </form>
@@ -57,63 +62,87 @@ export default async function DocumentTemplatesPage() {
       {templates.map((template, index) => (
         <div
           key={template.templateGroupId}
-          className="field-section"
-          style={{ marginTop: "1.5rem", maxWidth: 700 }}
+          className="inc-card"
+          style={{ marginTop: "16px", maxWidth: 760 }}
         >
-          <p>
-            <strong>{template.name}</strong> — {TYPE_LABELS[template.type] ?? template.type}
-            <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", opacity: 0.7 }}>
-              v{template.version} · {template.status === "ACTIVE" ? "Ativo" : "Inativo"} ·{" "}
-              {template.versionCount} versão(ões)
+          <div className="inc-card__head">
+            <span className="inc-card__title">{template.name}</span>
+            <span className="inc-card__meta">
+              {TYPE_LABELS[template.type] ?? template.type} · v{template.version}
             </span>
-          </p>
-          {isDraftTemplateName(template.name) ? (
-            <p className="error-text" style={{ fontSize: "0.8rem" }}>
-              ⚠ Rascunho gerado automaticamente — revisar com jurídico antes de usar em um documento real.
+            <span className={`inc-pill ${template.status === "ACTIVE" ? "inc-pill--ok" : ""}`}>
+              {template.status === "ACTIVE" ? <span className="inc-pill__dot" /> : null}
+              {template.status === "ACTIVE" ? "Ativo" : "Inativo"}
+            </span>
+          </div>
+          <div className="inc-card__body">
+            <p style={{ margin: 0, fontSize: "12.5px", color: "var(--inc-text-muted)" }}>
+              {template.versionCount} versão(ões)
             </p>
-          ) : null}
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            Aplica-se a:{" "}
-            {template.developments.length === 0
-              ? "todos os empreendimentos"
-              : template.developments.map((d) => d.development.name).join(", ")}
-          </p>
+            {isDraftTemplateName(template.name) ? (
+              <p
+                style={{
+                  marginTop: "10px",
+                  marginBottom: 0,
+                  padding: "8px 11px",
+                  background: "var(--inc-warning-bg)",
+                  border: "1px solid var(--inc-warning-border)",
+                  borderRadius: "var(--inc-radius-2)",
+                  fontSize: "12.5px",
+                  fontWeight: "var(--inc-fw-medium)",
+                  color: "var(--inc-warning-text)",
+                }}
+              >
+                ⚠ Rascunho gerado automaticamente — revisar com jurídico antes de usar em um documento real.
+              </p>
+            ) : null}
+            <p style={{ fontSize: "12.5px", color: "var(--inc-text-secondary)", marginTop: "10px", marginBottom: 0 }}>
+              Aplica-se a:{" "}
+              {template.developments.length === 0
+                ? "todos os empreendimentos"
+                : template.developments.map((d) => d.development.name).join(", ")}
+            </p>
 
-          {versionHistories[index].length > 1 ? (
-            <details style={{ marginTop: "0.5rem" }}>
-              <summary style={{ fontSize: "0.85rem", cursor: "pointer" }}>Histórico de versões</summary>
-              <ul style={{ paddingLeft: "1.1rem", marginTop: "0.4rem", fontSize: "0.8rem" }}>
-                {versionHistories[index].map((v) => (
-                  <li key={v.id}>
-                    v{v.version} — {formatDateTimeBR(v.createdAt)}
-                    {v.id === template.id ? " (atual)" : ""}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
+            {versionHistories[index].length > 1 ? (
+              <details style={{ marginTop: "10px" }}>
+                <summary style={{ fontSize: "12.5px", cursor: "pointer", color: "var(--inc-brand-azul)" }}>
+                  Histórico de versões
+                </summary>
+                <ul style={{ paddingLeft: "18px", marginTop: "6px", fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
+                  {versionHistories[index].map((v) => (
+                    <li key={v.id}>
+                      v{v.version} — {formatDateTimeBR(v.createdAt)}
+                      {v.id === template.id ? " (atual)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
 
-          {canEdit ? (
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-              <ToggleDocumentTemplateStatusButton templateGroupId={template.templateGroupId} status={template.status} />
-            </div>
-          ) : null}
+            {canEdit ? (
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                <ToggleDocumentTemplateStatusButton templateGroupId={template.templateGroupId} status={template.status} />
+              </div>
+            ) : null}
 
-          {canEdit ? (
-            <div style={{ marginTop: "0.5rem" }}>
-              <EditDocumentTemplateForm
-                templateGroupId={template.templateGroupId}
-                type={template.type}
-                currentName={template.name}
-                currentContent={template.content}
-                currentDevelopmentIds={template.developments.map((d) => d.developmentId)}
-                developments={developmentOptions}
-              />
-            </div>
-          ) : null}
+            {canEdit ? (
+              <div style={{ marginTop: "8px" }}>
+                <EditDocumentTemplateForm
+                  templateGroupId={template.templateGroupId}
+                  type={template.type}
+                  currentName={template.name}
+                  currentContent={template.content}
+                  currentDevelopmentIds={template.developments.map((d) => d.developmentId)}
+                  developments={developmentOptions}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
-      {templates.length === 0 ? <p style={{ opacity: 0.7, marginTop: "1rem" }}>Nenhum modelo cadastrado.</p> : null}
+      {templates.length === 0 ? (
+        <p style={{ color: "var(--inc-text-soft)", marginTop: "16px" }}>Nenhum modelo cadastrado.</p>
+      ) : null}
 
       {canCreate ? <NewDocumentTemplateForm developments={developmentOptions} /> : null}
     </>
