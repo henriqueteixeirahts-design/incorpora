@@ -22,38 +22,46 @@ export function NewAssignmentForm({
   const [state, formAction, pending] = useActionState(createAssignmentAction, initialState);
 
   return (
-    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 420 }}>
+    <form action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)", maxWidth: 420 }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
 
-      <p className="field-hint">Titular atual (cedente): {currentCustomerName}</p>
+      <p className="inc-help">Titular atual (cedente): {currentCustomerName}</p>
 
-      <label htmlFor="cs-customer">Novo titular (cessionário)</label>
-      <select id="cs-customer" name="newCustomerId" required defaultValue="">
-        <option value="" disabled>
-          Selecione...
-        </option>
-        {customers.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
+      <label className="inc-field">
+        <span className="inc-label">Novo titular (cessionário)</span>
+        <select id="cs-customer" name="newCustomerId" required defaultValue="" className="inc-select">
+          <option value="" disabled>
+            Selecione...
           </option>
-        ))}
-      </select>
-      <p className="field-hint">Cliente não cadastrado? Cadastre em Clientes antes de continuar.</p>
+          {customers.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="inc-help">Cliente não cadastrado? Cadastre em Clientes antes de continuar.</p>
 
-      <label htmlFor="cs-date">Data da cessão</label>
-      <input id="cs-date" name="assignmentDate" type="date" required />
+      <label className="inc-field">
+        <span className="inc-label">Data da cessão</span>
+        <input id="cs-date" name="assignmentDate" type="date" required className="inc-input" />
+      </label>
 
-      <label htmlFor="cs-fee">Taxa de cessão (opcional — vira parcela nova na carteira)</label>
-      <input id="cs-fee" name="feeAmount" type="number" step="0.01" min="0" />
+      <label className="inc-field">
+        <span className="inc-label">Taxa de cessão (opcional — vira parcela nova na carteira)</span>
+        <input id="cs-fee" name="feeAmount" type="number" step="0.01" min="0" className="inc-input" />
+      </label>
 
-      <label htmlFor="cs-notes">Observações</label>
-      <textarea id="cs-notes" name="notes" rows={2} />
+      <label className="inc-field">
+        <span className="inc-label">Observações</span>
+        <textarea id="cs-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
+      </label>
 
-      {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Cessão criada como rascunho.</p> : null}
+      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
+      {state.success ? <p className="inc-help">Cessão criada como rascunho.</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary">
         {pending ? "Criando..." : "Ceder direitos"}
       </button>
     </form>
@@ -65,7 +73,9 @@ export function SignAssignmentButton({ saleId, assignmentId }: { saleId: string;
     <form action={signAssignmentAction}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="assignmentId" value={assignmentId} />
-      <button type="submit">Assinar cessão</button>
+      <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+        Assinar cessão
+      </button>
     </form>
   );
 }

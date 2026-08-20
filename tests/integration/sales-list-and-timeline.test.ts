@@ -239,6 +239,13 @@ describe("Linha do tempo da venda", () => {
 
     expect(timeline.find((e) => e.eventType === "reservation.created")?.label).toBe("Reserva criada");
     expect(timeline.find((e) => e.eventType === "contract.signed")?.label).toBe("Contrato assinado");
+
+    // docs/RELATORIO_TESTDRIVE.md, achado 20 — cada evento deve mostrar quem
+    // executou a ação, não só a data. Todo evento nesta cadeia foi disparado
+    // pelo mesmo `context.userId` (não há troca de usuário no meio do fluxo).
+    for (const event of timeline) {
+      expect(event.actorName).toBe("Usuário Vendas Lista");
+    }
   });
 
   it("venda sem reserva prévia (fora da tabela) não mostra evento de reserva — não é bug, é o campo nulo", async () => {

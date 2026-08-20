@@ -69,13 +69,21 @@ export default async function PayablesPage({
 
   return (
     <>
-      <h1>Contas a pagar</h1>
-      {canApprove && pendingCount > 0 ? (
-        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-          {pendingCount} conta{pendingCount === 1 ? "" : "s"} pendente{pendingCount === 1 ? "" : "s"} de
-          aprovação/avanço no fluxo.
-        </p>
-      ) : null}
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Financeiro</div>
+          <h1 className="inc-h1">Contas a pagar</h1>
+        </div>
+        {canApprove && pendingCount > 0 ? (
+          <div className="inc-page-head__actions">
+            <span className="inc-pill inc-pill--warn">
+              <span className="inc-pill__dot" />
+              {pendingCount} conta{pendingCount === 1 ? "" : "s"} pendente{pendingCount === 1 ? "" : "s"} de
+              aprovação/avanço no fluxo
+            </span>
+          </div>
+        ) : null}
+      </div>
 
       <PayablesManager
         payables={items.map((p) => ({

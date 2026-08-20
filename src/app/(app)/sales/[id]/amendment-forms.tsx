@@ -29,40 +29,50 @@ export function NewAmendmentForm({
   const [type, setType] = useState("FLOW_RENEGOTIATION");
 
   return (
-    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 420 }}>
+    <form action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)", maxWidth: 420 }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
 
-      <label htmlFor="am-type">Tipo</label>
-      <select id="am-type" name="type" value={type} onChange={(e) => setType(e.target.value)}>
-        {Object.entries(AMENDMENT_TYPE_LABELS).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
+      <label className="inc-field">
+        <span className="inc-label">Tipo</span>
+        <select id="am-type" name="type" className="inc-select" value={type} onChange={(e) => setType(e.target.value)}>
+          {Object.entries(AMENDMENT_TYPE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {type === "FLOW_RENEGOTIATION" ? (
         <>
-          <p className="field-hint">
+          <p className="inc-help">
             Saldo ainda não recebido (o que será redistribuído): {formatCurrency(remainingBalance)}
           </p>
-          <label htmlFor="am-down">Entrada do novo fluxo (%)</label>
-          <input id="am-down" name="downPaymentPercent" type="number" step="0.01" defaultValue={0} />
-          <label htmlFor="am-installments">Parcelas mensais</label>
-          <input id="am-installments" name="monthlyInstallments" type="number" required />
-          <label htmlFor="am-keys">Chaves (%)</label>
-          <input id="am-keys" name="keysInstallmentPercent" type="number" step="0.01" defaultValue={0} />
+          <label className="inc-field">
+            <span className="inc-label">Entrada do novo fluxo (%)</span>
+            <input id="am-down" name="downPaymentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Parcelas mensais</span>
+            <input id="am-installments" name="monthlyInstallments" type="number" required className="inc-input" />
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Chaves (%)</span>
+            <input id="am-keys" name="keysInstallmentPercent" type="number" step="0.01" defaultValue={0} className="inc-input" />
+          </label>
         </>
       ) : null}
 
-      <label htmlFor="am-notes">Observações</label>
-      <textarea id="am-notes" name="notes" rows={2} />
+      <label className="inc-field">
+        <span className="inc-label">Observações</span>
+        <textarea id="am-notes" name="notes" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
+      </label>
 
-      {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Aditivo criado como rascunho.</p> : null}
+      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
+      {state.success ? <p className="inc-help">Aditivo criado como rascunho.</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary">
         {pending ? "Criando..." : "Criar aditivo"}
       </button>
     </form>
@@ -74,7 +84,9 @@ export function SignAmendmentButton({ saleId, amendmentId }: { saleId: string; a
     <form action={signAmendmentAction}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="amendmentId" value={amendmentId} />
-      <button type="submit">Assinar aditivo</button>
+      <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+        Assinar aditivo
+      </button>
     </form>
   );
 }

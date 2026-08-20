@@ -20,6 +20,14 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelada",
 };
 
+const COMMISSION_STATUS_CHIP: Record<string, string> = {
+  PENDING: "reserva",
+  RELEASED: "proposta",
+  INVOICED: "proposta",
+  PAID: "contrato",
+  CANCELLED: "atraso",
+};
+
 const formatCurrency = formatCurrencyBRL;
 
 export default async function CommissionsPage({
@@ -54,14 +62,23 @@ export default async function CommissionsPage({
 
   return (
     <>
-      <h1>Extrato de comissões</h1>
-      <p style={{ opacity: 0.7, maxWidth: 680 }}>
-        Consolidado por corretor/imobiliária — o demonstrativo que se envia ao parceiro
-        (docs/ESPEC_FASE_A_CONTRATOS_VENDAS.md, Parte 4.2).
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Comercial</div>
+          <h1 className="inc-h1">Extrato de comissões</h1>
+          <p className="inc-lede">
+            Consolidado por corretor/imobiliária — o demonstrativo que se envia ao parceiro
+            (docs/ESPEC_FASE_A_CONTRATOS_VENDAS.md, Parte 4.2).
+          </p>
+        </div>
+      </div>
 
-      <form className="list-toolbar" action="/commissions" method="get" style={{ flexWrap: "wrap", gap: "0.5rem", marginTop: "1rem" }}>
-        <select name="brokerId" defaultValue={brokerId}>
+      <form
+        action="/commissions"
+        method="get"
+        style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}
+      >
+        <select name="brokerId" className="inc-select" defaultValue={brokerId}>
           <option value="">Corretor — todos</option>
           {brokers.map((b) => (
             <option key={b.id} value={b.id}>
@@ -69,7 +86,7 @@ export default async function CommissionsPage({
             </option>
           ))}
         </select>
-        <select name="agencyId" defaultValue={agencyId}>
+        <select name="agencyId" className="inc-select" defaultValue={agencyId}>
           <option value="">Imobiliária — todas</option>
           {agencies.map((a) => (
             <option key={a.id} value={a.id}>
@@ -77,75 +94,83 @@ export default async function CommissionsPage({
             </option>
           ))}
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--inc-text-soft)" }}>
           De
-          <input type="date" name="dateFrom" defaultValue={dateFrom} />
+          <input type="date" name="dateFrom" className="inc-input" defaultValue={dateFrom} />
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--inc-text-soft)" }}>
           Até
-          <input type="date" name="dateTo" defaultValue={dateTo} />
+          <input type="date" name="dateTo" className="inc-input" defaultValue={dateTo} />
         </label>
-        <button type="submit" className="secondary">
+        <button type="submit" className="inc-btn inc-btn--secondary">
           Filtrar
         </button>
-        <a href={`/api/commissions/export?${exportQs.toString()}`} className="secondary" style={{ marginLeft: "auto" }}>
+        <a href={`/api/commissions/export?${exportQs.toString()}`} className="inc-btn inc-btn--secondary" style={{ marginLeft: "auto" }}>
           Exportar (CSV)
         </a>
       </form>
 
-      <div className="field-grid" style={{ marginTop: "1.5rem", maxWidth: 600 }}>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>A liberar</p>
-          <p>{formatCurrency(totals.pending)}</p>
+      <div className="inc-grid-4" style={{ gridTemplateColumns: "repeat(3, 1fr)", maxWidth: 700 }}>
+        <div className="inc-kpi">
+          <div className="inc-kpi__label">A liberar</div>
+          <div className="inc-kpi__value">{formatCurrency(totals.pending)}</div>
         </div>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Liberadas</p>
-          <p>{formatCurrency(totals.released)}</p>
+        <div className="inc-kpi inc-kpi--sky">
+          <div className="inc-kpi__label">Liberadas</div>
+          <div className="inc-kpi__value">{formatCurrency(totals.released)}</div>
         </div>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Pagas</p>
-          <p>{formatCurrency(totals.paid)}</p>
+        <div className="inc-kpi inc-kpi--gold">
+          <div className="inc-kpi__label">Pagas</div>
+          <div className="inc-kpi__value">{formatCurrency(totals.paid)}</div>
         </div>
       </div>
 
-      <table className="data-table" style={{ marginTop: "1.5rem" }}>
-        <thead>
-          <tr>
-            <th>Venda</th>
-            <th>Empreendimento</th>
-            <th>Cliente</th>
-            <th>Beneficiário</th>
-            <th>%</th>
-            <th>Valor</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {splits.length === 0 ? (
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
             <tr>
-              <td colSpan={7} style={{ opacity: 0.7 }}>
-                Nenhuma comissão encontrada.
-              </td>
+              <th>Venda</th>
+              <th>Empreendimento</th>
+              <th>Cliente</th>
+              <th>Beneficiário</th>
+              <th>%</th>
+              <th>Valor</th>
+              <th>Status</th>
             </tr>
-          ) : null}
-          {splits.map((split) => (
-            <tr key={split.id}>
-              <td>
-                <Link href={`/sales/${split.saleId}`}>{split.sale.saleNumber}</Link>
-              </td>
-              <td>{split.sale.development.name}</td>
-              <td>{split.sale.customer.name}</td>
-              <td>
-                {BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
-                {split.label ? ` (${split.label})` : ""}
-              </td>
-              <td>{Number(split.percent)}%</td>
-              <td>{formatCurrency(Number(split.value))}</td>
-              <td>{STATUS_LABELS[split.status] ?? split.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {splits.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="is-empty">
+                  Nenhuma comissão encontrada.
+                </td>
+              </tr>
+            ) : null}
+            {splits.map((split) => (
+              <tr key={split.id}>
+                <td className="is-key">
+                  <Link href={`/sales/${split.saleId}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {split.sale.saleNumber}
+                  </Link>
+                </td>
+                <td>{split.sale.development.name}</td>
+                <td>{split.sale.customer.name}</td>
+                <td className="is-muted">
+                  {BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
+                  {split.label ? ` (${split.label})` : ""}
+                </td>
+                <td className="is-num">{Number(split.percent)}%</td>
+                <td className="is-num">{formatCurrency(Number(split.value))}</td>
+                <td>
+                  <span className={`inc-chip inc-chip--${COMMISSION_STATUS_CHIP[split.status] ?? "permuta"}`}>
+                    {STATUS_LABELS[split.status] ?? split.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

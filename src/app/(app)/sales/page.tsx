@@ -53,7 +53,12 @@ export default async function SalesPage({
 
   return (
     <>
-      <h1>Vendas</h1>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Comercial</div>
+          <h1 className="inc-h1">Vendas</h1>
+        </div>
+      </div>
 
       <SalesManager
         sales={items.map((sale) => ({

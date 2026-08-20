@@ -34,13 +34,14 @@ export function CashFlowFiltersForm({
   }
 
   return (
-    <div style={{ marginTop: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-      <div style={{ display: "flex", gap: "0.25rem" }}>
+    <div style={{ marginTop: "16px", display: "flex", gap: "20px", flexWrap: "wrap", alignItems: "flex-end" }}>
+      <div className="inc-segmented">
         {GRANULARITY_OPTIONS.map((option) => (
           <button
             key={option.value}
             type="button"
-            className={granularity === option.value ? "" : "secondary"}
+            className="inc-segmented__item"
+            aria-pressed={granularity === option.value}
             onClick={() => {
               setGranularity(option.value);
               apply(developmentId, speId, option.value);
@@ -50,12 +51,11 @@ export function CashFlowFiltersForm({
           </button>
         ))}
       </div>
-      <div>
-        <label htmlFor="cf-spe" style={{ display: "block", fontSize: "0.8rem" }}>
-          SPE
-        </label>
+      <label className="inc-field">
+        <span className="inc-label">SPE</span>
         <select
           id="cf-spe"
+          className="inc-select"
           value={speId}
           onChange={(e) => {
             const value = e.target.value;
@@ -71,13 +71,12 @@ export function CashFlowFiltersForm({
             </option>
           ))}
         </select>
-      </div>
-      <div>
-        <label htmlFor="cf-development" style={{ display: "block", fontSize: "0.8rem" }}>
-          Empreendimento
-        </label>
+      </label>
+      <label className="inc-field">
+        <span className="inc-label">Empreendimento</span>
         <select
           id="cf-development"
+          className="inc-select"
           value={developmentId}
           onChange={(e) => {
             const value = e.target.value;
@@ -93,7 +92,7 @@ export function CashFlowFiltersForm({
             </option>
           ))}
         </select>
-      </div>
+      </label>
     </div>
   );
 }

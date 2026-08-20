@@ -33,13 +33,14 @@ export function AgingFiltersForm({
   return (
     <form
       onSubmit={apply}
-      style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end", marginTop: "1rem" }}
+      className="inc-card"
+      style={{ display: "flex", gap: "14px", flexWrap: "wrap", alignItems: "flex-end", marginTop: "16px", padding: "14px var(--inc-gutter-card)" }}
     >
-      <div>
-        <label htmlFor="aging-development" style={{ display: "block", fontSize: "0.8rem" }}>
+      <div className="inc-field">
+        <label className="inc-label" htmlFor="aging-development">
           Empreendimento
         </label>
-        <select id="aging-development" value={developmentId} onChange={(e) => setDevelopmentId(e.target.value)}>
+        <select id="aging-development" className="inc-select" value={developmentId} onChange={(e) => setDevelopmentId(e.target.value)}>
           <option value="">Todos</option>
           {developments.map((d) => (
             <option key={d.id} value={d.id}>
@@ -48,11 +49,11 @@ export function AgingFiltersForm({
           ))}
         </select>
       </div>
-      <div>
-        <label htmlFor="aging-spe" style={{ display: "block", fontSize: "0.8rem" }}>
+      <div className="inc-field">
+        <label className="inc-label" htmlFor="aging-spe">
           SPE
         </label>
-        <select id="aging-spe" value={speId} onChange={(e) => setSpeId(e.target.value)}>
+        <select id="aging-spe" className="inc-select" value={speId} onChange={(e) => setSpeId(e.target.value)}>
           <option value="">Todas</option>
           {spes.map((s) => (
             <option key={s.id} value={s.id}>
@@ -61,19 +62,37 @@ export function AgingFiltersForm({
           ))}
         </select>
       </div>
-      <div>
-        <label htmlFor="aging-min" style={{ display: "block", fontSize: "0.8rem" }}>
+      <div className="inc-field">
+        <label className="inc-label" htmlFor="aging-min">
           Valor mínimo
         </label>
-        <input id="aging-min" type="number" step="0.01" value={minValue} onChange={(e) => setMinValue(e.target.value)} style={{ width: 110 }} />
+        <input
+          id="aging-min"
+          type="number"
+          step="0.01"
+          className="inc-input"
+          value={minValue}
+          onChange={(e) => setMinValue(e.target.value)}
+          style={{ width: 110 }}
+        />
       </div>
-      <div>
-        <label htmlFor="aging-max" style={{ display: "block", fontSize: "0.8rem" }}>
+      <div className="inc-field">
+        <label className="inc-label" htmlFor="aging-max">
           Valor máximo
         </label>
-        <input id="aging-max" type="number" step="0.01" value={maxValue} onChange={(e) => setMaxValue(e.target.value)} style={{ width: 110 }} />
+        <input
+          id="aging-max"
+          type="number"
+          step="0.01"
+          className="inc-input"
+          value={maxValue}
+          onChange={(e) => setMaxValue(e.target.value)}
+          style={{ width: 110 }}
+        />
       </div>
-      <button type="submit">Filtrar</button>
+      <button type="submit" className="inc-btn inc-btn--secondary">
+        Filtrar
+      </button>
     </form>
   );
 }

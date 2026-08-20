@@ -100,11 +100,17 @@ export default async function CustomerStatementPage({
 
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href="/customers">← Clientes</Link>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            <Link href="/customers">← Clientes</Link>
+          </div>
+          <h1 className="inc-h1">Extrato — {position.customerName}</h1>
+        </div>
+      </div>
+      <p style={{ marginTop: "-4px", fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>
+        {position.customerDocument}
       </p>
-      <h1>Extrato — {position.customerName}</h1>
-      <p style={{ opacity: 0.7 }}>{position.customerDocument}</p>
 
       <StatementView
         position={position}

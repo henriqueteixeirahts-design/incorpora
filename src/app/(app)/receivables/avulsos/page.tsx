@@ -52,11 +52,16 @@ export default async function ReceivablesAvulsosPage({
 
   return (
     <>
-      <h1>Recebíveis avulsos</h1>
-      <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-        Entradas que não nascem de venda — taxa de cessão, aluguel de espaço, reembolso, rendimento. Separado da
-        carteira de vendas: nunca acumula correção por índice/juros contratuais.
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Financeiro</div>
+          <h1 className="inc-h1">Recebíveis avulsos</h1>
+          <p className="inc-lede">
+            Entradas que não nascem de venda — taxa de cessão, aluguel de espaço, reembolso, rendimento. Separado da
+            carteira de vendas: nunca acumula correção por índice/juros contratuais.
+          </p>
+        </div>
+      </div>
 
       <ReceivablesManager
         receivables={items.map((r) => ({

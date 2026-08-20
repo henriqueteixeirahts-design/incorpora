@@ -43,6 +43,7 @@ export type TimelineEvent = {
   occurredAt: Date;
   entityType: string | null;
   payload: unknown;
+  actorName: string | null;
 };
 
 export async function listSaleTimeline(
@@ -63,6 +64,7 @@ export async function listSaleTimeline(
   const events = await prisma.developmentEvent.findMany({
     where: { organizationId, entityId: { in: entityIds } },
     orderBy: { occurredAt: "asc" },
+    include: { actor: true },
   });
 
   return events.map((event) => ({
@@ -72,5 +74,6 @@ export async function listSaleTimeline(
     occurredAt: event.occurredAt,
     entityType: event.entityType,
     payload: event.payload,
+    actorName: event.actor?.fullName ?? null,
   }));
 }

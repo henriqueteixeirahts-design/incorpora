@@ -64,6 +64,13 @@ const CONTRACT_STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelado",
 };
 
+const CONTRACT_STATUS_CHIP: Record<string, string> = {
+  DRAFT: "proposta",
+  AWAITING_SIGNATURE: "reserva",
+  SIGNED: "contrato",
+  CANCELLED: "atraso",
+};
+
 const WALLET_STATUS_LABELS: Record<string, string> = {
   EM_DIA: "Em dia",
   INADIMPLENTE: "Inadimplente",
@@ -147,16 +154,22 @@ export function SalesManager({
 
   return (
     <>
-      <form className="list-toolbar" action="/sales" method="get" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+      <form
+        action="/sales"
+        method="get"
+        style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}
+      >
         <input type="hidden" name="sort" value={sortBy} />
         <input type="hidden" name="dir" value={sortDir} />
-        <input
-          type="search"
-          name="q"
-          placeholder="Buscar por nº, empreendimento, unidade ou cliente"
-          defaultValue={search}
-        />
-        <select name="contractStatus" defaultValue={contractStatus}>
+        <div className="inc-search" style={{ width: 300 }}>
+          <input
+            type="search"
+            name="q"
+            placeholder="Buscar por nº, empreendimento, unidade ou cliente"
+            defaultValue={search}
+          />
+        </div>
+        <select name="contractStatus" className="inc-select" defaultValue={contractStatus}>
           <option value="">Status do contrato — todos</option>
           <option value="NONE">Sem contrato</option>
           {Object.entries(CONTRACT_STATUS_LABELS).map(([value, label]) => (
@@ -165,12 +178,12 @@ export function SalesManager({
             </option>
           ))}
         </select>
-        <select name="walletStatus" defaultValue={walletStatus}>
+        <select name="walletStatus" className="inc-select" defaultValue={walletStatus}>
           <option value="">Carteira — todas</option>
           <option value="EM_DIA">Em dia</option>
           <option value="INADIMPLENTE">Inadimplente</option>
         </select>
-        <select name="brokerId" defaultValue={brokerId}>
+        <select name="brokerId" className="inc-select" defaultValue={brokerId}>
           <option value="">Corretor — todos</option>
           {brokers.map((b) => (
             <option key={b.id} value={b.id}>
@@ -178,7 +191,7 @@ export function SalesManager({
             </option>
           ))}
         </select>
-        <select name="agencyId" defaultValue={agencyId}>
+        <select name="agencyId" className="inc-select" defaultValue={agencyId}>
           <option value="">Imobiliária — todas</option>
           {agencies.map((a) => (
             <option key={a.id} value={a.id}>
@@ -186,93 +199,118 @@ export function SalesManager({
             </option>
           ))}
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--inc-text-soft)" }}>
           De
-          <input type="date" name="dateFrom" defaultValue={dateFrom} />
+          <input type="date" name="dateFrom" className="inc-input" defaultValue={dateFrom} />
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--inc-text-soft)" }}>
           Até
-          <input type="date" name="dateTo" defaultValue={dateTo} />
+          <input type="date" name="dateTo" className="inc-input" defaultValue={dateTo} />
         </label>
-        <button type="submit" className="secondary">
+        <button type="submit" className="inc-btn inc-btn--secondary">
           Filtrar
         </button>
-        <a href={exportHref} className="secondary" style={{ marginLeft: "auto" }}>
+        <a href={exportHref} className="inc-btn inc-btn--secondary" style={{ marginLeft: "auto" }}>
           Exportar (CSV)
         </a>
       </form>
 
-      <p style={{ fontSize: "0.85rem", opacity: 0.75, marginTop: "0.5rem" }}>
+      <p style={{ fontSize: "12.5px", color: "var(--inc-text-soft)", marginBottom: "10px" }}>
         {total} venda{total === 1 ? "" : "s"}
       </p>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Nº</th>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              <th>Nº</th>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link
+                    href={sortLink(col.field)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                  >
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
+                  </Link>
+                </th>
+              ))}
+              <th>Unidade</th>
+              <th>Status do contrato</th>
+              <th>Carteira</th>
+              <th>Corretor/imobiliária</th>
+              <th>Comissões</th>
+              <th aria-label="Ações" />
+            </tr>
+          </thead>
+          <tbody>
+            {sales.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="is-empty">
+                  {search ? "Nenhuma venda encontrada." : "Nenhuma venda registrada."}
+                </td>
+              </tr>
+            ) : null}
+            {sales.map((sale) => (
+              <tr key={sale.id}>
+                <td className="is-key">{sale.saleNumber}</td>
+                <td>{formatDateBR(sale.saleDate)}</td>
+                <td>{sale.developmentName}</td>
+                <td>{sale.customerName}</td>
+                <td className="is-num">{formatCurrency(sale.salePrice)}</td>
+                <td className="is-muted">{sale.unitNumber}</td>
+                <td>
+                  {sale.contractStatus ? (
+                    <span className={`inc-chip inc-chip--${CONTRACT_STATUS_CHIP[sale.contractStatus] ?? "permuta"}`}>
+                      {CONTRACT_STATUS_LABELS[sale.contractStatus] ?? sale.contractStatus}
+                    </span>
+                  ) : (
+                    <span className="is-empty">Sem contrato</span>
+                  )}
+                </td>
+                <td>
+                  {sale.walletStatus ? (
+                    <span className={`inc-chip inc-chip--${sale.walletStatus === "INADIMPLENTE" ? "atraso" : "contrato"}`}>
+                      {WALLET_STATUS_LABELS[sale.walletStatus]}
+                    </span>
+                  ) : (
+                    <span className="is-empty">—</span>
+                  )}
+                </td>
+                <td className="is-muted">{sale.brokerName ?? sale.agencyName ?? "—"}</td>
+                <td className="is-muted">{sale.commissionSplits.length > 0 ? `${sale.commissionSplits.length} lançada(s)` : "—"}</td>
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-end" }}>
+                    <Link href={`/sales/${sale.id}`} style={{ color: "var(--inc-brand-azul)", fontWeight: 500 }}>
+                      Ver venda
+                    </Link>
+                    {canEditCommission ? (
+                      <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setCommissionSale(sale)}>
+                        Comissão
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
             ))}
-            <th>Unidade</th>
-            <th>Status do contrato</th>
-            <th>Carteira</th>
-            <th>Corretor/imobiliária</th>
-            <th>Comissões</th>
-            <th aria-label="Ações" />
-          </tr>
-        </thead>
-        <tbody>
-          {sales.length === 0 ? (
-            <tr>
-              <td colSpan={10} style={{ opacity: 0.7 }}>
-                {search ? "Nenhuma venda encontrada." : "Nenhuma venda registrada."}
-              </td>
-            </tr>
-          ) : null}
-          {sales.map((sale) => (
-            <tr key={sale.id}>
-              <td>{sale.saleNumber}</td>
-              <td>{formatDateBR(sale.saleDate)}</td>
-              <td>{sale.developmentName}</td>
-              <td>{sale.customerName}</td>
-              <td>{formatCurrency(sale.salePrice)}</td>
-              <td>{sale.unitNumber}</td>
-              <td>{sale.contractStatus ? (CONTRACT_STATUS_LABELS[sale.contractStatus] ?? sale.contractStatus) : "Sem contrato"}</td>
-              <td>{sale.walletStatus ? WALLET_STATUS_LABELS[sale.walletStatus] : "—"}</td>
-              <td>{sale.brokerName ?? sale.agencyName ?? "—"}</td>
-              <td>{sale.commissionSplits.length > 0 ? `${sale.commissionSplits.length} lançada(s)` : "—"}</td>
-              <td>
-                <div className="row-actions">
-                  <Link href={`/sales/${sale.id}`}>Ver venda</Link>
-                  {canEditCommission ? (
-                    <button type="button" className="secondary" onClick={() => setCommissionSale(sale)}>
-                      Comissão
-                    </button>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {commissionSale ? (
@@ -328,47 +366,49 @@ function CommissionModal({
       title={`Comissão — ${sale.developmentName} · ${sale.unitNumber}`}
       width={620}
       footer={
-        <button type="button" className="secondary" onClick={onClose}>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
           Fechar
         </button>
       }
     >
       {splits.length === 0 ? (
-        <p className="field-hint">Nenhuma comissão lançada.</p>
+        <p className="inc-help">Nenhuma comissão lançada.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
-          <thead>
-            <tr>
-              <th>Beneficiário</th>
-              <th>%</th>
-              <th>Valor</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {splits.map((split) => (
-              <tr key={split.id}>
-                <td>
-                  {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType]}
-                  {split.label ? ` (${split.label})` : ""}
-                </td>
-                <td>{split.percent}%</td>
-                <td>{formatCurrency(split.value)}</td>
-                <td>{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
+        <div className="inc-card" style={{ marginBottom: "18px" }}>
+          <table className="inc-table" style={{ border: 0 }}>
+            <thead>
+              <tr>
+                <th>Beneficiário</th>
+                <th>%</th>
+                <th>Valor</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {splits.map((split) => (
+                <tr key={split.id}>
+                  <td>
+                    {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType]}
+                    {split.label ? ` (${split.label})` : ""}
+                  </td>
+                  <td className="is-num">{split.percent}%</td>
+                  <td className="is-num">{formatCurrency(split.value)}</td>
+                  <td className="is-muted">{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <div className="field-section">
-        <h3>Lançar comissão</h3>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Lançar comissão</div>
         <form action={dispatch}>
           <input type="hidden" name="saleId" value={sale.id} />
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="beneficiaryType">Beneficiário *</label>
-              <select id="beneficiaryType" name="beneficiaryType" required defaultValue="">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+            <label className="inc-field">
+              <span className="inc-label">Beneficiário *</span>
+              <select id="beneficiaryType" name="beneficiaryType" className="inc-select" required defaultValue="">
                 <option value="" disabled>
                   Selecione...
                 </option>
@@ -378,10 +418,10 @@ function CommissionModal({
                 <option value="MANAGER">Gerente</option>
                 <option value="CAMPAIGN">Campanha</option>
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="brokerId">Corretor</label>
-              <select id="brokerId" name="brokerId" defaultValue="">
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Corretor</span>
+              <select id="brokerId" name="brokerId" className="inc-select" defaultValue="">
                 <option value="">—</option>
                 {brokers.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -389,10 +429,10 @@ function CommissionModal({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="agencyId">Imobiliária</label>
-              <select id="agencyId" name="agencyId" defaultValue="">
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Imobiliária</span>
+              <select id="agencyId" name="agencyId" className="inc-select" defaultValue="">
                 <option value="">—</option>
                 {agencies.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -400,18 +440,18 @@ function CommissionModal({
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="label">Nome (coordenador/campanha)</label>
-              <input id="label" name="label" />
-            </div>
-            <div className="field">
-              <label htmlFor="percent">Percentual (%) *</label>
-              <input id="percent" name="percent" type="number" step="0.01" required />
-            </div>
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Nome (coordenador/campanha)</span>
+              <input id="label" name="label" className="inc-input" />
+            </label>
+            <label className="inc-field">
+              <span className="inc-label">Percentual (%) *</span>
+              <input id="percent" name="percent" type="number" step="0.01" className="inc-input" required />
+            </label>
           </div>
-          {state.error ? <p className="error-text">{state.error}</p> : null}
-          <button type="submit" disabled={pending} style={{ marginTop: "0.75rem" }}>
+          {state.error ? <p className="inc-help inc-help--error" style={{ marginTop: "10px" }}>{state.error}</p> : null}
+          <button type="submit" className="inc-btn inc-btn--primary" disabled={pending} style={{ marginTop: "14px" }}>
             {pending ? "Salvando..." : "Lançar comissão"}
           </button>
         </form>

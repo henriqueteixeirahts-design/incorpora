@@ -76,11 +76,11 @@ export function ReceivableModal({
       width={620}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
           {!isLocked ? (
-            <button type="button" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+            <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
               {pending ? "Salvando..." : "Salvar"}
             </button>
           ) : null}
@@ -88,13 +88,13 @@ export function ReceivableModal({
       }
     >
       {isLocked ? (
-        <p className="field-hint">
+        <p className="inc-help">
           Este recebível já foi {STATUS_LABELS[receivable!.status]?.toLowerCase()} — os dados não podem mais ser
           editados.
         </p>
       ) : null}
       {isFromAssignment ? (
-        <p className="field-hint">
+        <p className="inc-help">
           Gerado automaticamente pela assinatura de uma cessão de direitos — não editável manualmente.
         </p>
       ) : null}
@@ -103,7 +103,7 @@ export function ReceivableModal({
         <ReceiptForm receivable={receivable!} onUpdated={onCreated} />
       ) : null}
       {isEditing && receivable!.status === "RECEIVED" ? (
-        <p className="field-hint">
+        <p className="inc-help">
           Recebido em {formatCalendarDateBR(receivable!.receivedAt!)} —{" "}
           {formatCurrencyBRL(Number(receivable!.receivedAmount))}
         </p>
@@ -115,22 +115,23 @@ export function ReceivableModal({
         ) : null}
 
         <fieldset disabled={isLocked || isFromAssignment} style={{ border: "none", padding: 0, margin: 0 }}>
-          <div className="field-section">
-            <h3>Identificação</h3>
-            <div className="field-grid">
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="origin">Origem *</label>
+          <div style={{ marginBottom: "18px" }}>
+            <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+              <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+                <span className="inc-label">Origem *</span>
                 <input
                   id="origin"
                   name="origin"
+                  className="inc-input"
                   required
                   placeholder='Ex.: "Aluguel do espaço comum — julho/2026"'
                   defaultValue={receivable?.origin ?? ""}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="category">Categoria *</label>
-                <select id="category" name="category" required defaultValue={receivable?.category ?? ""}>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Categoria *</span>
+                <select id="category" name="category" className="inc-select" required defaultValue={receivable?.category ?? ""}>
                   <option value="" disabled>
                     Selecione...
                   </option>
@@ -140,10 +141,10 @@ export function ReceivableModal({
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="customerId">Cliente/pagador</label>
-                <select id="customerId" name="customerId" defaultValue={receivable?.customerId ?? ""}>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Cliente/pagador</span>
+                <select id="customerId" name="customerId" className="inc-select" defaultValue={receivable?.customerId ?? ""}>
                   <option value="">—</option>
                   {customers.map((option) => (
                     <option key={option.id} value={option.id}>
@@ -151,10 +152,10 @@ export function ReceivableModal({
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="developmentId">Empreendimento</label>
-                <select id="developmentId" name="developmentId" defaultValue={receivable?.developmentId ?? ""}>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Empreendimento</span>
+                <select id="developmentId" name="developmentId" className="inc-select" defaultValue={receivable?.developmentId ?? ""}>
                   <option value="">Organização (nenhum específico)</option>
                   {developments.map((option) => (
                     <option key={option.id} value={option.id}>
@@ -162,10 +163,10 @@ export function ReceivableModal({
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="speId">SPE</label>
-                <select id="speId" name="speId" defaultValue={receivable?.speId ?? ""}>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">SPE</span>
+                <select id="speId" name="speId" className="inc-select" defaultValue={receivable?.speId ?? ""}>
                   <option value="">—</option>
                   {spes.map((option) => (
                     <option key={option.id} value={option.id}>
@@ -173,46 +174,55 @@ export function ReceivableModal({
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
             </div>
           </div>
 
-          <div className="field-section">
-            <h3>Valores e datas</h3>
-            <div className="field-grid">
-              <div className="field">
-                <label htmlFor="dueDate">Vencimento *</label>
+          <div style={{ marginBottom: "18px" }}>
+            <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Valores e datas</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+              <label className="inc-field">
+                <span className="inc-label">Vencimento *</span>
                 <input
                   id="dueDate"
                   name="dueDate"
                   type="date"
+                  className="inc-input"
                   required
                   defaultValue={receivable ? toDateInputValue(receivable.dueDate) : ""}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="amount">Valor (R$) *</label>
+              </label>
+              <label className="inc-field">
+                <span className="inc-label">Valor (R$) *</span>
                 <input
                   id="amount"
                   name="amount"
                   type="number"
                   step="0.01"
+                  className="inc-input"
                   required
                   defaultValue={receivable ? Number(receivable.amount) : ""}
                 />
-              </div>
+              </label>
             </div>
           </div>
 
-          <div className="field-section">
-            <h3>Observações</h3>
-            <div className="field">
-              <textarea id="notes" name="notes" rows={3} defaultValue={receivable?.notes ?? ""} />
-            </div>
+          <div>
+            <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Observações</div>
+            <label className="inc-field">
+              <textarea
+                id="notes"
+                name="notes"
+                className="inc-input"
+                rows={3}
+                style={{ height: "auto", padding: "var(--inc-space-6)" }}
+                defaultValue={receivable?.notes ?? ""}
+              />
+            </label>
           </div>
         </fieldset>
 
-        {state.error ? <p className="error-text">{state.error}</p> : null}
+        {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>
   );
@@ -242,25 +252,26 @@ function ReceiptForm({
   }
 
   return (
-    <div className="field-section">
-      <h3>Registrar recebimento</h3>
-      <div className="field-grid">
-        <div className="field">
-          <label htmlFor="receivedAt">Data do recebimento</label>
-          <input id="receivedAt" type="date" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="receivedAmount">Valor recebido (R$)</label>
+    <div className="inc-card" style={{ padding: "14px", marginBottom: "16px" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Registrar recebimento</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">Data do recebimento</span>
+          <input id="receivedAt" type="date" className="inc-input" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Valor recebido (R$)</span>
           <input
             id="receivedAmount"
             type="number"
             step="0.01"
+            className="inc-input"
             value={receivedAmount}
             onChange={(e) => setReceivedAmount(e.target.value)}
           />
-        </div>
+        </label>
       </div>
-      <button type="button" className="secondary" disabled={busy} onClick={handleSubmit} style={{ marginTop: "0.5rem" }}>
+      <button type="button" className="inc-btn inc-btn--secondary" disabled={busy} onClick={handleSubmit} style={{ marginTop: "12px" }}>
         {busy ? "Registrando..." : "Registrar recebimento"}
       </button>
     </div>

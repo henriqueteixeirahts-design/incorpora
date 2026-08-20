@@ -20,6 +20,13 @@ const CONTRACT_STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelado",
 };
 
+const CONTRACT_STATUS_CHIP: Record<string, string> = {
+  DRAFT: "inc-chip--proposta",
+  AWAITING_SIGNATURE: "inc-chip--reserva",
+  SIGNED: "inc-chip--contrato",
+  CANCELLED: "inc-chip--atraso",
+};
+
 const INSTALLMENT_STATUS_LABELS: Record<string, string> = {
   PENDING: "A vencer",
   PARTIALLY_PAID: "Parcialmente paga",
@@ -38,7 +45,7 @@ const COMMISSION_BENEFICIARY_LABELS: Record<string, string> = {
 
 const formatCurrency = formatCurrencyBRL;
 
-export type TimelineEventRow = { id: string; label: string; occurredAtLabel: string };
+export type TimelineEventRow = { id: string; label: string; occurredAtLabel: string; actorName: string | null };
 
 export type PaymentFlowItemRow = { label: string; amount: number; dueOffsetMonths: number };
 
@@ -92,6 +99,11 @@ const AMENDMENT_TYPE_LABELS: Record<string, string> = {
 const AMENDMENT_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Rascunho",
   SIGNED: "Assinado",
+};
+
+const DRAFT_SIGNED_CHIP: Record<string, string> = {
+  DRAFT: "inc-chip--proposta",
+  SIGNED: "inc-chip--contrato",
 };
 
 export type AssignmentRow = {
@@ -251,105 +263,129 @@ export function SaleDetailTabs({
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       <div hidden={activeTab !== "resumo"} style={{ marginTop: "1.25rem" }}>
-        <div className="field-grid" style={{ marginBottom: "1.25rem" }}>
-          <div>
-            <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Valor da venda</p>
-            <p>{formatCurrency(saleTotal)}</p>
+        <div className="inc-grid-2" style={{ marginBottom: "var(--inc-space-10)", gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <div className="inc-kpi">
+            <p className="inc-kpi__label">Valor da venda</p>
+            <p className="inc-kpi__value" style={{ fontSize: "19px" }}>{formatCurrency(saleTotal)}</p>
           </div>
-          <div>
-            <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Status do contrato</p>
-            <p>{contract ? (CONTRACT_STATUS_LABELS[contract.status] ?? contract.status) : "Sem contrato"}</p>
+          <div className="inc-kpi inc-kpi--sky">
+            <p className="inc-kpi__label">Status do contrato</p>
+            <p className="inc-kpi__value" style={{ fontSize: "19px" }}>
+              {contract ? (CONTRACT_STATUS_LABELS[contract.status] ?? contract.status) : "Sem contrato"}
+            </p>
           </div>
-          <div>
-            <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Corretor/imobiliária</p>
-            <p>{proposalBrokerName ?? proposalAgencyName ?? "—"}</p>
+          <div className="inc-kpi inc-kpi--gold">
+            <p className="inc-kpi__label">Corretor/imobiliária</p>
+            <p className="inc-kpi__value" style={{ fontSize: "19px" }}>{proposalBrokerName ?? proposalAgencyName ?? "—"}</p>
           </div>
         </div>
 
-        <h3 style={{ fontSize: "1rem" }}>Linha do tempo</h3>
-        {timeline.length === 0 ? (
-          <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhum evento registrado ainda.</p>
-        ) : (
-          <ul style={{ marginTop: "0.5rem", paddingLeft: "1.1rem", fontSize: "0.85rem", lineHeight: 1.8 }}>
-            {timeline.map((event) => (
-              <li key={event.id}>
-                {event.label} — {event.occurredAtLabel}
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <span className="inc-card__title">Linha do tempo</span>
+          </div>
+          <div className="inc-card__body">
+            {timeline.length === 0 ? (
+              <p className="inc-help">Nenhum evento registrado ainda.</p>
+            ) : (
+              <ul style={{ paddingLeft: "1.1rem", fontSize: "var(--inc-fs-base)", lineHeight: 1.8 }}>
+                {timeline.map((event) => (
+                  <li key={event.id}>
+                    {event.label} — {event.occurredAtLabel}
+                    {event.actorName ? ` — por ${event.actorName}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
 
       <div hidden={activeTab !== "fluxo"} style={{ marginTop: "1.25rem" }}>
-        <h3 style={{ fontSize: "1rem" }}>Fluxo contratado</h3>
-        {paymentFlowItems.length > 0 ? (
-          <ul style={{ marginTop: "0.5rem", paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
-            {paymentFlowItems.map((item, index) => (
-              <li key={index}>
-                {item.label}: {formatCurrency(item.amount)} (mês {item.dueOffsetMonths})
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p style={{ opacity: 0.7, fontSize: "0.85rem" }}>Sem fluxo negociado registrado.</p>
-        )}
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <span className="inc-card__title">Fluxo contratado</span>
+          </div>
+          <div className="inc-card__body">
+            {paymentFlowItems.length > 0 ? (
+              <ul style={{ paddingLeft: "1.1rem", fontSize: "var(--inc-fs-base)" }}>
+                {paymentFlowItems.map((item, index) => (
+                  <li key={index}>
+                    {item.label}: {formatCurrency(item.amount)} (mês {item.dueOffsetMonths})
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="inc-help">Sem fluxo negociado registrado.</p>
+            )}
+          </div>
+        </div>
 
         {portfolioTotalValue !== null && portfolioId ? (
-          <div style={{ marginTop: "1.5rem" }}>
-            <h3 style={{ fontSize: "1rem" }}>Carteira / extrato</h3>
-            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Total nominal: {formatCurrency(portfolioTotalValue)}</p>
+          <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+            <div className="inc-card__head">
+              <span className="inc-card__title">Carteira / extrato</span>
+              <span className="inc-card__meta">Total nominal: {formatCurrency(portfolioTotalValue)}</span>
+            </div>
+            <div className="inc-card__body">
+              {indexFreshnessBanner}
 
-            {indexFreshnessBanner}
+              {canRecalculate ? (
+                <div style={{ marginTop: "var(--inc-space-6)" }}>
+                  <RecalculatePortfolioButton saleId={saleId} portfolioId={portfolioId} />
+                </div>
+              ) : null}
 
-            {canRecalculate ? (
-              <div style={{ marginTop: "0.5rem" }}>
-                <RecalculatePortfolioButton saleId={saleId} portfolioId={portfolioId} />
+              <div style={{ overflowX: "auto", marginTop: "var(--inc-space-8)" }}>
+                <table className="inc-table" style={{ maxWidth: 900 }}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Parcela</th>
+                      <th>Vencimento</th>
+                      <th>Original</th>
+                      <th>Corrigido</th>
+                      <th>Pago</th>
+                      <th>Status</th>
+                      {canRegisterPayment ? <th>Recebimento</th> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {installments.map((installment) => (
+                      <tr key={installment.id}>
+                        <td>{installment.sequence}</td>
+                        <td className="is-key">{installment.label}</td>
+                        <td>{installment.dueDateLabel}</td>
+                        <td className="is-num">{formatCurrency(installment.originalValue)}</td>
+                        <td className="is-num">
+                          {installment.correctedValue !== null ? formatCurrency(installment.correctedValue) : "—"}
+                        </td>
+                        <td className="is-num">{formatCurrency(installment.paidAmount)}</td>
+                        <td>{INSTALLMENT_STATUS_LABELS[installment.status] ?? installment.status}</td>
+                        {canRegisterPayment ? (
+                          <td>
+                            {installment.status !== "PAID" && installment.status !== "CANCELLED" ? (
+                              <RegisterPaymentForm saleId={saleId} installmentId={installment.id} />
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : null}
-
-            <table style={{ marginTop: "0.75rem", maxWidth: 900 }}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Parcela</th>
-                  <th>Vencimento</th>
-                  <th>Original</th>
-                  <th>Corrigido</th>
-                  <th>Pago</th>
-                  <th>Status</th>
-                  {canRegisterPayment ? <th>Recebimento</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {installments.map((installment) => (
-                  <tr key={installment.id}>
-                    <td>{installment.sequence}</td>
-                    <td>{installment.label}</td>
-                    <td>{installment.dueDateLabel}</td>
-                    <td>{formatCurrency(installment.originalValue)}</td>
-                    <td>{installment.correctedValue !== null ? formatCurrency(installment.correctedValue) : "—"}</td>
-                    <td>{formatCurrency(installment.paidAmount)}</td>
-                    <td>{INSTALLMENT_STATUS_LABELS[installment.status] ?? installment.status}</td>
-                    {canRegisterPayment ? (
-                      <td>
-                        {installment.status !== "PAID" && installment.status !== "CANCELLED" ? (
-                          <RegisterPaymentForm saleId={saleId} installmentId={installment.id} />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            </div>
           </div>
         ) : null}
 
         {openInstallments.length > 0 ? (
-          <div style={{ marginTop: "1.5rem" }}>
-            <h3 style={{ fontSize: "1rem" }}>Simular antecipação</h3>
-            <div style={{ marginTop: "0.75rem" }}>
+          <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+            <div className="inc-card__head">
+              <span className="inc-card__title">Simular antecipação</span>
+            </div>
+            <div className="inc-card__body">
               <AnticipationForm installments={openInstallments} />
             </div>
           </div>
@@ -359,231 +395,396 @@ export function SaleDetailTabs({
       <div hidden={activeTab !== "contrato"} style={{ marginTop: "1.25rem" }}>
         {!contract ? (
           canCreateContract ? (
-            <CreateContractForm saleId={saleId} />
+            <div className="inc-card">
+              <div className="inc-card__head">
+                <span className="inc-card__title">Gerar minuta</span>
+              </div>
+              <div className="inc-card__body">
+                <CreateContractForm saleId={saleId} />
+              </div>
+            </div>
           ) : (
-            <p style={{ opacity: 0.7 }}>Nenhum contrato gerado ainda.</p>
+            <p className="inc-help">Nenhum contrato gerado ainda.</p>
           )
         ) : (
           <>
-            <p>
-              <strong>{contractNumber}</strong> — {CONTRACT_STATUS_LABELS[contract.status] ?? contract.status}
-              {contract.status === "CANCELLED" && distrato ? ` (distrato ${distrato.distratoNumber})` : ""}
-            </p>
-            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              Gerado em {contractIssuedAtLabel}
-              {contractSignedAtLabel ? ` · assinado em ${contractSignedAtLabel}` : ""}
-            </p>
-            {signedDocumentUrl ? (
-              <p style={{ fontSize: "0.85rem" }}>
-                <a href={signedDocumentUrl} target="_blank" rel="noreferrer">
-                  Baixar contrato assinado (PDF)
-                </a>{" "}
-                <span style={{ opacity: 0.6 }}>— link válido por 1 hora</span>
-              </p>
-            ) : contract.signedDocumentPath ? (
-              <p style={{ fontSize: "0.85rem" }} className="error-text">
-                Contrato assinado enviado, mas não foi possível gerar o link agora.
-              </p>
-            ) : null}
-
-            {canGenerateDocument ? (
-              <div style={{ marginTop: "0.75rem" }}>
-                <p style={{ fontSize: "0.85rem", fontWeight: 500 }}>Gerar documento</p>
-                <GenerateDocumentForm saleId={saleId} contractId={contract.id} templates={applicableTemplates} />
+            <div className="inc-card">
+              <div className="inc-card__head">
+                <span className="inc-card__title">{contractNumber}</span>
+                <span className={`inc-chip ${CONTRACT_STATUS_CHIP[contract.status] ?? ""}`}>
+                  {CONTRACT_STATUS_LABELS[contract.status] ?? contract.status}
+                </span>
+                {contract.status === "CANCELLED" && distrato ? (
+                  <span className="inc-card__meta">distrato {distrato.distratoNumber}</span>
+                ) : null}
               </div>
-            ) : null}
+              <div className="inc-card__body">
+                <p className="inc-help">
+                  Gerado em {contractIssuedAtLabel}
+                  {contractSignedAtLabel ? ` · assinado em ${contractSignedAtLabel}` : ""}
+                </p>
+                {signedDocumentUrl ? (
+                  <p style={{ fontSize: "var(--inc-fs-base)", marginTop: "var(--inc-space-4)" }}>
+                    <a href={signedDocumentUrl} target="_blank" rel="noreferrer">
+                      Baixar contrato assinado (PDF)
+                    </a>{" "}
+                    <span className="inc-help" style={{ display: "inline" }}>— link válido por 1 hora</span>
+                  </p>
+                ) : contract.signedDocumentPath ? (
+                  <p className="inc-help inc-help--error" style={{ marginTop: "var(--inc-space-4)" }}>
+                    Contrato assinado enviado, mas não foi possível gerar o link agora.
+                  </p>
+                ) : null}
 
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-              {canEditContract && contract.status === "DRAFT" ? (
-                <MarkAwaitingSignatureForm saleId={saleId} contractId={contract.id} />
-              ) : null}
+                {canGenerateDocument ? (
+                  <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <p className="inc-label">Gerar documento</p>
+                    <div style={{ marginTop: "var(--inc-space-3)" }}>
+                      <GenerateDocumentForm saleId={saleId} contractId={contract.id} templates={applicableTemplates} />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="inc-row" style={{ marginTop: "var(--inc-space-8)" }}>
+                  {canEditContract && contract.status === "DRAFT" ? (
+                    <MarkAwaitingSignatureForm saleId={saleId} contractId={contract.id} />
+                  ) : null}
+                </div>
+
+                {canEditContract && contract.status === "AWAITING_SIGNATURE" ? (
+                  <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <ConfirmSignatureForm saleId={saleId} contractId={contract.id} />
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            {canEditContract && contract.status === "AWAITING_SIGNATURE" ? (
-              <div style={{ marginTop: "0.75rem" }}>
-                <ConfirmSignatureForm saleId={saleId} contractId={contract.id} />
-              </div>
-            ) : null}
-
             {(contract.status !== "SIGNED") && canEditSale ? (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ fontSize: "1rem" }}>Destino da entrada</h3>
-                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-                  Só pode ser alterado antes da assinatura — a carteira é montada com o destino
-                  vigente nesse momento.
-                </p>
-                <div style={{ marginTop: "0.75rem" }}>
-                  <DownPaymentDestinationForm
-                    saleId={saleId}
-                    tableDefault={downPaymentTableDefault}
-                    override={downPaymentOverride}
-                  />
+              <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+                <div className="inc-card__head">
+                  <span className="inc-card__title">Destino da entrada</span>
+                </div>
+                <div className="inc-card__body">
+                  <p className="inc-help" style={{ maxWidth: 500 }}>
+                    Só pode ser alterado antes da assinatura — a carteira é montada com o destino
+                    vigente nesse momento.
+                  </p>
+                  <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <DownPaymentDestinationForm
+                      saleId={saleId}
+                      tableDefault={downPaymentTableDefault}
+                      override={downPaymentOverride}
+                    />
+                  </div>
                 </div>
               </div>
             ) : null}
 
             {canEditContract && correctionCurrent ? (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ fontSize: "1rem" }}>Regra de correção — fase de obra</h3>
-                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-                  Índice, juros adicionais e multa/mora usados até o Habite-se do empreendimento. A
-                  regra de correção pós-Habite-se é configurada no cadastro do empreendimento (mesma
-                  para todos os contratos dele) — veja a página do empreendimento.
-                </p>
-                <div style={{ marginTop: "0.75rem" }}>
-                  <CorrectionRuleForm
-                    saleId={saleId}
-                    contractId={contract.id}
-                    indexRules={indexRules}
-                    current={correctionCurrent}
-                  />
+              <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+                <div className="inc-card__head">
+                  <span className="inc-card__title">Regra de correção — fase de obra</span>
+                </div>
+                <div className="inc-card__body">
+                  <p className="inc-help" style={{ maxWidth: 500 }}>
+                    Índice, juros adicionais e multa/mora usados até o Habite-se do empreendimento. A
+                    regra de correção pós-Habite-se é configurada no cadastro do empreendimento (mesma
+                    para todos os contratos dele) — veja a página do empreendimento.
+                  </p>
+                  <div style={{ marginTop: "var(--inc-space-8)" }}>
+                    <CorrectionRuleForm
+                      saleId={saleId}
+                      contractId={contract.id}
+                      indexRules={indexRules}
+                      current={correctionCurrent}
+                    />
+                  </div>
                 </div>
               </div>
             ) : null}
 
             {contract.status === "SIGNED" ? (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ fontSize: "1rem" }}>Aditivos</h3>
-                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-                  Criado a partir do contrato vigente. Renegociação de fluxo reprograma a carteira ao
-                  assinar — parcelas já recebidas nunca são alteradas.
-                </p>
+              <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+                <div className="inc-card__head">
+                  <span className="inc-card__title">Aditivos</span>
+                </div>
+                <div className="inc-card__body">
+                  <p className="inc-help" style={{ maxWidth: 500 }}>
+                    Criado a partir do contrato vigente. Renegociação de fluxo reprograma a carteira ao
+                    assinar — parcelas já recebidas nunca são alteradas.
+                  </p>
 
-                {amendments.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
-                    {amendments.map((amendment) => (
-                      <div
-                        key={amendment.id}
-                        style={{
-                          border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-                          borderRadius: 8,
-                          padding: "0.75rem 1rem",
-                        }}
-                      >
-                        <p>
-                          <strong>{amendment.amendmentNumber}</strong> — {AMENDMENT_TYPE_LABELS[amendment.type] ?? amendment.type}{" "}
-                          — {AMENDMENT_STATUS_LABELS[amendment.status] ?? amendment.status}
-                        </p>
-                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                          Criado em {amendment.createdAtLabel}
-                          {amendment.signedAtLabel ? ` · assinado em ${amendment.signedAtLabel}` : ""}
-                        </p>
-                        {amendment.notes ? <p style={{ fontSize: "0.85rem" }}>{amendment.notes}</p> : null}
-
-                        {amendment.proposedFlowItems ? (
-                          <details style={{ marginTop: "0.5rem" }}>
-                            <summary style={{ fontSize: "0.85rem", cursor: "pointer" }}>Novo fluxo proposto</summary>
-                            <ul style={{ paddingLeft: "1.1rem", marginTop: "0.4rem", fontSize: "0.85rem" }}>
-                              {amendment.proposedFlowItems.map((item, index) => (
-                                <li key={index}>
-                                  {item.label}: {formatCurrency(item.amount)} (mês {item.dueOffsetMonths})
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        ) : null}
-
-                        {canGenerateDocument ? (
-                          <div style={{ marginTop: "0.5rem" }}>
-                            <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
-                            <AmendmentDocumentForm
-                              saleId={saleId}
-                              contractId={contract.id}
-                              amendmentId={amendment.id}
-                              templates={amendmentTemplates}
-                            />
+                  {amendments.length > 0 ? (
+                    <div className="inc-col" style={{ gap: "var(--inc-space-8)", marginTop: "var(--inc-space-8)" }}>
+                      {amendments.map((amendment) => (
+                        <div key={amendment.id} className="inc-card">
+                          <div className="inc-card__head">
+                            <span className="inc-card__title" style={{ fontSize: "var(--inc-fs-base)" }}>
+                              {amendment.amendmentNumber} — {AMENDMENT_TYPE_LABELS[amendment.type] ?? amendment.type}
+                            </span>
+                            <span className={`inc-chip ${DRAFT_SIGNED_CHIP[amendment.status] ?? ""}`}>
+                              {AMENDMENT_STATUS_LABELS[amendment.status] ?? amendment.status}
+                            </span>
                           </div>
-                        ) : null}
+                          <div className="inc-card__body">
+                            <p className="inc-help">
+                              Criado em {amendment.createdAtLabel}
+                              {amendment.signedAtLabel ? ` · assinado em ${amendment.signedAtLabel}` : ""}
+                            </p>
+                            {amendment.notes ? (
+                              <p style={{ fontSize: "var(--inc-fs-base)", marginTop: "var(--inc-space-4)" }}>{amendment.notes}</p>
+                            ) : null}
 
-                        {amendment.generatedDocuments.length > 0 ? (
-                          <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                            {amendment.generatedDocuments.map((doc) => (
-                              <li key={doc.id}>
-                                {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
-                                {doc.downloadUrl ? (
-                                  <>
-                                    {" "}
-                                    —{" "}
-                                    <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
-                                      Baixar
-                                    </a>
-                                  </>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
+                            {amendment.proposedFlowItems ? (
+                              <details style={{ marginTop: "var(--inc-space-6)" }}>
+                                <summary style={{ fontSize: "var(--inc-fs-sm)", cursor: "pointer" }}>Novo fluxo proposto</summary>
+                                <ul style={{ paddingLeft: "1.1rem", marginTop: "var(--inc-space-4)", fontSize: "var(--inc-fs-sm)" }}>
+                                  {amendment.proposedFlowItems.map((item, index) => (
+                                    <li key={index}>
+                                      {item.label}: {formatCurrency(item.amount)} (mês {item.dueOffsetMonths})
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            ) : null}
 
-                        {canEditContract && amendment.status === "DRAFT" ? (
-                          <div style={{ marginTop: "0.5rem" }}>
-                            <SignAmendmentButton saleId={saleId} amendmentId={amendment.id} />
+                            {canGenerateDocument ? (
+                              <div style={{ marginTop: "var(--inc-space-6)" }}>
+                                <p className="inc-label">Gerar documento</p>
+                                <div style={{ marginTop: "var(--inc-space-3)" }}>
+                                  <AmendmentDocumentForm
+                                    saleId={saleId}
+                                    contractId={contract.id}
+                                    amendmentId={amendment.id}
+                                    templates={amendmentTemplates}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {amendment.generatedDocuments.length > 0 ? (
+                              <ul style={{ paddingLeft: "1.1rem", marginTop: "var(--inc-space-6)", fontSize: "var(--inc-fs-sm)" }}>
+                                {amendment.generatedDocuments.map((doc) => (
+                                  <li key={doc.id}>
+                                    {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
+                                    {doc.downloadUrl ? (
+                                      <>
+                                        {" "}
+                                        —{" "}
+                                        <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                                          Baixar
+                                        </a>
+                                      </>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+
+                            {canEditContract && amendment.status === "DRAFT" ? (
+                              <div style={{ marginTop: "var(--inc-space-6)" }}>
+                                <SignAmendmentButton saleId={saleId} amendmentId={amendment.id} />
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhum aditivo criado ainda.</p>
-                )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="inc-help" style={{ marginTop: "var(--inc-space-6)" }}>Nenhum aditivo criado ainda.</p>
+                  )}
 
-                {canEditContract ? (
-                  <div style={{ marginTop: "1rem" }}>
-                    <NewAmendmentForm saleId={saleId} contractId={contract.id} remainingBalance={remainingBalance} />
-                  </div>
-                ) : null}
+                  {canEditContract ? (
+                    <div style={{ marginTop: "var(--inc-space-8)" }}>
+                      <NewAmendmentForm saleId={saleId} contractId={contract.id} remainingBalance={remainingBalance} />
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
             {contract.status === "SIGNED" ? (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ fontSize: "1rem" }}>Cessão de direitos</h3>
-                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-                  Transfere a titularidade do contrato pro cessionário. A carteira não é recriada — as
-                  mesmas parcelas continuam, o histórico do cedente é preservado; a taxa de cessão
-                  (se houver) vira uma parcela nova.
-                </p>
+              <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+                <div className="inc-card__head">
+                  <span className="inc-card__title">Cessão de direitos</span>
+                </div>
+                <div className="inc-card__body">
+                  <p className="inc-help" style={{ maxWidth: 500 }}>
+                    Transfere a titularidade do contrato pro cessionário. A carteira não é recriada — as
+                    mesmas parcelas continuam, o histórico do cedente é preservado; a taxa de cessão
+                    (se houver) vira uma parcela nova.
+                  </p>
 
-                {assignments.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
-                    {assignments.map((assignment) => (
-                      <div
-                        key={assignment.id}
-                        style={{
-                          border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-                          borderRadius: 8,
-                          padding: "0.75rem 1rem",
-                        }}
-                      >
-                        <p>
-                          <strong>{assignment.assignmentNumber}</strong> —{" "}
-                          {ASSIGNMENT_STATUS_LABELS[assignment.status] ?? assignment.status}
+                  {assignments.length > 0 ? (
+                    <div className="inc-col" style={{ gap: "var(--inc-space-8)", marginTop: "var(--inc-space-8)" }}>
+                      {assignments.map((assignment) => (
+                        <div key={assignment.id} className="inc-card">
+                          <div className="inc-card__head">
+                            <span className="inc-card__title" style={{ fontSize: "var(--inc-fs-base)" }}>
+                              {assignment.assignmentNumber}
+                            </span>
+                            <span className={`inc-chip ${DRAFT_SIGNED_CHIP[assignment.status] ?? ""}`}>
+                              {ASSIGNMENT_STATUS_LABELS[assignment.status] ?? assignment.status}
+                            </span>
+                          </div>
+                          <div className="inc-card__body">
+                            <p style={{ fontSize: "var(--inc-fs-base)" }}>
+                              {assignment.previousCustomerName} → {assignment.newCustomerName} — cessão em{" "}
+                              {assignment.assignmentDateLabel}
+                              {assignment.feeAmount ? ` · taxa de ${formatCurrency(assignment.feeAmount)}` : ""}
+                            </p>
+                            <p className="inc-help" style={{ marginTop: "var(--inc-space-3)" }}>
+                              Criado em {assignment.createdAtLabel}
+                              {assignment.signedAtLabel ? ` · assinado em ${assignment.signedAtLabel}` : ""}
+                            </p>
+                            {assignment.notes ? (
+                              <p style={{ fontSize: "var(--inc-fs-base)", marginTop: "var(--inc-space-4)" }}>{assignment.notes}</p>
+                            ) : null}
+
+                            {canGenerateDocument ? (
+                              <div style={{ marginTop: "var(--inc-space-6)" }}>
+                                <p className="inc-label">Gerar documento</p>
+                                <div style={{ marginTop: "var(--inc-space-3)" }}>
+                                  <AssignmentDocumentForm
+                                    saleId={saleId}
+                                    contractId={contract.id}
+                                    assignmentId={assignment.id}
+                                    templates={assignmentTemplates}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {assignment.generatedDocuments.length > 0 ? (
+                              <ul style={{ paddingLeft: "1.1rem", marginTop: "var(--inc-space-6)", fontSize: "var(--inc-fs-sm)" }}>
+                                {assignment.generatedDocuments.map((doc) => (
+                                  <li key={doc.id}>
+                                    {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
+                                    {doc.downloadUrl ? (
+                                      <>
+                                        {" "}
+                                        —{" "}
+                                        <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                                          Baixar
+                                        </a>
+                                      </>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+
+                            {canEditContract && assignment.status === "DRAFT" ? (
+                              <div style={{ marginTop: "var(--inc-space-6)" }}>
+                                <SignAssignmentButton saleId={saleId} assignmentId={assignment.id} />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="inc-help" style={{ marginTop: "var(--inc-space-6)" }}>Nenhuma cessão criada ainda.</p>
+                  )}
+
+                  {canEditContract ? (
+                    <div style={{ marginTop: "var(--inc-space-8)" }}>
+                      <NewAssignmentForm
+                        saleId={saleId}
+                        contractId={contract.id}
+                        customers={customers}
+                        currentCustomerName={contract.customerName}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {contract.status === "SIGNED" || distrato ? (
+              <div className="inc-card" style={{ marginTop: "var(--inc-space-10)" }}>
+                <div className="inc-card__head">
+                  <span className="inc-card__title">Distrato</span>
+                </div>
+                <div className="inc-card__body">
+                  <p className="inc-help" style={{ maxWidth: 500 }}>
+                    Rescisão conforme Lei 13.786/18 — retenção da incorporadora de {distratoRetentionPercent}% do
+                    total pago (configurável por empreendimento). Ao assinar: contrato encerrado, unidade volta a
+                    Disponível, parcelas futuras canceladas (histórico preservado) e devolução lançada em Contas a
+                    pagar.
+                  </p>
+
+                  {distrato ? (
+                    <div className="inc-card" style={{ marginTop: "var(--inc-space-8)" }}>
+                      <div className="inc-card__head">
+                        <span className="inc-card__title" style={{ fontSize: "var(--inc-fs-base)" }}>
+                          {distrato.distratoNumber}
+                        </span>
+                        <span className={`inc-chip ${DRAFT_SIGNED_CHIP[distrato.status] ?? ""}`}>
+                          {DISTRATO_STATUS_LABELS[distrato.status] ?? distrato.status}
+                        </span>
+                      </div>
+                      <div className="inc-card__body">
+                        <div style={{ overflowX: "auto" }}>
+                          <table className="inc-table">
+                            <tbody>
+                              <tr>
+                                <td className="is-muted">Total pago pelo cliente</td>
+                                <td className="is-num">{formatCurrency(distrato.totalPaid)}</td>
+                              </tr>
+                              <tr>
+                                <td className="is-muted">Retenção ({distrato.retentionPercent}%)</td>
+                                <td className="is-num">-{formatCurrency(distrato.retentionAmount)}</td>
+                              </tr>
+                              {distrato.brokerageDeductionAmount ? (
+                                <tr>
+                                  <td className="is-muted">Dedução — corretagem</td>
+                                  <td className="is-num">-{formatCurrency(distrato.brokerageDeductionAmount)}</td>
+                                </tr>
+                              ) : null}
+                              {distrato.occupancyFeeAmount ? (
+                                <tr>
+                                  <td className="is-muted">Dedução — fruição/ocupação</td>
+                                  <td className="is-num">-{formatCurrency(distrato.occupancyFeeAmount)}</td>
+                                </tr>
+                              ) : null}
+                              <tr>
+                                <td className="is-strong">Valor a devolver</td>
+                                <td className="is-num is-strong">{formatCurrency(distrato.refundAmount)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="inc-help" style={{ marginTop: "var(--inc-space-6)" }}>
+                          Prazo de devolução: {distrato.refundDueDateLabel}
+                          {distrato.refundTerms ? ` · ${distrato.refundTerms}` : ""}
+                          {distrato.refundPayableId ? " · lançado em Contas a pagar" : ""}
                         </p>
-                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                          {assignment.previousCustomerName} → {assignment.newCustomerName} — cessão em{" "}
-                          {assignment.assignmentDateLabel}
-                          {assignment.feeAmount ? ` · taxa de ${formatCurrency(assignment.feeAmount)}` : ""}
+                        {distrato.reason ? (
+                          <p style={{ fontSize: "var(--inc-fs-base)", marginTop: "var(--inc-space-3)" }}>{distrato.reason}</p>
+                        ) : null}
+                        <p className="inc-help">
+                          Criado em {distrato.createdAtLabel}
+                          {distrato.signedAtLabel ? ` · assinado em ${distrato.signedAtLabel}` : ""}
                         </p>
-                        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                          Criado em {assignment.createdAtLabel}
-                          {assignment.signedAtLabel ? ` · assinado em ${assignment.signedAtLabel}` : ""}
-                        </p>
-                        {assignment.notes ? <p style={{ fontSize: "0.85rem" }}>{assignment.notes}</p> : null}
 
                         {canGenerateDocument ? (
-                          <div style={{ marginTop: "0.5rem" }}>
-                            <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
-                            <AssignmentDocumentForm
-                              saleId={saleId}
-                              contractId={contract.id}
-                              assignmentId={assignment.id}
-                              templates={assignmentTemplates}
-                            />
+                          <div style={{ marginTop: "var(--inc-space-6)" }}>
+                            <p className="inc-label">Gerar documento</p>
+                            <div style={{ marginTop: "var(--inc-space-3)" }}>
+                              <DistratoDocumentForm
+                                saleId={saleId}
+                                contractId={contract.id}
+                                distratoId={distrato.id}
+                                templates={distratoTemplates}
+                              />
+                            </div>
                           </div>
                         ) : null}
 
-                        {assignment.generatedDocuments.length > 0 ? (
-                          <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                            {assignment.generatedDocuments.map((doc) => (
+                        {distrato.generatedDocuments.length > 0 ? (
+                          <ul style={{ paddingLeft: "1.1rem", marginTop: "var(--inc-space-6)", fontSize: "var(--inc-fs-sm)" }}>
+                            {distrato.generatedDocuments.map((doc) => (
                               <li key={doc.id}>
                                 {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
                                 {doc.downloadUrl ? (
@@ -600,138 +801,23 @@ export function SaleDetailTabs({
                           </ul>
                         ) : null}
 
-                        {canEditContract && assignment.status === "DRAFT" ? (
-                          <div style={{ marginTop: "0.5rem" }}>
-                            <SignAssignmentButton saleId={saleId} assignmentId={assignment.id} />
+                        {canEditContract && distrato.status === "DRAFT" ? (
+                          <div style={{ marginTop: "var(--inc-space-6)" }}>
+                            <SignDistratoButton saleId={saleId} distratoId={distrato.id} />
                           </div>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhuma cessão criada ainda.</p>
-                )}
+                    </div>
+                  ) : (
+                    <p className="inc-help" style={{ marginTop: "var(--inc-space-6)" }}>Nenhum distrato iniciado.</p>
+                  )}
 
-                {canEditContract ? (
-                  <div style={{ marginTop: "1rem" }}>
-                    <NewAssignmentForm
-                      saleId={saleId}
-                      contractId={contract.id}
-                      customers={customers}
-                      currentCustomerName={contract.customerName}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {contract.status === "SIGNED" || distrato ? (
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ fontSize: "1rem" }}>Distrato</h3>
-                <p style={{ fontSize: "0.85rem", opacity: 0.7, maxWidth: 500 }}>
-                  Rescisão conforme Lei 13.786/18 — retenção da incorporadora de {distratoRetentionPercent}% do
-                  total pago (configurável por empreendimento). Ao assinar: contrato encerrado, unidade volta a
-                  Disponível, parcelas futuras canceladas (histórico preservado) e devolução lançada em Contas a
-                  pagar.
-                </p>
-
-                {distrato ? (
-                  <div
-                    style={{
-                      border: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-                      borderRadius: 8,
-                      padding: "0.75rem 1rem",
-                      marginTop: "0.75rem",
-                    }}
-                  >
-                    <p>
-                      <strong>{distrato.distratoNumber}</strong> — {DISTRATO_STATUS_LABELS[distrato.status] ?? distrato.status}
-                    </p>
-                    <table style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
-                      <tbody>
-                        <tr>
-                          <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Total pago pelo cliente</td>
-                          <td>{formatCurrency(distrato.totalPaid)}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Retenção ({distrato.retentionPercent}%)</td>
-                          <td>-{formatCurrency(distrato.retentionAmount)}</td>
-                        </tr>
-                        {distrato.brokerageDeductionAmount ? (
-                          <tr>
-                            <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Dedução — corretagem</td>
-                            <td>-{formatCurrency(distrato.brokerageDeductionAmount)}</td>
-                          </tr>
-                        ) : null}
-                        {distrato.occupancyFeeAmount ? (
-                          <tr>
-                            <td style={{ opacity: 0.7, paddingRight: "1rem" }}>Dedução — fruição/ocupação</td>
-                            <td>-{formatCurrency(distrato.occupancyFeeAmount)}</td>
-                          </tr>
-                        ) : null}
-                        <tr>
-                          <td style={{ paddingRight: "1rem", fontWeight: 500 }}>Valor a devolver</td>
-                          <td style={{ fontWeight: 500 }}>{formatCurrency(distrato.refundAmount)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                    <p style={{ fontSize: "0.85rem", opacity: 0.8, marginTop: "0.5rem" }}>
-                      Prazo de devolução: {distrato.refundDueDateLabel}
-                      {distrato.refundTerms ? ` · ${distrato.refundTerms}` : ""}
-                      {distrato.refundPayableId ? " · lançado em Contas a pagar" : ""}
-                    </p>
-                    {distrato.reason ? <p style={{ fontSize: "0.85rem" }}>{distrato.reason}</p> : null}
-                    <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                      Criado em {distrato.createdAtLabel}
-                      {distrato.signedAtLabel ? ` · assinado em ${distrato.signedAtLabel}` : ""}
-                    </p>
-
-                    {canGenerateDocument ? (
-                      <div style={{ marginTop: "0.5rem" }}>
-                        <p style={{ fontSize: "0.8rem", fontWeight: 500 }}>Gerar documento</p>
-                        <DistratoDocumentForm
-                          saleId={saleId}
-                          contractId={contract.id}
-                          distratoId={distrato.id}
-                          templates={distratoTemplates}
-                        />
-                      </div>
-                    ) : null}
-
-                    {distrato.generatedDocuments.length > 0 ? (
-                      <ul style={{ paddingLeft: "1.1rem", marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                        {distrato.generatedDocuments.map((doc) => (
-                          <li key={doc.id}>
-                            {doc.fileName} — {doc.uploadedByName} em {doc.createdAtLabel}
-                            {doc.downloadUrl ? (
-                              <>
-                                {" "}
-                                —{" "}
-                                <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
-                                  Baixar
-                                </a>
-                              </>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-
-                    {canEditContract && distrato.status === "DRAFT" ? (
-                      <div style={{ marginTop: "0.5rem" }}>
-                        <SignDistratoButton saleId={saleId} distratoId={distrato.id} />
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.5rem" }}>Nenhum distrato iniciado.</p>
-                )}
-
-                {canEditContract && contract.status === "SIGNED" && !distrato ? (
-                  <div style={{ marginTop: "1rem" }}>
-                    <NewDistratoForm saleId={saleId} contractId={contract.id} retentionPercent={distratoRetentionPercent} />
-                  </div>
-                ) : null}
+                  {canEditContract && contract.status === "SIGNED" && !distrato ? (
+                    <div style={{ marginTop: "var(--inc-space-8)" }}>
+                      <NewDistratoForm saleId={saleId} contractId={contract.id} retentionPercent={distratoRetentionPercent} />
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </>
@@ -739,83 +825,101 @@ export function SaleDetailTabs({
       </div>
 
       <div hidden={activeTab !== "comissoes"} style={{ marginTop: "1.25rem" }}>
-        {commissionSplits.length === 0 ? (
-          <p style={{ opacity: 0.7, fontSize: "0.85rem" }}>Nenhuma comissão lançada.</p>
-        ) : (
-          <>
-            <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              Comissão total: {commissionSplits.reduce((sum, s) => sum + s.percent, 0)}% —{" "}
-              {formatCurrency(commissionSplits.reduce((sum, s) => sum + s.value, 0))}
-            </p>
-            {downPaymentAbatement ? (
-              <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                Entrada direto ao corretor abateu {formatCurrency(downPaymentAbatement.downPaymentTotal)} da
-                comissão
-                {downPaymentAbatement.commissionExcess
-                  ? ` — excedente de ${formatCurrency(downPaymentAbatement.commissionExcess)} registrado como crédito à SPE`
-                  : ""}
-                .
-              </p>
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <span className="inc-card__title">Comissões</span>
+            {commissionSplits.length > 0 ? (
+              <span className="inc-card__meta">
+                {commissionSplits.reduce((sum, s) => sum + s.percent, 0)}% —{" "}
+                {formatCurrency(commissionSplits.reduce((sum, s) => sum + s.value, 0))}
+              </span>
             ) : null}
+          </div>
+          <div className="inc-card__body">
+            {commissionSplits.length === 0 ? (
+              <p className="inc-help">Nenhuma comissão lançada.</p>
+            ) : (
+              <>
+                {downPaymentAbatement ? (
+                  <p className="inc-help" style={{ marginBottom: "var(--inc-space-6)" }}>
+                    Entrada direto ao corretor abateu {formatCurrency(downPaymentAbatement.downPaymentTotal)} da
+                    comissão
+                    {downPaymentAbatement.commissionExcess
+                      ? ` — excedente de ${formatCurrency(downPaymentAbatement.commissionExcess)} registrado como crédito à SPE`
+                      : ""}
+                    .
+                  </p>
+                ) : null}
 
-            <table style={{ maxWidth: 800, marginTop: "0.75rem" }}>
-              <thead>
-                <tr>
-                  <th>Beneficiário</th>
-                  <th>%</th>
-                  <th>Valor</th>
-                  <th>Status</th>
-                  <th>Liberada em</th>
-                  <th>Paga em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {commissionSplits.map((split) => (
-                  <tr key={split.id}>
-                    <td>
-                      {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
-                      {split.label ? ` (${split.label})` : ""}
-                    </td>
-                    <td>{split.percent}%</td>
-                    <td>{formatCurrency(split.value)}</td>
-                    <td>{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
-                    <td>{split.releasedAtLabel ?? "—"}</td>
-                    <td>{split.paidAtLabel ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-        <p style={{ fontSize: "0.8rem", opacity: 0.6, marginTop: "0.75rem" }}>
-          A comissão libera conforme a regra do empreendimento e vira conta a pagar automaticamente
-          (fornecedor = corretor/imobiliária) — pagar em Contas a pagar marca a comissão como paga
-          também, sem lançamento duplicado. Em caso de distrato, comissões ainda não pagas são
-          estornadas (cancelada) conforme a regra do empreendimento — as já pagas não são mexidas.
-        </p>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="inc-table" style={{ maxWidth: 800 }}>
+                    <thead>
+                      <tr>
+                        <th>Beneficiário</th>
+                        <th>%</th>
+                        <th>Valor</th>
+                        <th>Status</th>
+                        <th>Liberada em</th>
+                        <th>Paga em</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commissionSplits.map((split) => (
+                        <tr key={split.id}>
+                          <td className="is-key">
+                            {COMMISSION_BENEFICIARY_LABELS[split.beneficiaryType] ?? split.beneficiaryType}
+                            {split.label ? ` (${split.label})` : ""}
+                          </td>
+                          <td className="is-num">{split.percent}%</td>
+                          <td className="is-num">{formatCurrency(split.value)}</td>
+                          <td>{COMMISSION_STATUS_LABELS[split.status] ?? split.status}</td>
+                          <td className="is-muted">{split.releasedAtLabel ?? "—"}</td>
+                          <td className="is-muted">{split.paidAtLabel ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+            <p className="inc-help" style={{ marginTop: "var(--inc-space-8)" }}>
+              A comissão libera conforme a regra do empreendimento e vira conta a pagar automaticamente
+              (fornecedor = corretor/imobiliária) — pagar em Contas a pagar marca a comissão como paga
+              também, sem lançamento duplicado. Em caso de distrato, comissões ainda não pagas são
+              estornadas (cancelada) conforme a regra do empreendimento — as já pagas não são mexidas.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div hidden={activeTab !== "documentos"} style={{ marginTop: "1.25rem" }}>
-        {generatedDocuments.length === 0 ? (
-          <p style={{ opacity: 0.7, fontSize: "0.85rem" }}>Nenhum documento gerado ainda.</p>
-        ) : (
-          <ul style={{ paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
-            {generatedDocuments.map((doc) => (
-              <li key={doc.id}>
-                {doc.fileName} — v{doc.templateVersion} — {doc.uploadedByName} em {doc.createdAtLabel}
-                {doc.downloadUrl ? (
-                  <>
-                    {" "}
-                    —{" "}
-                    <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
-                      Baixar
-                    </a>
-                  </>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <span className="inc-card__title">Documentos gerados</span>
+          </div>
+          <div className="inc-card__body">
+            {generatedDocuments.length === 0 ? (
+              <p className="inc-help">Nenhum documento gerado ainda.</p>
+            ) : (
+              <ul style={{ paddingLeft: "1.1rem", fontSize: "var(--inc-fs-base)" }}>
+                {generatedDocuments.map((doc) => (
+                  <li key={doc.id}>
+                    {doc.fileName} — v{doc.templateVersion} — {doc.uploadedByName} em {doc.createdAtLabel}
+                    {doc.downloadUrl ? (
+                      <>
+                        {" "}
+                        —{" "}
+                        <a href={doc.downloadUrl} target="_blank" rel="noreferrer">
+                          Baixar
+                        </a>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

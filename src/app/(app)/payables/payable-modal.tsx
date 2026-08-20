@@ -162,11 +162,11 @@ export function PayableModal({
       width={680}
       footer={
         <>
-          <button type="button" className="secondary" onClick={onClose}>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
             Fechar
           </button>
           {!isLocked ? (
-            <button type="button" disabled={pending} onClick={submitForm}>
+            <button type="button" className="inc-btn inc-btn--primary" disabled={pending} onClick={submitForm}>
               {pending ? "Salvando..." : "Salvar"}
             </button>
           ) : null}
@@ -176,7 +176,7 @@ export function PayableModal({
       <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       {isLocked ? (
-        <p className="field-hint">
+        <p className="inc-help" style={{ marginTop: 0 }}>
           Esta conta já saiu do status &quot;Lançada&quot; — os dados não podem mais ser
           editados. Se precisar corrigir, cancele e lance uma nova.
         </p>
@@ -193,22 +193,23 @@ export function PayableModal({
         <input ref={itemsJsonRef} type="hidden" name="itemsJson" />
 
         <fieldset disabled={isLocked} style={{ border: "none", padding: 0, margin: 0 }}>
-          <div hidden={activeTab !== "dados"}>
-            <div className="field-section">
-              <h3>Identificação</h3>
-              <div className="field-grid">
-                <div className="field" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="description">Descrição *</label>
+          <div hidden={activeTab !== "dados"} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" }}>
+                <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+                  <span className="inc-label">Descrição *</span>
                   <input
                     id="description"
                     name="description"
+                    className="inc-input"
                     required
                     defaultValue={payable?.description ?? ""}
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="category">Categoria *</label>
-                  <select id="category" name="category" required defaultValue={payable?.category ?? ""}>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Categoria *</span>
+                  <select id="category" name="category" className="inc-select" required defaultValue={payable?.category ?? ""}>
                     <option value="" disabled>
                       Selecione...
                     </option>
@@ -218,10 +219,10 @@ export function PayableModal({
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="developmentId">Empreendimento</label>
-                  <select id="developmentId" name="developmentId" defaultValue={payable?.developmentId ?? ""}>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Empreendimento</span>
+                  <select id="developmentId" name="developmentId" className="inc-select" defaultValue={payable?.developmentId ?? ""}>
                     <option value="">Organização (nenhum específico)</option>
                     {developments.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -229,10 +230,10 @@ export function PayableModal({
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="speId">SPE</label>
-                  <select id="speId" name="speId" defaultValue={payable?.speId ?? ""}>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">SPE</span>
+                  <select id="speId" name="speId" className="inc-select" defaultValue={payable?.speId ?? ""}>
                     <option value="">—</option>
                     {spes.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -240,10 +241,10 @@ export function PayableModal({
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="supplierId">Fornecedor</label>
-                  <select id="supplierId" name="supplierId" defaultValue={payable?.supplierId ?? ""}>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Fornecedor</span>
+                  <select id="supplierId" name="supplierId" className="inc-select" defaultValue={payable?.supplierId ?? ""}>
                     <option value="">—</option>
                     {suppliers.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -251,10 +252,10 @@ export function PayableModal({
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="costCenterId">Centro de custo</label>
-                  <select id="costCenterId" name="costCenterId" defaultValue={payable?.costCenterId ?? ""}>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Centro de custo</span>
+                  <select id="costCenterId" name="costCenterId" className="inc-select" defaultValue={payable?.costCenterId ?? ""}>
                     <option value="">—</option>
                     {costCenters.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -262,84 +263,89 @@ export function PayableModal({
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
               </div>
             </div>
 
-            <div className="field-section">
-              <h3>Valores e datas</h3>
-              <div className="field-grid">
-                <div className="field">
-                  <label htmlFor="competenceDate">Competência *</label>
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Valores e datas</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "14px" }}>
+                <label className="inc-field">
+                  <span className="inc-label">Competência *</span>
                   <input
                     id="competenceDate"
                     name="competenceDate"
                     type="date"
+                    className="inc-input"
                     required
                     defaultValue={payable ? toDateInputValue(payable.competenceDate) : ""}
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="dueDate">Vencimento *</label>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Vencimento *</span>
                   <input
                     id="dueDate"
                     name="dueDate"
                     type="date"
+                    className="inc-input"
                     required
                     defaultValue={payable ? toDateInputValue(payable.dueDate) : ""}
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="amount">Valor (R$) *</label>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Valor (R$) *</span>
                   <input
                     id="amount"
                     name="amount"
                     type="number"
                     step="0.01"
+                    className="inc-input"
                     required
                     defaultValue={payable ? Number(payable.amount) : ""}
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="fiscalDocument">Documento fiscal (nº NF)</label>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Documento fiscal (nº NF)</span>
                   <input
                     id="fiscalDocument"
                     name="fiscalDocument"
+                    className="inc-input"
                     placeholder="Número da nota fiscal"
                     defaultValue={payable?.fiscalDocument ?? ""}
                   />
-                </div>
+                </label>
               </div>
             </div>
 
-            <div className="field-section">
-              <h3>Observações</h3>
-              <div className="field">
-                <textarea id="notes" name="notes" rows={3} defaultValue={payable?.notes ?? ""} />
-              </div>
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Observações</div>
+              <label className="inc-field">
+                <textarea id="notes" name="notes" className="inc-input" rows={3} defaultValue={payable?.notes ?? ""} />
+              </label>
             </div>
           </div>
 
           <div hidden={activeTab !== "pagamento"}>
-            <div className="field-section">
-              <h3>Pagamento</h3>
-              <div className="field-grid">
-                <div className="field">
-                  <label htmlFor="paymentMethod">Forma de pagamento</label>
+            <div>
+              <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Pagamento</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <label className="inc-field">
+                  <span className="inc-label">Forma de pagamento</span>
                   <input
                     id="paymentMethod"
                     name="paymentMethod"
+                    className="inc-input"
                     placeholder="PIX, boleto, TED..."
                     defaultValue={payable?.paymentMethod ?? ""}
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="bankAccount">Conta bancária</label>
-                  <input id="bankAccount" name="bankAccount" defaultValue={payable?.bankAccount ?? ""} />
-                </div>
+                </label>
+                <label className="inc-field">
+                  <span className="inc-label">Conta bancária</span>
+                  <input id="bankAccount" name="bankAccount" className="inc-input" defaultValue={payable?.bankAccount ?? ""} />
+                </label>
               </div>
               {payable?.paidAt ? (
-                <p className="field-hint">
+                <p className="inc-help" style={{ marginTop: "10px" }}>
                   Pago em {formatCalendarDateBR(payable.paidAt)} —{" "}
                   {formatCurrencyBRL(Number(payable.paidAmount))}
                 </p>
@@ -423,13 +429,14 @@ function DocumentsTab({
   return (
     <div>
       {payable.documents.length === 0 ? (
-        <p className="field-hint">Nenhum anexo enviado.</p>
+        <p className="inc-help" style={{ marginTop: 0 }}>Nenhum anexo enviado.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "1rem" }}>
+        <table className="inc-table" style={{ marginBottom: "16px" }}>
           <thead>
             <tr>
               <th>Arquivo</th>
               <th>Categoria</th>
+              <th>Enviado por</th>
               <th>Enviado em</th>
               <th aria-label="Ações" />
             </tr>
@@ -437,14 +444,15 @@ function DocumentsTab({
           <tbody>
             {payable.documents.map((doc) => (
               <tr key={doc.id}>
-                <td>{doc.fileName}</td>
+                <td className="is-key">{doc.fileName}</td>
                 <td>{DOCUMENT_CATEGORY_LABELS[doc.category] ?? doc.category}</td>
-                <td>{formatDateBR(doc.createdAt)}</td>
+                <td className="is-muted">{doc.uploadedByName ?? "—"}</td>
+                <td className="is-muted">{formatDateBR(doc.createdAt)}</td>
                 <td>
-                  <div className="row-actions">
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                     {doc.signedUrl ? (
                       <a
-                        className="icon-btn"
+                        className="inc-btn-icon"
                         href={doc.signedUrl}
                         target="_blank"
                         rel="noreferrer"
@@ -455,10 +463,11 @@ function DocumentsTab({
                     ) : null}
                     <button
                       type="button"
-                      className="icon-btn danger"
+                      className="inc-btn-icon"
                       aria-label={`Remover ${doc.fileName}`}
                       disabled={busy}
                       onClick={() => handleDelete(doc.id)}
+                      style={{ color: "var(--inc-danger)" }}
                     >
                       <TrashIcon />
                     </button>
@@ -470,29 +479,29 @@ function DocumentsTab({
         </table>
       )}
 
-      <div className="field-section">
-        <h3>Enviar anexo</h3>
-        <div className="field-grid">
-          <div className="field">
-            <label>Categoria</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Enviar anexo</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+          <label className="inc-field">
+            <span className="inc-label">Categoria</span>
+            <select className="inc-select" value={category} onChange={(e) => setCategory(e.target.value)}>
               {Object.entries(DOCUMENT_CATEGORY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label>Arquivo</label>
-            <input ref={fileInputRef} type="file" />
-          </div>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Arquivo</span>
+            <input className="inc-input" ref={fileInputRef} type="file" />
+          </label>
         </div>
         {error ? <p className="error-text">{error}</p> : null}
         <button
           type="button"
-          className="secondary"
-          style={{ marginTop: "0.75rem" }}
+          className="inc-btn inc-btn--secondary"
+          style={{ marginTop: "12px" }}
           disabled={busy}
           onClick={handleUpload}
         >
@@ -527,17 +536,17 @@ function ItemsTab({
   }
 
   return (
-    <div className="field-section">
-      <h3>Itens</h3>
-      <p className="field-hint">
+    <div>
+      <div className="inc-eyebrow" style={{ marginBottom: "4px" }}>Itens</div>
+      <p className="inc-help" style={{ marginTop: 0, marginBottom: "10px" }}>
         Detalhamento opcional do valor total. Quando preenchido, a soma dos itens precisa bater exato com o
         valor total lançado na aba Dados.
       </p>
 
       {items.length === 0 ? (
-        <p className="field-hint">Nenhum item lançado — o valor total fica sem detalhamento.</p>
+        <p className="inc-help">Nenhum item lançado — o valor total fica sem detalhamento.</p>
       ) : (
-        <table className="data-table" style={{ marginBottom: "0.75rem" }}>
+        <table className="inc-table" style={{ marginBottom: "12px" }}>
           <thead>
             <tr>
               <th>Descrição</th>
@@ -550,6 +559,7 @@ function ItemsTab({
               <tr key={index}>
                 <td>
                   <input
+                    className="inc-input"
                     value={item.description}
                     onChange={(e) => updateItem(index, { description: e.target.value })}
                     placeholder="Descrição do item"
@@ -557,6 +567,7 @@ function ItemsTab({
                 </td>
                 <td>
                   <input
+                    className="inc-input"
                     type="number"
                     step="0.01"
                     value={item.amount}
@@ -566,9 +577,10 @@ function ItemsTab({
                 <td>
                   <button
                     type="button"
-                    className="icon-btn danger"
+                    className="inc-btn-icon"
                     aria-label={`Remover item ${index + 1}`}
                     onClick={() => removeItem(index)}
+                    style={{ color: "var(--inc-danger)" }}
                   >
                     <TrashIcon />
                   </button>
@@ -579,12 +591,12 @@ function ItemsTab({
         </table>
       )}
 
-      <p className="field-hint">
+      <p className="inc-help">
         Soma dos itens:{" "}
         {formatCurrencyBRL(sum)}
       </p>
 
-      <button type="button" className="secondary" onClick={addItem}>
+      <button type="button" className="inc-btn inc-btn--secondary" onClick={addItem}>
         + Adicionar item
       </button>
     </div>
@@ -597,9 +609,9 @@ function ApprovalHistory({
   history: { id: string; fromStatus: string; toStatus: string; actorName: string; occurredAt: string | Date }[];
 }) {
   return (
-    <div className="field-section" style={{ marginTop: 0 }}>
-      <h3>Histórico de aprovação</h3>
-      <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.85rem" }}>
+    <div style={{ marginBottom: "18px" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "6px" }}>Histórico de aprovação</div>
+      <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12.5px", color: "var(--inc-text-secondary)" }}>
         {history.map((entry) => (
           <li key={entry.id}>
             {STATUS_LABELS[entry.fromStatus] ?? entry.fromStatus} → {STATUS_LABELS[entry.toStatus] ?? entry.toStatus}
@@ -747,39 +759,39 @@ function AllocationsTab({
 
   if (!editing) {
     return (
-      <div className="field-section">
-        <h3>Rateio</h3>
+      <div>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Rateio</div>
         {hasAllocations ? (
-          <>
-            <table className="data-table" style={{ marginBottom: "0.75rem" }}>
-              <thead>
-                <tr>
-                  <th>Destino</th>
-                  <th>%</th>
-                  <th>Valor</th>
+          <table className="inc-table" style={{ marginBottom: "12px" }}>
+            <thead>
+              <tr>
+                <th>Destino</th>
+                <th>%</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payable.allocations.map((a) => (
+                <tr key={a.id}>
+                  <td className="is-key">{a.development?.name ?? "Organização"}</td>
+                  <td>{a.percent !== null ? `${a.percent}%` : "—"}</td>
+                  <td className="is-num">{formatMoney(Number(a.amount))}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {payable.allocations.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.development?.name ?? "Organização"}</td>
-                    <td>{a.percent !== null ? `${a.percent}%` : "—"}</td>
-                    <td>{formatMoney(Number(a.amount))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <p className="field-hint">Sem rateio configurado — 100% em {payable.development?.name ?? "Organização"}.</p>
+          <p className="inc-help" style={{ marginTop: 0 }}>
+            Sem rateio configurado — 100% em {payable.development?.name ?? "Organização"}.
+          </p>
         )}
         {!isLocked ? (
-          <div className="row-actions">
-            <button type="button" className="secondary" onClick={() => setEditing(true)}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setEditing(true)}>
               {hasAllocations ? "Editar rateio" : "Configurar rateio"}
             </button>
             {hasAllocations ? (
-              <button type="button" className="secondary" disabled={busy} onClick={handleRemove}>
+              <button type="button" className="inc-btn inc-btn--secondary" disabled={busy} onClick={handleRemove}>
                 Remover rateio
               </button>
             ) : null}
@@ -790,18 +802,19 @@ function AllocationsTab({
   }
 
   return (
-    <div className="field-section">
-      <h3>Rateio</h3>
-      <p className="field-hint">
+    <div>
+      <div className="inc-eyebrow" style={{ marginBottom: "4px" }}>Rateio</div>
+      <p className="inc-help" style={{ marginTop: 0, marginBottom: "10px" }}>
         Divida o valor total ({formatMoney(total)}) entre N destinos (empreendimentos e/ou organização), por
         percentual ou valor fixo — a soma precisa bater exato com o valor total.
       </p>
 
       {allocationTemplates.length > 0 ? (
-        <div className="field" style={{ maxWidth: 320 }}>
-          <label htmlFor="allocation-template">Aplicar modelo salvo</label>
+        <label className="inc-field" style={{ maxWidth: 320, marginBottom: "12px" }}>
+          <span className="inc-label">Aplicar modelo salvo</span>
           <select
             id="allocation-template"
+            className="inc-select"
             value={templateId}
             onChange={(e) => handleApplyTemplate(e.target.value)}
             disabled={busy}
@@ -813,10 +826,10 @@ function AllocationsTab({
               </option>
             ))}
           </select>
-        </div>
+        </label>
       ) : null}
 
-      <table className="data-table" style={{ marginTop: "0.75rem", marginBottom: "0.75rem" }}>
+      <table className="inc-table" style={{ marginBottom: "12px" }}>
         <thead>
           <tr>
             <th>Destino</th>
@@ -830,6 +843,7 @@ function AllocationsTab({
             <tr key={index}>
               <td>
                 <select
+                  className="inc-select"
                   value={row.developmentId ?? ""}
                   onChange={(e) => updateRow(index, { developmentId: e.target.value || null })}
                 >
@@ -843,6 +857,7 @@ function AllocationsTab({
               </td>
               <td>
                 <input
+                  className="inc-input"
                   type="number"
                   step="0.01"
                   value={row.percent}
@@ -852,6 +867,7 @@ function AllocationsTab({
               </td>
               <td>
                 <input
+                  className="inc-input"
                   type="number"
                   step="0.01"
                   value={row.amount}
@@ -861,9 +877,10 @@ function AllocationsTab({
               <td>
                 <button
                   type="button"
-                  className="icon-btn danger"
+                  className="inc-btn-icon"
                   aria-label={`Remover destino ${index + 1}`}
                   onClick={() => removeRow(index)}
+                  style={{ color: "var(--inc-danger)" }}
                 >
                   <TrashIcon />
                 </button>
@@ -873,46 +890,47 @@ function AllocationsTab({
         </tbody>
       </table>
 
-      <p className="field-hint">
+      <p className="inc-help">
         Soma: {formatMoney(sum)} de {formatMoney(total)}
         {Math.round(sum * 100) === Math.round(total * 100) ? " — fecha certo." : " — ainda não fecha."}
       </p>
 
-      <button type="button" className="secondary" onClick={addRow} style={{ marginBottom: "0.75rem" }}>
+      <button type="button" className="inc-btn inc-btn--secondary" onClick={addRow} style={{ marginTop: "6px", marginBottom: "14px" }}>
         + Adicionar destino
       </button>
 
-      <div className="field-section" style={{ marginTop: 0 }}>
-        <div className="field" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div style={{ marginBottom: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <input
             id="save-as-template"
             type="checkbox"
             checked={saveAsTemplate}
             onChange={(e) => setSaveAsTemplate(e.target.checked)}
           />
-          <label htmlFor="save-as-template" style={{ margin: 0 }}>
+          <label htmlFor="save-as-template" className="inc-label" style={{ margin: 0 }}>
             Salvar este rateio como modelo pra reuso
           </label>
         </div>
         {saveAsTemplate ? (
           <input
+            className="inc-input"
             placeholder='Nome do modelo (ex.: "Administrativo 50/30/20")'
             value={templateName}
             onChange={(e) => setTemplateName(e.target.value)}
-            style={{ marginTop: "0.5rem" }}
+            style={{ marginTop: "8px" }}
           />
         ) : null}
       </div>
 
       {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="row-actions">
-        <button type="button" disabled={busy} onClick={handleSave}>
+      <div style={{ display: "flex", gap: "8px" }}>
+        <button type="button" className="inc-btn inc-btn--primary" disabled={busy} onClick={handleSave}>
           {busy ? "Salvando..." : "Salvar rateio"}
         </button>
         <button
           type="button"
-          className="secondary"
+          className="inc-btn inc-btn--secondary"
           onClick={() => {
             setRows(
               payable.allocations.map((a) => ({

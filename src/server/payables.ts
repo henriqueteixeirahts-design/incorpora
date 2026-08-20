@@ -162,10 +162,12 @@ export async function getPayableDetail(organizationId: string, payableId: string
   const documents = await prisma.document.findMany({
     where: { organizationId, entityType: ENTITY_TYPE, entityId: payableId },
     orderBy: { createdAt: "desc" },
+    include: { uploadedBy: true },
   });
   const documentsWithUrl = await Promise.all(
     documents.map(async (doc) => ({
       ...doc,
+      uploadedByName: doc.uploadedBy?.fullName ?? null,
       signedUrl: await getSignedDocumentUrl(doc.fileUrl).catch(() => null),
     })),
   );

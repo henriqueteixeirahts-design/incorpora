@@ -20,33 +20,43 @@ export function NewDistratoForm({
   const [state, formAction, pending] = useActionState(createDistratoAction, initialState);
 
   return (
-    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 420 }}>
+    <form action={formAction} className="inc-col" style={{ gap: "var(--inc-space-6)", maxWidth: 420 }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
 
-      <p className="field-hint">Retenção da incorporadora neste empreendimento: {retentionPercent}% do total pago.</p>
+      <p className="inc-help">Retenção da incorporadora neste empreendimento: {retentionPercent}% do total pago.</p>
 
-      <label htmlFor="dt-brokerage">Dedução — comissão de corretagem (opcional)</label>
-      <input id="dt-brokerage" name="brokerageDeductionAmount" type="number" step="0.01" min="0" />
+      <label className="inc-field">
+        <span className="inc-label">Dedução — comissão de corretagem (opcional)</span>
+        <input id="dt-brokerage" name="brokerageDeductionAmount" type="number" step="0.01" min="0" className="inc-input" />
+      </label>
 
-      <label htmlFor="dt-occupancy">Dedução — taxa de fruição/ocupação (opcional, se houve entrega)</label>
-      <input id="dt-occupancy" name="occupancyFeeAmount" type="number" step="0.01" min="0" />
+      <label className="inc-field">
+        <span className="inc-label">Dedução — taxa de fruição/ocupação (opcional, se houve entrega)</span>
+        <input id="dt-occupancy" name="occupancyFeeAmount" type="number" step="0.01" min="0" className="inc-input" />
+      </label>
 
-      <label htmlFor="dt-refund-date">Prazo de devolução (vencimento da conta a pagar)</label>
-      <input id="dt-refund-date" name="refundDueDate" type="date" required />
+      <label className="inc-field">
+        <span className="inc-label">Prazo de devolução (vencimento da conta a pagar)</span>
+        <input id="dt-refund-date" name="refundDueDate" type="date" required className="inc-input" />
+      </label>
 
-      <label htmlFor="dt-refund-terms">Forma de devolução (parcela única, parcelado etc.)</label>
-      <input id="dt-refund-terms" name="refundTerms" type="text" />
+      <label className="inc-field">
+        <span className="inc-label">Forma de devolução (parcela única, parcelado etc.)</span>
+        <input id="dt-refund-terms" name="refundTerms" type="text" className="inc-input" />
+      </label>
 
-      <label htmlFor="dt-reason">Motivo</label>
-      <textarea id="dt-reason" name="reason" rows={2} />
+      <label className="inc-field">
+        <span className="inc-label">Motivo</span>
+        <textarea id="dt-reason" name="reason" rows={2} className="inc-input" style={{ height: "auto", padding: "var(--inc-space-6)" }} />
+      </label>
 
-      {state.error ? <p className="error-text">{state.error}</p> : null}
+      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
       {state.success ? (
-        <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Distrato calculado — confira o demonstrativo antes de assinar.</p>
+        <p className="inc-help">Distrato calculado — confira o demonstrativo antes de assinar.</p>
       ) : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary">
         {pending ? "Calculando..." : "Iniciar distrato"}
       </button>
     </form>
@@ -58,7 +68,9 @@ export function SignDistratoButton({ saleId, distratoId }: { saleId: string; dis
     <form action={signDistratoAction}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="distratoId" value={distratoId} />
-      <button type="submit">Assinar distrato</button>
+      <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+        Assinar distrato
+      </button>
     </form>
   );
 }

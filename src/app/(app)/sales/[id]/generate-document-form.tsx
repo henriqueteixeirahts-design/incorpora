@@ -27,21 +27,28 @@ export function GenerateDocumentForm({
   const [selectedId, setSelectedId] = useState("");
 
   if (templates.length === 0) {
-    return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo ativo pra este empreendimento.</p>;
+    return <p className="inc-help">Nenhum modelo ativo pra este empreendimento.</p>;
   }
 
   const selected = templates.find((t) => t.id === selectedId);
   const selectedIsDraft = selected ? isDraftTemplateName(selected.label) : false;
 
   return (
-    <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+    <form action={formAction} className="inc-row" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="contractId" value={contractId} />
       {amendmentId ? <input type="hidden" name="amendmentId" value={amendmentId} /> : null}
       {assignmentId ? <input type="hidden" name="assignmentId" value={assignmentId} /> : null}
       {distratoId ? <input type="hidden" name="distratoId" value={distratoId} /> : null}
 
-      <select name="documentTemplateId" required defaultValue="" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+      <select
+        name="documentTemplateId"
+        required
+        defaultValue=""
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+        className="inc-select"
+      >
         <option value="" disabled>
           Selecione o modelo...
         </option>
@@ -52,19 +59,19 @@ export function GenerateDocumentForm({
         ))}
       </select>
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" disabled={pending} className="inc-btn inc-btn--secondary inc-btn--sm">
         {pending ? "Gerando..." : "Gerar documento"}
       </button>
 
       {selectedIsDraft ? (
-        <p className="error-text" style={{ width: "100%" }}>
+        <p className="inc-help inc-help--error" style={{ width: "100%" }}>
           ⚠ Este modelo é um rascunho gerado automaticamente — revise com o jurídico antes de usar o documento gerado como definitivo.
         </p>
       ) : null}
 
-      {state.error ? <p className="error-text">{state.error}</p> : null}
+      {state.error ? <p className="inc-help inc-help--error">{state.error}</p> : null}
       {state.missing && state.missing.length > 0 ? (
-        <p className="error-text" style={{ width: "100%" }}>
+        <p className="inc-help inc-help--error" style={{ width: "100%" }}>
           Faltam dados no cadastro pra gerar &quot;{state.missingTemplateName}&quot;: {state.missing.join(", ")}
         </p>
       ) : null}

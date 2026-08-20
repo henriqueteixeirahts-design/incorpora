@@ -44,16 +44,29 @@ function stepLabel(step: { offsetDays: number; actionLabel: string } | null) {
 const formatCurrency = formatCurrencyBRL;
 const formatDate = formatCalendarDateBR;
 
+function installmentChipClass(status: string) {
+  switch (status) {
+    case "PAID":
+      return "inc-chip inc-chip--contrato";
+    case "OVERDUE":
+      return "inc-chip inc-chip--atraso";
+    case "CANCELLED":
+      return "inc-chip inc-chip--permuta";
+    default:
+      return "inc-chip inc-chip--proposta";
+  }
+}
+
 function RegisterPaymentForm({ customerId, installmentId }: { customerId: string; installmentId: string }) {
   const [state, formAction, pending] = useActionState(registerStatementPaymentAction, registerInitialState);
   return (
-    <form action={formAction} style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", alignItems: "center" }}>
+    <form action={formAction} style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", padding: "10px 0" }}>
       <input type="hidden" name="customerId" value={customerId} />
       <input type="hidden" name="installmentId" value={installmentId} />
-      <input name="amount" type="number" step="0.01" placeholder="Valor" required style={{ width: 100 }} />
-      <input name="paidAt" type="date" required />
-      <input name="method" placeholder="PIX/Boleto..." style={{ width: 110 }} />
-      <button type="submit" disabled={pending}>
+      <input className="inc-input" name="amount" type="number" step="0.01" placeholder="Valor" required style={{ width: 110 }} />
+      <input className="inc-input" name="paidAt" type="date" required />
+      <input className="inc-input" name="method" placeholder="PIX/Boleto..." style={{ width: 130 }} />
+      <button type="submit" className="inc-btn inc-btn--primary inc-btn--sm" disabled={pending}>
         {pending ? "..." : "Registrar"}
       </button>
       {state.error ? <span className="error-text">{state.error}</span> : null}
@@ -76,43 +89,47 @@ function InstallmentRow({
   return (
     <>
       <tr>
-        <td>{installment.sequence}</td>
-        <td>{installment.isDownPayment ? `${installment.label} (entrada)` : installment.label}</td>
-        <td>{formatDate(installment.dueDate)}</td>
-        <td>{formatCurrency(installment.originalValue)}</td>
-        <td>{formatCurrency(installment.resultValue)}</td>
+        <td className="is-muted">{installment.sequence}</td>
+        <td className="is-key">{installment.isDownPayment ? `${installment.label} (entrada)` : installment.label}</td>
+        <td className="is-muted">{formatDate(installment.dueDate)}</td>
+        <td className="is-num">{formatCurrency(installment.originalValue)}</td>
+        <td className="is-num is-strong">{formatCurrency(installment.resultValue)}</td>
         <td>
-          {installment.situationLabel}
-          {installment.renegotiatedByAmendmentNumber ? ` (${installment.renegotiatedByAmendmentNumber})` : ""}
+          <span className={installmentChipClass(installment.status)}>{installment.situationLabel}</span>
+          {installment.renegotiatedByAmendmentNumber ? (
+            <div className="inc-table__sub">{installment.renegotiatedByAmendmentNumber}</div>
+          ) : null}
         </td>
-        <td style={{ fontSize: "0.8rem" }}>
-          {installment.payments.length === 0
-            ? "—"
-            : installment.payments.map((p) => (
-                <div key={p.id}>
-                  {formatDate(p.paidAt)} — {formatCurrency(p.amount)}
-                  {p.method ? ` — ${p.method}` : ""}
-                </div>
-              ))}
+        <td style={{ fontSize: "var(--inc-fs-xs)" }}>
+          {installment.payments.length === 0 ? (
+            <span className="is-empty">—</span>
+          ) : (
+            installment.payments.map((p) => (
+              <div key={p.id}>
+                {formatDate(p.paidAt)} — {formatCurrency(p.amount)}
+                {p.method ? ` — ${p.method}` : ""}
+              </div>
+            ))
+          )}
         </td>
         <td>
-          <button type="button" className="secondary" onClick={() => setExpanded((v) => !v)}>
+          <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Ocultar cálculo" : "Detalhe do cálculo"}
           </button>
         </td>
       </tr>
       {isOpen && canRegisterPayment ? (
         <tr>
-          <td colSpan={8}>
+          <td colSpan={8} style={{ borderBottom: "1px solid var(--inc-border-row)" }}>
             <RegisterPaymentForm customerId={customerId} installmentId={installment.id} />
           </td>
         </tr>
       ) : null}
       {expanded ? (
         <tr>
-          <td colSpan={8} style={{ background: "color-mix(in srgb, var(--foreground) 4%, transparent)" }}>
+          <td colSpan={8} style={{ background: "var(--inc-surface-subtle)" }}>
             {installment.details ? (
-              <div style={{ fontSize: "0.8rem", padding: "0.5rem 0" }}>
+              <div style={{ fontSize: "var(--inc-fs-xs)", padding: "10px 0", color: "var(--inc-text-secondary)" }}>
                 {installment.details.phases.map((phase, index) => (
                   <p key={index}>
                     <strong>{phase.phase === "PRE_HABITE_SE" ? "Fase de obra" : "Pós-Habite-se"}</strong> — índice acumulado{" "}
@@ -132,7 +149,9 @@ function InstallmentRow({
                 ) : null}
               </div>
             ) : (
-              <p style={{ fontSize: "0.8rem", padding: "0.5rem 0", opacity: 0.7 }}>Parcela cancelada — sem cálculo de correção.</p>
+              <p style={{ fontSize: "var(--inc-fs-xs)", padding: "10px 0", color: "var(--inc-text-muted)" }}>
+                Parcela cancelada — sem cálculo de correção.
+              </p>
             )}
           </td>
         </tr>
@@ -144,20 +163,20 @@ function InstallmentRow({
 function FullSettlementForm({ contractId }: { contractId: string }) {
   const [state, formAction, pending] = useActionState(simulateFullSettlementAction, settlementInitialState);
   return (
-    <div style={{ marginTop: "0.75rem" }}>
-      <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+    <div style={{ marginTop: "14px" }}>
+      <form action={formAction} style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
         <input type="hidden" name="contractId" value={contractId} />
-        <label htmlFor={`settle-date-${contractId}`} style={{ fontSize: "0.85rem" }}>
-          Simular quitação total na data
+        <label className="inc-field" htmlFor={`settle-date-${contractId}`}>
+          <span className="inc-label">Simular quitação total na data</span>
+          <input id={`settle-date-${contractId}`} className="inc-input" name="targetDate" type="date" required />
         </label>
-        <input id={`settle-date-${contractId}`} name="targetDate" type="date" required />
-        <button type="submit" disabled={pending}>
+        <button type="submit" className="inc-btn inc-btn--secondary" disabled={pending}>
           {pending ? "Calculando..." : "Simular"}
         </button>
       </form>
       {state.error ? <p className="error-text">{state.error}</p> : null}
       {state.result ? (
-        <p style={{ fontSize: "0.85rem", marginTop: "0.4rem" }}>
+        <p style={{ fontSize: "var(--inc-fs-sm)", marginTop: "8px", color: "var(--inc-text-secondary)" }}>
           Quitação em {formatDate(state.result.targetDate)}: <strong>{formatCurrency(state.result.total)}</strong> (
           {state.result.items.length} parcela(s) em aberto)
         </p>
@@ -179,17 +198,24 @@ function GenerateStatementForm({
   const [selectedId, setSelectedId] = useState("");
 
   if (templates.length === 0) {
-    return <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>Nenhum modelo de extrato ativo pra este empreendimento.</p>;
+    return <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>Nenhum modelo de extrato ativo pra este empreendimento.</p>;
   }
 
   const selected = templates.find((t) => t.id === selectedId);
   const selectedIsDraft = selected ? isDraftTemplateName(selected.label) : false;
 
   return (
-    <form action={formAction} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+    <form action={formAction} style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
       <input type="hidden" name="customerId" value={customerId} />
       <input type="hidden" name="contractId" value={contractId} />
-      <select name="documentTemplateId" required defaultValue="" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+      <select
+        className="inc-select"
+        name="documentTemplateId"
+        required
+        defaultValue=""
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+      >
         <option value="" disabled>
           Selecione o modelo...
         </option>
@@ -199,7 +225,7 @@ function GenerateStatementForm({
           </option>
         ))}
       </select>
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="inc-btn inc-btn--secondary" disabled={pending}>
         {pending ? "Gerando..." : "Gerar PDF do extrato"}
       </button>
       {selectedIsDraft ? (
@@ -208,7 +234,9 @@ function GenerateStatementForm({
         </p>
       ) : null}
       {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Extrato gerado — veja em Documentos, na venda.</p> : null}
+      {state.success ? (
+        <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-secondary)" }}>Extrato gerado — veja em Documentos, na venda.</p>
+      ) : null}
       {state.missing && state.missing.length > 0 ? (
         <p className="error-text" style={{ width: "100%" }}>
           Faltam dados no cadastro pra gerar &quot;{state.missingTemplateName}&quot;: {state.missing.join(", ")}
@@ -241,70 +269,88 @@ function ContractSection({
     .filter((i) => i.status === "PENDING" || i.status === "OVERDUE")
     .map((i) => ({ id: i.id, label: i.label, dueDateLabel: formatDate(i.dueDate), resultValue: i.resultValue }));
   return (
-    <section style={{ marginTop: "2rem", borderTop: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)", paddingTop: "1rem" }}>
-      <h2 style={{ fontSize: "1.1rem" }}>
-        {contract.contractNumber} — {contract.developmentName} — {contract.unitNumber}
-      </h2>
-      <p style={{ opacity: 0.8 }}>{contract.situationLabel}</p>
+    <section style={{ marginTop: "28px" }}>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div>
+            <div className="inc-card__title">
+              {contract.contractNumber} — {contract.developmentName} — {contract.unitNumber}
+            </div>
+            <div className="inc-card__meta">{contract.situationLabel}</div>
+          </div>
+        </div>
 
-      <div className="field-grid" style={{ marginTop: "0.5rem" }}>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Valor contratado</p>
-          <p>{formatCurrency(contract.contractedValue)}</p>
+        <div className="inc-card__body">
+          <div className="inc-grid-4">
+            <div>
+              <div className="inc-label">Valor contratado</div>
+              <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                {formatCurrency(contract.contractedValue)}
+              </div>
+            </div>
+            <div>
+              <div className="inc-label">Total pago</div>
+              <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                {formatCurrency(contract.totalPaid)}
+              </div>
+            </div>
+            <div>
+              <div className="inc-label">Saldo devedor atual</div>
+              <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                {formatCurrency(contract.outstandingBalance)}
+              </div>
+            </div>
+            <div>
+              <div className="inc-label">% quitado</div>
+              <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                {contract.percentPaid}%
+              </div>
+            </div>
+          </div>
         </div>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Total pago</p>
-          <p>{formatCurrency(contract.totalPaid)}</p>
-        </div>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Saldo devedor atual</p>
-          <p>{formatCurrency(contract.outstandingBalance)}</p>
-        </div>
-        <div>
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>% quitado</p>
-          <p>{contract.percentPaid}%</p>
+
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Parcela</th>
+              <th>Vencimento</th>
+              <th className="is-num">Original</th>
+              <th className="is-num">Corrigido</th>
+              <th>Situação</th>
+              <th>Pagamento</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {contract.installments.map((installment) => (
+              <InstallmentRow
+                key={installment.id}
+                installment={installment}
+                customerId={customerId}
+                canRegisterPayment={canRegisterPayment}
+              />
+            ))}
+          </tbody>
+        </table>
+
+        <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "14px", borderTop: "1px solid var(--inc-border-divider)" }}>
+          <p style={{ fontSize: "var(--inc-fs-sm)" }}>
+            <a href={`/sales?search=${encodeURIComponent(contract.contractNumber)}`}>
+              Ver venda (aditivo, cessão, distrato, simular antecipação) →
+            </a>
+          </p>
+
+          <FullSettlementForm contractId={contract.contractId} />
+
+          {canGenerateDocument ? (
+            <div>
+              <div className="inc-label" style={{ marginBottom: "6px" }}>Gerar documento</div>
+              <GenerateStatementForm customerId={customerId} contractId={contract.contractId} templates={templates} />
+            </div>
+          ) : null}
         </div>
       </div>
-
-      <table style={{ marginTop: "1rem", width: "100%" }}>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Parcela</th>
-            <th>Vencimento</th>
-            <th>Original</th>
-            <th>Corrigido</th>
-            <th>Situação</th>
-            <th>Pagamento</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {contract.installments.map((installment) => (
-            <InstallmentRow
-              key={installment.id}
-              installment={installment}
-              customerId={customerId}
-              canRegisterPayment={canRegisterPayment}
-            />
-          ))}
-        </tbody>
-      </table>
-
-      <p style={{ fontSize: "0.85rem", marginTop: "0.75rem" }}>
-        <a href={`/sales?search=${encodeURIComponent(contract.contractNumber)}`}>
-          Ver venda (aditivo, cessão, distrato, simular antecipação) →
-        </a>
-      </p>
-
-      <FullSettlementForm contractId={contract.contractId} />
-
-      {canGenerateDocument ? (
-        <div style={{ marginTop: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", fontWeight: 500 }}>Gerar documento</p>
-          <GenerateStatementForm customerId={customerId} contractId={contract.contractId} templates={templates} />
-        </div>
-      ) : null}
 
       <RenegotiationSection
         customerId={customerId}
@@ -322,25 +368,33 @@ function ContractSection({
 function LogContactForm({ customerId }: { customerId: string }) {
   const [state, formAction, pending] = useActionState(logCollectionContactAction, logContactInitialState);
   return (
-    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 420 }}>
+    <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: 420 }}>
       <input type="hidden" name="customerId" value={customerId} />
 
-      <label htmlFor="cl-date">Data do contato</label>
-      <input id="cl-date" name="occurredAt" type="date" required />
+      <label className="inc-field" htmlFor="cl-date">
+        <span className="inc-label">Data do contato</span>
+        <input id="cl-date" className="inc-input" name="occurredAt" type="date" required />
+      </label>
 
-      <label htmlFor="cl-channel">Canal</label>
-      <input id="cl-channel" name="channel" type="text" placeholder="Ligação, WhatsApp, E-mail..." required />
+      <label className="inc-field" htmlFor="cl-channel">
+        <span className="inc-label">Canal</span>
+        <input id="cl-channel" className="inc-input" name="channel" type="text" placeholder="Ligação, WhatsApp, E-mail..." required />
+      </label>
 
-      <label htmlFor="cl-summary">Resumo</label>
-      <textarea id="cl-summary" name="summary" rows={2} required />
+      <label className="inc-field" htmlFor="cl-summary">
+        <span className="inc-label">Resumo</span>
+        <textarea id="cl-summary" className="inc-input" name="summary" rows={2} required style={{ height: "auto", padding: "8px 12px" }} />
+      </label>
 
-      <label htmlFor="cl-next">Próximo passo</label>
-      <input id="cl-next" name="nextStepNote" type="text" />
+      <label className="inc-field" htmlFor="cl-next">
+        <span className="inc-label">Próximo passo</span>
+        <input id="cl-next" className="inc-input" name="nextStepNote" type="text" />
+      </label>
 
       {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Contato registrado.</p> : null}
+      {state.success ? <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-secondary)" }}>Contato registrado.</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="inc-btn inc-btn--primary" disabled={pending} style={{ alignSelf: "flex-start" }}>
         {pending ? "Salvando..." : "Registrar contato"}
       </button>
     </form>
@@ -359,42 +413,43 @@ function CollectionHistorySection({
   canRegister: boolean;
 }) {
   return (
-    <section
-      style={{
-        marginTop: "2rem",
-        borderTop: "1px solid color-mix(in srgb, var(--foreground) 12%, transparent)",
-        paddingTop: "1rem",
-      }}
-    >
-      <h2 style={{ fontSize: "1.1rem" }}>Histórico de cobrança</h2>
-
-      {stage ? (
-        <p style={{ fontSize: "0.85rem", opacity: 0.8, marginTop: "0.25rem" }}>
-          {stage.worstDaysOverdue} dia(s) em atraso (pior parcela) — etapa atual: {stepLabel(stage.currentStep)} ·
-          próxima ação sugerida: {stepLabel(stage.nextStep)}
-        </p>
-      ) : (
-        <p style={{ fontSize: "0.85rem", opacity: 0.7, marginTop: "0.25rem" }}>Sem parcelas em atraso no momento.</p>
-      )}
-
-      {history.length === 0 ? (
-        <p style={{ opacity: 0.7, fontSize: "0.85rem", marginTop: "0.75rem" }}>Nenhum contato registrado ainda.</p>
-      ) : (
-        <ul style={{ marginTop: "0.75rem", paddingLeft: "1.1rem", fontSize: "0.85rem", lineHeight: 1.6 }}>
-          {history.map((log) => (
-            <li key={log.id}>
-              {log.occurredAtLabel} — {log.channel}: {log.summary}
-              {log.nextStepNote ? ` (próximo passo: ${log.nextStepNote})` : ""}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {canRegister ? (
-        <div style={{ marginTop: "1rem" }}>
-          <LogContactForm customerId={customerId} />
+    <section style={{ marginTop: "28px" }}>
+      <div className="inc-card">
+        <div className="inc-card__head">
+          <div className="inc-card__title">Histórico de cobrança</div>
         </div>
-      ) : null}
+        <div className="inc-card__body">
+          {stage ? (
+            <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-secondary)" }}>
+              {stage.worstDaysOverdue} dia(s) em atraso (pior parcela) — etapa atual: {stepLabel(stage.currentStep)} ·
+              próxima ação sugerida: {stepLabel(stage.nextStep)}
+            </p>
+          ) : (
+            <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>Sem parcelas em atraso no momento.</p>
+          )}
+
+          {history.length === 0 ? (
+            <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)", marginTop: "12px" }}>
+              Nenhum contato registrado ainda.
+            </p>
+          ) : (
+            <ul style={{ marginTop: "12px", paddingLeft: "18px", fontSize: "var(--inc-fs-sm)", lineHeight: 1.6, color: "var(--inc-text)" }}>
+              {history.map((log) => (
+                <li key={log.id}>
+                  {log.occurredAtLabel} — {log.channel}: {log.summary}
+                  {log.nextStepNote ? ` (próximo passo: ${log.nextStepNote})` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {canRegister ? (
+            <div style={{ marginTop: "16px" }}>
+              <LogContactForm customerId={customerId} />
+            </div>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
@@ -423,31 +478,44 @@ export function StatementView({
   return (
     <>
       {position.contracts.length > 1 ? (
-        <div className="field-section" style={{ marginTop: "1.5rem", maxWidth: 600 }}>
-          <h2 style={{ fontSize: "1.1rem" }}>Posição consolidada ({position.contracts.length} contratos)</h2>
-          <div className="field-grid" style={{ marginTop: "0.5rem" }}>
-            <div>
-              <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Valor contratado</p>
-              <p>{formatCurrency(position.consolidated.contractedValue)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Total pago</p>
-              <p>{formatCurrency(position.consolidated.totalPaid)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Saldo devedor</p>
-              <p>{formatCurrency(position.consolidated.outstandingBalance)}</p>
-            </div>
-            <div>
-              <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Situação geral</p>
-              <p>{position.consolidated.situationLabel}</p>
+        <div className="inc-card">
+          <div className="inc-card__head">
+            <div className="inc-card__title">Posição consolidada</div>
+            <div className="inc-card__meta">{position.contracts.length} contratos</div>
+          </div>
+          <div className="inc-card__body">
+            <div className="inc-grid-4">
+              <div>
+                <div className="inc-label">Valor contratado</div>
+                <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                  {formatCurrency(position.consolidated.contractedValue)}
+                </div>
+              </div>
+              <div>
+                <div className="inc-label">Total pago</div>
+                <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                  {formatCurrency(position.consolidated.totalPaid)}
+                </div>
+              </div>
+              <div>
+                <div className="inc-label">Saldo devedor</div>
+                <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                  {formatCurrency(position.consolidated.outstandingBalance)}
+                </div>
+              </div>
+              <div>
+                <div className="inc-label">Situação geral</div>
+                <div style={{ marginTop: "4px", fontSize: "var(--inc-fs-md)", fontWeight: "var(--inc-fw-semibold)", color: "var(--inc-brand-azul)" }}>
+                  {position.consolidated.situationLabel}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       ) : null}
 
       {position.contracts.length === 0 ? (
-        <p style={{ opacity: 0.7, marginTop: "1.5rem" }}>Nenhum contrato com carteira ainda.</p>
+        <p style={{ color: "var(--inc-text-muted)", marginTop: "20px" }}>Nenhum contrato com carteira ainda.</p>
       ) : (
         position.contracts.map((contract) => (
           <ContractSection

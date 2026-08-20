@@ -15,19 +15,16 @@ export function RegisterPaymentForm({
   const [state, formAction, pending] = useActionState(registerPaymentAction, initialState);
 
   return (
-    <form
-      action={formAction}
-      style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", alignItems: "center" }}
-    >
+    <form action={formAction} className="inc-row" style={{ flexWrap: "wrap" }}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="installmentId" value={installmentId} />
-      <input name="amount" type="number" step="0.01" placeholder="Valor" required style={{ width: 100 }} />
-      <input name="paidAt" type="date" required />
-      <input name="method" placeholder="PIX/Boleto..." style={{ width: 110 }} />
-      <button type="submit" disabled={pending}>
+      <input name="amount" type="number" step="0.01" placeholder="Valor" required className="inc-input" style={{ width: 100 }} />
+      <input name="paidAt" type="date" required className="inc-input" />
+      <input name="method" placeholder="PIX/Boleto..." className="inc-input" style={{ width: 110 }} />
+      <button type="submit" disabled={pending} className="inc-btn inc-btn--primary inc-btn--sm">
         {pending ? "..." : "Registrar"}
       </button>
-      {state.error ? <span className="error-text">{state.error}</span> : null}
+      {state.error ? <span className="inc-help inc-help--error">{state.error}</span> : null}
     </form>
   );
 }
@@ -43,7 +40,7 @@ export function RecalculatePortfolioButton({
     <form action={recalculatePortfolioAction}>
       <input type="hidden" name="saleId" value={saleId} />
       <input type="hidden" name="portfolioId" value={portfolioId} />
-      <button type="submit" className="secondary">
+      <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
         Recalcular carteira
       </button>
     </form>

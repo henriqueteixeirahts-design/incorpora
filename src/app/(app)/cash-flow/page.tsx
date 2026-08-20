@@ -41,58 +41,66 @@ export default async function CashFlowPage({
 
   return (
     <>
-      <h1>Fluxo de caixa</h1>
-      <p style={{ opacity: 0.7, maxWidth: 700 }}>
-        Consolida a carteira a receber (corrigida) + recebíveis avulsos − contas a pagar (com rateio aplicado), por
-        período de vencimento (previsto) e de lançamento efetivo (realizado). Escopo: <strong>{scopeLabel}</strong>.
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Financeiro</div>
+          <h1 className="inc-h1">Fluxo de caixa</h1>
+          <p className="inc-lede">
+            Consolida a carteira a receber (corrigida) + recebíveis avulsos − contas a pagar (com rateio aplicado),
+            por período de vencimento (previsto) e de lançamento efetivo (realizado). Escopo:{" "}
+            <strong>{scopeLabel}</strong>.
+          </p>
+        </div>
+      </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "16px" }}>
         <CashFlowFiltersForm
           developments={developments.map((d) => ({ id: d.id, label: d.name }))}
           spes={spes.map((s) => ({ id: s.id, label: s.name }))}
           current={{ developmentId: developmentId ?? "", speId: speId ?? "", granularity }}
         />
-        <a className="secondary" href={`/api/cash-flow/export${exportQs.toString() ? `?${exportQs.toString()}` : ""}`}>
+        <a className="inc-btn inc-btn--secondary" href={`/api/cash-flow/export${exportQs.toString() ? `?${exportQs.toString()}` : ""}`}>
           Exportar (xlsx)
         </a>
       </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ marginTop: "1.5rem", minWidth: 1100 }}>
+      <div className="inc-card" style={{ marginTop: "16px", overflowX: "auto" }}>
+        <table className="inc-table" style={{ border: 0, minWidth: 1100 }}>
           <thead>
             <tr>
               <th>{granularity === "monthly" ? "Mês" : granularity === "weekly" ? "Semana" : "Dia"}</th>
-              <th>A receber (previsto)</th>
-              <th>Recebido (realizado)</th>
-              <th>A pagar (previsto)</th>
-              <th>Pago (realizado)</th>
-              <th>Saldo {GRANULARITY_LABELS[granularity]} (previsto)</th>
-              <th>Saldo {GRANULARITY_LABELS[granularity]} (realizado)</th>
-              <th>Diferença</th>
-              <th>Saldo acumulado (previsto)</th>
-              <th>Saldo acumulado (realizado)</th>
+              <th className="is-num">A receber (previsto)</th>
+              <th className="is-num">Recebido (realizado)</th>
+              <th className="is-num">A pagar (previsto)</th>
+              <th className="is-num">Pago (realizado)</th>
+              <th className="is-num">Saldo {GRANULARITY_LABELS[granularity]} (previsto)</th>
+              <th className="is-num">Saldo {GRANULARITY_LABELS[granularity]} (realizado)</th>
+              <th className="is-num">Diferença</th>
+              <th className="is-num">Saldo acumulado (previsto)</th>
+              <th className="is-num">Saldo acumulado (realizado)</th>
             </tr>
           </thead>
           <tbody>
             {buckets.map((bucket) => (
               <tr key={bucket.period}>
-                <td>{formatPeriod(bucket.period, granularity)}</td>
-                <td>{formatCurrency(bucket.receivablesForecast)}</td>
-                <td>{formatCurrency(bucket.receivablesRealized)}</td>
-                <td>{formatCurrency(bucket.payablesForecast)}</td>
-                <td>{formatCurrency(bucket.payablesRealized)}</td>
-                <td style={{ color: bucket.netForecast < 0 ? "#e03131" : undefined }}>
+                <td className="is-key">{formatPeriod(bucket.period, granularity)}</td>
+                <td className="is-num is-muted">{formatCurrency(bucket.receivablesForecast)}</td>
+                <td className="is-num is-muted">{formatCurrency(bucket.receivablesRealized)}</td>
+                <td className="is-num is-muted">{formatCurrency(bucket.payablesForecast)}</td>
+                <td className="is-num is-muted">{formatCurrency(bucket.payablesRealized)}</td>
+                <td className="is-num" style={{ color: bucket.netForecast < 0 ? "var(--inc-danger)" : undefined }}>
                   {formatCurrency(bucket.netForecast)}
                 </td>
-                <td style={{ color: bucket.netRealized < 0 ? "#e03131" : undefined }}>
+                <td className="is-num" style={{ color: bucket.netRealized < 0 ? "var(--inc-danger)" : undefined }}>
                   {formatCurrency(bucket.netRealized)}
                 </td>
-                <td style={{ color: bucket.variance < 0 ? "#e03131" : undefined }}>{formatCurrency(bucket.variance)}</td>
-                <td style={{ color: bucket.cumulativeForecast < 0 ? "#e03131" : undefined, fontWeight: 600 }}>
+                <td className="is-num" style={{ color: bucket.variance < 0 ? "var(--inc-danger)" : undefined }}>
+                  {formatCurrency(bucket.variance)}
+                </td>
+                <td className="is-num is-strong" style={{ color: bucket.cumulativeForecast < 0 ? "var(--inc-danger)" : undefined }}>
                   {formatCurrency(bucket.cumulativeForecast)}
                 </td>
-                <td style={{ color: bucket.cumulativeRealized < 0 ? "#e03131" : undefined, fontWeight: 600 }}>
+                <td className="is-num is-strong" style={{ color: bucket.cumulativeRealized < 0 ? "var(--inc-danger)" : undefined }}>
                   {formatCurrency(bucket.cumulativeRealized)}
                 </td>
               </tr>
@@ -101,7 +109,7 @@ export default async function CashFlowPage({
         </table>
       </div>
 
-      <p style={{ marginTop: "1rem", fontSize: "0.8rem", opacity: 0.65, maxWidth: 700 }}>
+      <p className="inc-help" style={{ marginTop: "12px", maxWidth: 700 }}>
         O saldo acumulado parte do saldo inicial das contas bancárias do escopo (lançado manualmente em Configurações
         → Fornecedores/centros de custo/contas bancárias — a conciliação automática da Fase 2 passa a alimentar isso
         sozinha).

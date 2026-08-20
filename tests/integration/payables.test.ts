@@ -106,6 +106,36 @@ describe("Itens da conta a pagar — soma centavo a centavo", () => {
   });
 });
 
+/**
+ * docs/RELATORIO_TESTDRIVE.md, achado 23 — documentos anexados também
+ * precisam mostrar quem enviou, não só quando. `getPayableDetail` passou a
+ * incluir `uploadedByName` em cada anexo (Sprint V4) — cria o registro de
+ * `Document` direto (sem exercitar o Storage real, que exigiria mock) e
+ * confirma que a consulta resolve o nome de quem enviou.
+ */
+describe("Anexos — quem enviou (achado 23)", () => {
+  it("resolve o nome de quem enviou cada anexo", async () => {
+    const payable = await createPayable(context, baseInput());
+    await prisma.document.create({
+      data: {
+        organizationId: org.id,
+        entityType: "Payable",
+        entityId: payable.id,
+        category: "FISCAL_DOCUMENT",
+        fileName: "nota-fiscal.pdf",
+        fileUrl: "payables/fake-path.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 1024,
+        uploadedById: user.id,
+      },
+    });
+
+    const detail = await getPayableDetail(org.id, payable.id);
+    expect(detail!.documents).toHaveLength(1);
+    expect(detail!.documents[0].uploadedByName).toBe("Usuário Financeiro");
+  });
+});
+
 describe("Filtros da lista", () => {
   it("filtra por empreendimento, status e faixa de valor", async () => {
     const otherDevelopment = await createDevelopment(context, { speId, name: "Outro Empreendimento", type: "RESIDENTIAL_BUILDING" });

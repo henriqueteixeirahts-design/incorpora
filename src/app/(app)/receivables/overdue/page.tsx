@@ -53,11 +53,16 @@ export default async function OverdueInstallmentsPage({
 
   return (
     <>
-      <h1>Inadimplência</h1>
-      <p style={{ opacity: 0.7 }}>
-        Aging da carteira por faixa de atraso e régua de cobrança assistida (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md,
-        Parte 3). Valores calculados ao vivo (índice + multa + juros de mora).
-      </p>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">Financeiro</div>
+          <h1 className="inc-h1">Inadimplência</h1>
+          <p className="inc-lede">
+            Aging da carteira por faixa de atraso e régua de cobrança assistida (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md,
+            Parte 3). Valores calculados ao vivo (índice + multa + juros de mora).
+          </p>
+        </div>
+      </div>
 
       <IndexFreshnessBanner organizationId={context.organizationId} />
 
@@ -67,122 +72,123 @@ export default async function OverdueInstallmentsPage({
         current={{ developmentId, speId, minValue, maxValue }}
       />
 
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "1.25rem" }}>
-        <Link
-          href={bucketLink(null)}
-          className={!selectedBucket ? "active" : undefined}
-          style={{
-            border: "1px solid color-mix(in srgb, var(--foreground) 15%, transparent)",
-            borderRadius: 8,
-            padding: "0.6rem 0.9rem",
-            minWidth: 130,
-            background: !selectedBucket ? "color-mix(in srgb, var(--foreground) 8%, transparent)" : undefined,
-          }}
-        >
-          <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>Todos</p>
-          <p style={{ fontWeight: 600 }}>{formatCurrency(aging.summaries.reduce((s, b) => s + b.totalValue, 0))}</p>
-          <p style={{ fontSize: "0.75rem", opacity: 0.7 }}>
-            {aging.summaries.reduce((s, b) => s + b.installmentCount, 0)} parcela(s)
-          </p>
+      <div className="inc-grid-7" style={{ marginTop: "16px" }}>
+        <Link href={bucketLink(null)} className="inc-band" aria-pressed={!selectedBucket} style={{ textDecoration: "none" }}>
+          <div className="inc-band__label">Todos</div>
+          <div className="inc-band__value">{formatCurrency(aging.summaries.reduce((s, b) => s + b.totalValue, 0))}</div>
+          <div className="inc-band__sub">{aging.summaries.reduce((s, b) => s + b.installmentCount, 0)} parcela(s)</div>
         </Link>
         {aging.summaries.map((bucket) => (
           <Link
             key={bucket.bucket}
             href={bucketLink(bucket.bucket)}
-            style={{
-              border: "1px solid color-mix(in srgb, var(--foreground) 15%, transparent)",
-              borderRadius: 8,
-              padding: "0.6rem 0.9rem",
-              minWidth: 130,
-              background: selectedBucket === bucket.bucket ? "color-mix(in srgb, var(--foreground) 8%, transparent)" : undefined,
-            }}
+            className="inc-band"
+            aria-pressed={selectedBucket === bucket.bucket}
+            style={{ textDecoration: "none" }}
           >
-            <p style={{ fontSize: "0.8rem", opacity: 0.7 }}>{bucket.label}</p>
-            <p style={{ fontWeight: 600 }}>{formatCurrency(bucket.totalValue)}</p>
-            <p style={{ fontSize: "0.75rem", opacity: 0.7 }}>
+            <div className="inc-band__label">{bucket.label}</div>
+            <div className="inc-band__value">{formatCurrency(bucket.totalValue)}</div>
+            <div className="inc-band__sub">
               {bucket.installmentCount} parcela(s) · {bucket.customerCount} cliente(s)
-            </p>
+            </div>
           </Link>
         ))}
       </div>
 
-      <table style={{ marginTop: "1.5rem", maxWidth: 1000 }}>
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Empreendimento / Unidade</th>
-            <th>Parcela</th>
-            <th>Vencimento</th>
-            <th>Dias em atraso</th>
-            <th>Valor corrigido</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleRows.map((row) => (
-            <tr key={row.installmentId}>
-              <td>
-                <Link href={`/customers/${row.customerId}/statement`}>{row.customerName}</Link>
-              </td>
-              <td>
-                {row.developmentName} — {row.unitNumber}
-              </td>
-              <td>{row.label}</td>
-              <td>{formatCalendarDateBR(row.dueDate)}</td>
-              <td>{row.daysOverdue}</td>
-              <td>{formatCurrency(row.resultValue)}</td>
-              <td>
-                <Link href={`/sales/${row.saleId}`}>Ver carteira →</Link>
-              </td>
-            </tr>
-          ))}
-          {visibleRows.length === 0 ? (
-            <tr>
-              <td colSpan={7} style={{ opacity: 0.7 }}>
-                Nenhuma parcela nessa faixa.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-
-      <section style={{ marginTop: "2.5rem" }}>
-        <h2 style={{ fontSize: "1.1rem" }}>Régua de cobrança — clientes em atraso</h2>
-        <p style={{ opacity: 0.7, fontSize: "0.85rem", maxWidth: 640 }}>
-          Etapa assistida: a régua não dispara sozinha ainda — o painel mostra em que etapa cada cliente está e a
-          próxima ação sugerida; o registro do contato feito fica no extrato do cliente.
-        </p>
-        <table style={{ marginTop: "0.75rem", maxWidth: 1000 }}>
+      <div className="inc-card" style={{ marginTop: "20px" }}>
+        <table className="inc-table" style={{ border: 0 }}>
           <thead>
             <tr>
               <th>Cliente</th>
-              <th>Dias em atraso (pior parcela)</th>
-              <th>Etapa atual</th>
-              <th>Próxima ação sugerida</th>
-              <th></th>
+              <th>Empreendimento / Unidade</th>
+              <th>Parcela</th>
+              <th>Vencimento</th>
+              <th>Dias em atraso</th>
+              <th>Valor corrigido</th>
+              <th aria-label="Ações" />
             </tr>
           </thead>
           <tbody>
-            {stages.map((stage) => (
-              <tr key={stage.customerId}>
-                <td>{stage.customerName}</td>
-                <td>{stage.worstDaysOverdue}</td>
-                <td>{stepLabel(stage.currentStep)}</td>
-                <td>{stepLabel(stage.nextStep)}</td>
+            {visibleRows.map((row) => (
+              <tr key={row.installmentId}>
+                <td className="is-key">
+                  <Link href={`/customers/${row.customerId}/statement`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {row.customerName}
+                  </Link>
+                </td>
+                <td className="is-muted">
+                  {row.developmentName} — {row.unitNumber}
+                </td>
+                <td>{row.label}</td>
+                <td className="is-muted">{formatCalendarDateBR(row.dueDate)}</td>
                 <td>
-                  <Link href={`/customers/${stage.customerId}/statement`}>Registrar contato →</Link>
+                  <span className="inc-chip inc-chip--atraso">{row.daysOverdue} dia(s)</span>
+                </td>
+                <td className="is-strong">{formatCurrency(row.resultValue)}</td>
+                <td>
+                  <Link href={`/sales/${row.saleId}`} style={{ color: "var(--inc-brand-azul)", fontWeight: 500 }}>
+                    Ver carteira →
+                  </Link>
                 </td>
               </tr>
             ))}
-            {stages.length === 0 ? (
+            {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ opacity: 0.7 }}>
-                  Nenhum cliente em atraso.
+                <td colSpan={7} className="is-empty">
+                  Nenhuma parcela nessa faixa.
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
+      </div>
+
+      <section style={{ marginTop: "32px" }}>
+        <div className="inc-eyebrow">Régua de cobrança</div>
+        <h2 className="inc-h1" style={{ fontSize: "19px", marginTop: "4px" }}>
+          Clientes em atraso
+        </h2>
+        <p className="inc-lede" style={{ marginTop: "4px" }}>
+          Etapa assistida: a régua não dispara sozinha ainda — o painel mostra em que etapa cada cliente está e a
+          próxima ação sugerida; o registro do contato feito fica no extrato do cliente.
+        </p>
+        <div className="inc-card" style={{ marginTop: "12px" }}>
+          <table className="inc-table" style={{ border: 0 }}>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Dias em atraso (pior parcela)</th>
+                <th>Etapa atual</th>
+                <th>Próxima ação sugerida</th>
+                <th aria-label="Ações" />
+              </tr>
+            </thead>
+            <tbody>
+              {stages.map((stage) => (
+                <tr key={stage.customerId}>
+                  <td className="is-key">{stage.customerName}</td>
+                  <td>
+                    <span className="inc-chip inc-chip--atraso">{stage.worstDaysOverdue} dia(s)</span>
+                  </td>
+                  <td className="is-muted">{stepLabel(stage.currentStep)}</td>
+                  <td className="is-muted">{stepLabel(stage.nextStep)}</td>
+                  <td>
+                    <Link href={`/customers/${stage.customerId}/statement`} style={{ color: "var(--inc-brand-azul)", fontWeight: 500 }}>
+                      Registrar contato →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {stages.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="is-empty">
+                    Nenhum cliente em atraso.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   );

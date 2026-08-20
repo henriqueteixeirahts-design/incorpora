@@ -19,6 +19,16 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: "Cancelada",
 };
 
+const STATUS_CHIP: Record<string, string> = {
+  ENTERED: "permuta",
+  REVIEWED: "reserva",
+  APPROVED: "proposta",
+  SCHEDULED: "proposta",
+  PAID: "contrato",
+  RECONCILED: "contrato",
+  CANCELLED: "atraso",
+};
+
 const NEXT_ACTION_LABELS: Record<string, string> = {
   ENTERED: "Conferir",
   REVIEWED: "Aprovar",
@@ -130,8 +140,8 @@ export function PayablesManager({
 
   return (
     <>
-      <div className="list-toolbar">
-        <form className="list-search" action="/payables" method="get">
+      <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <form className="inc-search" style={{ width: 320 }} action="/payables" method="get">
           <input type="hidden" name="sort" value={sortBy} />
           <input type="hidden" name="dir" value={sortDir} />
           {pendingApprovalOnly ? <input type="hidden" name="pending" value="1" /> : null}
@@ -139,19 +149,18 @@ export function PayablesManager({
             value ? <input key={key} type="hidden" name={key} value={value} /> : null,
           )}
           <input type="search" name="q" placeholder="Buscar por descrição" defaultValue={search} />
-          <button type="submit" className="secondary">
-            Buscar
-          </button>
         </form>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <p style={{ fontSize: "0.85rem", opacity: 0.75 }}>
-            {total} conta{total === 1 ? "" : "s"} a pagar
-          </p>
-          <a className="secondary" href={exportHref}>
+
+        <span style={{ fontSize: "12.5px", color: "var(--inc-text-soft)" }}>
+          {total} conta{total === 1 ? "" : "s"} a pagar
+        </span>
+
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
+          <a className="inc-btn inc-btn--secondary" href={exportHref}>
             Exportar
           </a>
           {canCreate ? (
-            <button type="button" onClick={() => setModal({ mode: "create" })}>
+            <button type="button" className="inc-btn inc-btn--primary" onClick={() => setModal({ mode: "create" })}>
               + Nova conta a pagar
             </button>
           ) : null}
@@ -169,88 +178,99 @@ export function PayablesManager({
         pendingApprovalOnly={pendingApprovalOnly}
       />
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            {SORTABLE_COLUMNS.map((col) => (
-              <th key={col.field} className="sortable-th">
-                <Link href={sortLink(col.field)}>
-                  <button type="button" tabIndex={-1}>
+      <div className="inc-card">
+        <table className="inc-table" style={{ border: 0 }}>
+          <thead>
+            <tr>
+              {SORTABLE_COLUMNS.map((col) => (
+                <th key={col.field}>
+                  <Link
+                    href={sortLink(col.field)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "inherit", textDecoration: "none" }}
+                  >
                     {col.label}
                     <SortIcon direction={sortBy === col.field ? sortDir : null} />
-                  </button>
-                </Link>
-              </th>
+                  </Link>
+                </th>
+              ))}
+              <th>Empreendimento</th>
+              <th aria-label="Ações" />
+            </tr>
+          </thead>
+          <tbody>
+            {payables.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="is-empty">
+                  {search ? "Nenhuma conta encontrada." : "Nenhuma conta a pagar lançada."}
+                </td>
+              </tr>
+            ) : null}
+            {payables.map((payable) => (
+              <tr key={payable.id}>
+                <td className="is-key">{payable.description}</td>
+                <td>{formatCalendarDateBR(payable.dueDate)}</td>
+                <td className="is-num">{formatCurrency(payable.amount)}</td>
+                <td>
+                  <span className={`inc-chip inc-chip--${STATUS_CHIP[payable.status] ?? "permuta"}`}>
+                    {STATUS_LABELS[payable.status] ?? payable.status}
+                  </span>
+                </td>
+                <td className="is-muted">
+                  {payable.allocationCount > 1
+                    ? `Rateado (${payable.allocationCount} destinos)`
+                    : (payable.developmentName ?? "Organização")}
+                </td>
+                <td>
+                  <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" }}>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        className="inc-btn-icon"
+                        aria-label={`Editar ${payable.description}`}
+                        disabled={loadingId === payable.id}
+                        onClick={() => openEdit(payable.id)}
+                      >
+                        <EditIcon />
+                      </button>
+                    ) : null}
+                    {canApprove && NEXT_ACTION_LABELS[payable.status] ? (
+                      <form action={advancePayableStatusAction}>
+                        <input type="hidden" name="payableId" value={payable.id} />
+                        <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+                          {NEXT_ACTION_LABELS[payable.status]}
+                        </button>
+                      </form>
+                    ) : null}
+                    {canCancel && !["PAID", "RECONCILED", "CANCELLED"].includes(payable.status) ? (
+                      <form action={cancelPayableAction}>
+                        <input type="hidden" name="payableId" value={payable.id} />
+                        <button type="submit" className="inc-btn inc-btn--secondary inc-btn--sm">
+                          Cancelar
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
             ))}
-            <th>Empreendimento</th>
-            <th aria-label="Ações" />
-          </tr>
-        </thead>
-        <tbody>
-          {payables.length === 0 ? (
-            <tr>
-              <td colSpan={6} style={{ opacity: 0.7 }}>
-                {search ? "Nenhuma conta encontrada." : "Nenhuma conta a pagar lançada."}
-              </td>
-            </tr>
-          ) : null}
-          {payables.map((payable) => (
-            <tr key={payable.id}>
-              <td>{payable.description}</td>
-              <td>{formatCalendarDateBR(payable.dueDate)}</td>
-              <td>{formatCurrency(payable.amount)}</td>
-              <td>{STATUS_LABELS[payable.status] ?? payable.status}</td>
-              <td>
-                {payable.allocationCount > 1
-                  ? `Rateado (${payable.allocationCount} destinos)`
-                  : (payable.developmentName ?? "Organização")}
-              </td>
-              <td>
-                <div className="row-actions">
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label={`Editar ${payable.description}`}
-                      disabled={loadingId === payable.id}
-                      onClick={() => openEdit(payable.id)}
-                    >
-                      <EditIcon />
-                    </button>
-                  ) : null}
-                  {canApprove && NEXT_ACTION_LABELS[payable.status] ? (
-                    <form action={advancePayableStatusAction}>
-                      <input type="hidden" name="payableId" value={payable.id} />
-                      <button type="submit" className="secondary">
-                        {NEXT_ACTION_LABELS[payable.status]}
-                      </button>
-                    </form>
-                  ) : null}
-                  {canCancel && !["PAID", "RECONCILED", "CANCELLED"].includes(payable.status) ? (
-                    <form action={cancelPayableAction}>
-                      <input type="hidden" name="payableId" value={payable.id} />
-                      <button type="submit" className="secondary">
-                        Cancelar
-                      </button>
-                    </form>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
 
-      <div className="pagination">
-        {page > 1 ? <Link href={pageLink(page - 1)}>← Anterior</Link> : <span className="disabled">← Anterior</span>}
-        <span>
+        <div className="inc-table-foot">
           Página {page} de {totalPages}
-        </span>
-        {page < totalPages ? (
-          <Link href={pageLink(page + 1)}>Próxima →</Link>
-        ) : (
-          <span className="disabled">Próxima →</span>
-        )}
+          <div className="inc-pagination">
+            {page > 1 ? (
+              <Link href={pageLink(page - 1)}>← Anterior</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>← Anterior</span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageLink(page + 1)}>Próxima →</Link>
+            ) : (
+              <span style={{ color: "var(--inc-text-placeholder)" }}>Próxima →</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {modal ? (

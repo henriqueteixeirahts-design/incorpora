@@ -113,13 +113,17 @@ export default async function SaleDetailPage({
 
   return (
     <>
-      <p style={{ marginBottom: "0.25rem" }}>
-        <Link href="/sales">← Vendas</Link>
-      </p>
-      <h1>
-        {sale.saleNumber} — {sale.development.name} — {sale.unit.number}
-      </h1>
-      <p style={{ opacity: 0.7 }}>
+      <div className="inc-page-head">
+        <div>
+          <div className="inc-eyebrow">
+            <Link href="/sales">← Vendas</Link>
+          </div>
+          <h1 className="inc-h1">
+            {sale.saleNumber} — {sale.development.name} — {sale.unit.number}
+          </h1>
+        </div>
+      </div>
+      <p style={{ marginTop: "-4px", fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-muted)" }}>
         {sale.customer.name} · {formatCurrency(Number(sale.salePrice))} em{" "}
         {formatDateBR(sale.saleDate)}
       </p>
@@ -142,6 +146,7 @@ export default async function SaleDetailPage({
             id: event.id,
             label: event.label,
             occurredAtLabel: formatDateTimeBR(event.occurredAt),
+            actorName: event.actorName,
           }))}
           paymentFlowItems={paymentFlow?.items ?? []}
           installments={

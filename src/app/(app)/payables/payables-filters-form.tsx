@@ -103,17 +103,13 @@ export function PayablesFiltersForm({
   }
 
   return (
-    <div style={{ marginTop: "1rem" }}>
-      <form
-        onSubmit={apply}
-        style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}
-      >
-        <div>
-          <label htmlFor="pf-development" style={{ display: "block", fontSize: "0.8rem" }}>
-            Empreendimento
-          </label>
+    <div className="inc-card" style={{ padding: "14px 16px", marginBottom: "16px" }}>
+      <form onSubmit={apply} style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label className="inc-field">
+          <span className="inc-label">Empreendimento</span>
           <select
             id="pf-development"
+            className="inc-select"
             value={values.developmentId}
             onChange={(e) => set("developmentId", e.target.value)}
           >
@@ -124,12 +120,10 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-spe" style={{ display: "block", fontSize: "0.8rem" }}>
-            SPE
-          </label>
-          <select id="pf-spe" value={values.speId} onChange={(e) => set("speId", e.target.value)}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">SPE</span>
+          <select id="pf-spe" className="inc-select" value={values.speId} onChange={(e) => set("speId", e.target.value)}>
             <option value="">Todas</option>
             {spes.map((s) => (
               <option key={s.id} value={s.id}>
@@ -137,12 +131,15 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-supplier" style={{ display: "block", fontSize: "0.8rem" }}>
-            Fornecedor
-          </label>
-          <select id="pf-supplier" value={values.supplierId} onChange={(e) => set("supplierId", e.target.value)}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Fornecedor</span>
+          <select
+            id="pf-supplier"
+            className="inc-select"
+            value={values.supplierId}
+            onChange={(e) => set("supplierId", e.target.value)}
+          >
             <option value="">Todos</option>
             {suppliers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -150,13 +147,12 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-costcenter" style={{ display: "block", fontSize: "0.8rem" }}>
-            Centro de custo
-          </label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Centro de custo</span>
           <select
             id="pf-costcenter"
+            className="inc-select"
             value={values.costCenterId}
             onChange={(e) => set("costCenterId", e.target.value)}
           >
@@ -167,12 +163,10 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-category" style={{ display: "block", fontSize: "0.8rem" }}>
-            Categoria
-          </label>
-          <select id="pf-category" value={values.category} onChange={(e) => set("category", e.target.value)}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Categoria</span>
+          <select id="pf-category" className="inc-select" value={values.category} onChange={(e) => set("category", e.target.value)}>
             <option value="">Todas</option>
             {CATEGORY_OPTIONS.map((c) => (
               <option key={c.value} value={c.value}>
@@ -180,12 +174,10 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-status" style={{ display: "block", fontSize: "0.8rem" }}>
-            Status
-          </label>
-          <select id="pf-status" value={values.status} onChange={(e) => set("status", e.target.value)}>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Status</span>
+          <select id="pf-status" className="inc-select" value={values.status} onChange={(e) => set("status", e.target.value)}>
             <option value="">Todos</option>
             {STATUS_OPTIONS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -193,63 +185,62 @@ export function PayablesFiltersForm({
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="pf-due-from" style={{ display: "block", fontSize: "0.8rem" }}>
-            Vencimento de
-          </label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Vencimento de</span>
           <input
             id="pf-due-from"
             type="date"
+            className="inc-input"
             value={values.dueDateFrom}
             onChange={(e) => set("dueDateFrom", e.target.value)}
           />
-        </div>
-        <div>
-          <label htmlFor="pf-due-to" style={{ display: "block", fontSize: "0.8rem" }}>
-            até
-          </label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">até</span>
           <input
             id="pf-due-to"
             type="date"
+            className="inc-input"
             value={values.dueDateTo}
             onChange={(e) => set("dueDateTo", e.target.value)}
           />
-        </div>
-        <div>
-          <label htmlFor="pf-min" style={{ display: "block", fontSize: "0.8rem" }}>
-            Valor mínimo
-          </label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Valor mínimo</span>
           <input
             id="pf-min"
             type="number"
             step="0.01"
+            className="inc-input"
             value={values.minAmount}
             onChange={(e) => set("minAmount", e.target.value)}
             style={{ width: 110 }}
           />
-        </div>
-        <div>
-          <label htmlFor="pf-max" style={{ display: "block", fontSize: "0.8rem" }}>
-            Valor máximo
-          </label>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Valor máximo</span>
           <input
             id="pf-max"
             type="number"
             step="0.01"
+            className="inc-input"
             value={values.maxAmount}
             onChange={(e) => set("maxAmount", e.target.value)}
             style={{ width: 110 }}
           />
-        </div>
-        <button type="submit">Filtrar</button>
+        </label>
+        <button type="submit" className="inc-btn inc-btn--primary">
+          Filtrar
+        </button>
       </form>
 
       {canApprove ? (
         <button
           type="button"
-          className={pendingApprovalOnly ? "" : "secondary"}
-          style={{ marginTop: "0.75rem" }}
+          className="inc-filter-chip"
+          aria-pressed={pendingApprovalOnly}
+          style={{ marginTop: "12px" }}
           onClick={togglePendingApproval}
         >
           {pendingApprovalOnly ? "✓ Minhas pendências de aprovação" : "Minhas pendências de aprovação"}
