@@ -226,7 +226,7 @@ export async function getOverdueCustomerStages(organizationId: string): Promise<
   const result: CustomerCollectionStage[] = [];
   for (const [customerId, worst] of worstByCustomer.entries()) {
     if (!stepsByDevelopment.has(worst.developmentId)) {
-      stepsByDevelopment.set(worst.developmentId, await getEffectiveCollectionSteps(worst.developmentId));
+      stepsByDevelopment.set(worst.developmentId, await getEffectiveCollectionSteps(organizationId, worst.developmentId));
     }
     const steps = stepsByDevelopment.get(worst.developmentId)!;
     const { currentStep, nextStep } = resolveCollectionStage(steps, worst.daysOverdue);

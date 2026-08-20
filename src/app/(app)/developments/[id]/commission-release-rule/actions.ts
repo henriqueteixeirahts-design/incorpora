@@ -7,6 +7,7 @@ import type { CommissionReleaseTrigger } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
+/** `developmentId` vazio/ausente = regra geral da organização (chamado também de /settings/rules/commission-release). */
 export async function upsertCommissionReleaseRuleAction(
   _prevState: FormState,
   formData: FormData,
@@ -14,8 +15,7 @@ export async function upsertCommissionReleaseRuleAction(
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const trigger = String(formData.get("trigger") ?? "ON_CONTRACT_SIGNATURE") as CommissionReleaseTrigger;
   const installmentsPaidPercent = Number(formData.get("installmentsPaidPercent") ?? 50);
@@ -33,6 +33,8 @@ export async function upsertCommissionReleaseRuleAction(
     return { error: error instanceof Error ? error.message : "Falha ao salvar regra de liberação." };
   }
 
-  revalidatePath(`/developments/${developmentId}/commission-release-rule`);
+  revalidatePath(
+    developmentId ? `/developments/${developmentId}/commission-release-rule` : "/settings/rules/commission-release",
+  );
   return { success: true };
 }

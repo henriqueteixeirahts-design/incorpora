@@ -2,14 +2,20 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
-import { orgScope } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { ProposalEvaluationRuleValues } from "@/lib/proposal-evaluation";
 import type { ApprovalLevel } from "@/generated/prisma/client";
 
 const ENTITY_TYPE = "ProposalEvaluationRule";
 
-/** Defaults sugeridos pela especificação (Parte 5.2) — valem quando o empreendimento ainda não tem regra configurada. */
+/**
+ * Parâmetros de avaliação de propostas — geral (organização) OU por
+ * empreendimento (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2;
+ * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Resolução em cascata:
+ * regra do empreendimento específico → regra geral da organização → default
+ * do código. `developmentId: null` em `upsertProposalEvaluationRule`
+ * grava/edita a linha geral.
+ */
 export const DEFAULT_PROPOSAL_EVALUATION_RULE: ProposalEvaluationRuleValues = {
   allowOffTable: true,
   discountRatePercent: 1,
@@ -23,12 +29,19 @@ export const DEFAULT_PROPOSAL_EVALUATION_RULE: ProposalEvaluationRuleValues = {
 
 export const DEFAULT_ANALYSIS_APPROVAL_LEVELS: ApprovalLevel[] = ["SALES_MANAGER"];
 
-/** Regra efetiva do empreendimento — a configurada, ou os defaults sugeridos quando não há linha ainda. */
-export async function getEffectiveProposalEvaluationRule(
-  developmentId: string,
-): Promise<ProposalEvaluationRuleValues & { analysisApprovalLevels: ApprovalLevel[] }> {
-  const rule = await prisma.proposalEvaluationRule.findUnique({ where: { developmentId } });
-  if (!rule) return { ...DEFAULT_PROPOSAL_EVALUATION_RULE, analysisApprovalLevels: DEFAULT_ANALYSIS_APPROVAL_LEVELS };
+export type FullProposalEvaluationRuleValues = ProposalEvaluationRuleValues & { analysisApprovalLevels: ApprovalLevel[] };
+
+function toValues(rule: {
+  allowOffTable: boolean;
+  discountRatePercent: unknown;
+  discountRatePeriod: ProposalEvaluationRuleValues["discountRatePeriod"];
+  vplTolerancePercent: unknown;
+  vplAnalysisLimitPercent: unknown;
+  minDownPaymentPercent: unknown;
+  maxTermMonths: number;
+  maxPostKeysPercent: unknown;
+  analysisApprovalLevels: ApprovalLevel[];
+}): FullProposalEvaluationRuleValues {
   return {
     allowOffTable: rule.allowOffTable,
     discountRatePercent: Number(rule.discountRatePercent),
@@ -42,37 +55,75 @@ export async function getEffectiveProposalEvaluationRule(
   };
 }
 
-/** Regra bruta (ou null se ainda não configurada) — pra distinguir "usando os defaults" de "customizada" na tela. */
-export async function getProposalEvaluationRule(context: AccessContext, developmentId: string) {
-  const development = await prisma.development.findFirst({
-    where: { id: developmentId, ...orgScope(context) },
+/** Regra efetiva — a do empreendimento, ou a geral da organização, ou os defaults sugeridos quando nenhuma foi configurada. */
+export async function getEffectiveProposalEvaluationRule(
+  organizationId: string,
+  developmentId: string,
+): Promise<FullProposalEvaluationRuleValues> {
+  const rule = await prisma.proposalEvaluationRule.findUnique({ where: { developmentId } });
+  if (rule) return toValues(rule);
+
+  const general = await prisma.proposalEvaluationRule.findFirst({ where: { organizationId, developmentId: null } });
+  if (general) return toValues(general);
+
+  return { ...DEFAULT_PROPOSAL_EVALUATION_RULE, analysisApprovalLevels: DEFAULT_ANALYSIS_APPROVAL_LEVELS };
+}
+
+/** Regra geral da organização, bruta (ou null se ainda não configurada). */
+export function getGeneralProposalEvaluationRule(context: AccessContext) {
+  return prisma.proposalEvaluationRule.findFirst({ where: { organizationId: context.organizationId, developmentId: null } });
+}
+
+/** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
+export function getProposalEvaluationRule(context: AccessContext, developmentId: string) {
+  return prisma.proposalEvaluationRule.findFirst({
+    where: { developmentId, development: { organizationId: context.organizationId } },
   });
-  if (!development) return null;
-  return prisma.proposalEvaluationRule.findUnique({ where: { developmentId } });
+}
+
+/** Empreendimentos da organização que têm uma regra própria (sobrescrevem a geral). */
+export function listProposalEvaluationRuleOverrides(context: AccessContext) {
+  return prisma.proposalEvaluationRule.findMany({
+    where: { organizationId: context.organizationId, developmentId: { not: null } },
+    include: { development: true },
+    orderBy: { development: { name: "asc" } },
+  });
 }
 
 export type UpsertProposalEvaluationRuleInput = ProposalEvaluationRuleValues & {
   analysisApprovalLevels: ApprovalLevel[];
 };
 
+/**
+ * `developmentId: null` grava a regra geral da organização; um id grava a
+ * regra daquele empreendimento específico.
+ */
 export async function upsertProposalEvaluationRule(
   context: AccessContext,
-  developmentId: string,
+  developmentId: string | null,
   input: UpsertProposalEvaluationRuleInput,
 ) {
-  const development = await prisma.development.findFirst({
-    where: { id: developmentId, ...orgScope(context) },
-  });
-  if (!development) throw new Error("Empreendimento não encontrado.");
-
-  const before = await prisma.proposalEvaluationRule.findUnique({ where: { developmentId } });
-
   return prisma.$transaction(async (tx) => {
-    const rule = await tx.proposalEvaluationRule.upsert({
-      where: { developmentId },
-      create: { developmentId, ...input },
-      update: input,
-    });
+    if (developmentId) {
+      const development = await tx.development.findFirst({
+        where: { id: developmentId, organizationId: context.organizationId },
+      });
+      if (!development) throw new Error("Empreendimento não encontrado.");
+    }
+
+    // `developmentId` é @unique (não composto) — a busca da linha geral usa
+    // findFirst (não findUnique) porque não há chave única declarada sobre
+    // (organizationId, developmentId nulo); a unicidade de "uma geral por
+    // organização" é garantida aqui, na camada de serviço (find-then-create/
+    // update dentro da mesma transação), mesmo padrão usado em
+    // src/server/distrato-rules.ts.
+    const before = developmentId
+      ? await tx.proposalEvaluationRule.findUnique({ where: { developmentId } })
+      : await tx.proposalEvaluationRule.findFirst({ where: { organizationId: context.organizationId, developmentId: null } });
+
+    const rule = before
+      ? await tx.proposalEvaluationRule.update({ where: { id: before.id }, data: input })
+      : await tx.proposalEvaluationRule.create({ data: { organizationId: context.organizationId, developmentId, ...input } });
 
     await recordAuditEvent(tx, {
       organizationId: context.organizationId,

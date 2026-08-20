@@ -10,7 +10,13 @@ import { createProposal, submitProposalForApproval } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
 import { registerInstallmentPayment } from "@/server/receivables";
-import { upsertRenegotiationRule } from "@/server/renegotiation-rules";
+import {
+  upsertRenegotiationRule,
+  getEffectiveRenegotiationRule,
+  getGeneralRenegotiationRule,
+  listRenegotiationRuleOverrides,
+  DEFAULT_RENEGOTIATION_RULE,
+} from "@/server/renegotiation-rules";
 import {
   createRenegotiationAgreement,
   decideRenegotiationApproval,
@@ -90,7 +96,7 @@ afterAll(async () => {
   const orgIds = [org.id];
   await prisma.renegotiationApproval.deleteMany({ where: { agreement: { organizationId: { in: orgIds } } } });
   await prisma.renegotiationAgreement.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.renegotiationRule.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await prisma.renegotiationRule.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
   await prisma.installment.deleteMany({ where: { portfolio: { organizationId: { in: orgIds } } } });
   await prisma.receivablePortfolio.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -413,5 +419,113 @@ describe("Isolamento entre organizações", () => {
       await prisma.user.deleteMany({ where: { id: userB.id } });
       await prisma.organization.deleteMany({ where: { id: orgB.id } });
     }
+  });
+});
+
+/**
+ * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3 — regra geral (organização)
+ * OU por empreendimento, consistente. Regressão da cascata de resolução:
+ * empreendimento específico → geral da organização → default do código.
+ */
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem regra geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Renegociação Geral 1" } });
+    const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
+      name: "SPE Renegociação Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-renegociacao-geral-1@teste.local", phone: "62999990300",
+    });
+    const dev2 = await createDevelopment({ ...context, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Renegociação Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const rule = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    expect(rule).toEqual(DEFAULT_RENEGOTIATION_RULE);
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Renegociação Geral 2" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Renegociação Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-renegociacao-geral-2@teste.local", phone: "62999990301",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Renegociação Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertRenegotiationRule(ctx2, null, {
+      maxDiscountOnChargesPercent: 15,
+      maxTermMonths: 12,
+      brokenDealGraceDays: 10,
+      reactivateOriginalOnBreak: true,
+      approvalLevels: ["DIRECTOR"],
+    });
+
+    const general = await getGeneralRenegotiationRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(Number(general?.maxDiscountOnChargesPercent)).toBe(15);
+
+    const effective = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    expect(effective).toEqual({
+      maxDiscountOnChargesPercent: 15,
+      maxTermMonths: 12,
+      brokenDealGraceDays: 10,
+      reactivateOriginalOnBreak: true,
+      approvalLevels: ["DIRECTOR"],
+    });
+
+    await prisma.renegotiationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Renegociação Geral 3" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Renegociação Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-renegociacao-geral-3@teste.local", phone: "62999990302",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Renegociação Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertRenegotiationRule(ctx2, null, {
+      maxDiscountOnChargesPercent: 15,
+      maxTermMonths: 12,
+      brokenDealGraceDays: 10,
+      reactivateOriginalOnBreak: true,
+      approvalLevels: ["DIRECTOR"],
+    });
+    await upsertRenegotiationRule(ctx2, dev2.id, {
+      maxDiscountOnChargesPercent: 25,
+      maxTermMonths: 30,
+      brokenDealGraceDays: 20,
+      reactivateOriginalOnBreak: false,
+      approvalLevels: ["SALES_MANAGER"],
+    });
+
+    const effective = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    expect(effective).toEqual({
+      maxDiscountOnChargesPercent: 25,
+      maxTermMonths: 30,
+      brokenDealGraceDays: 20,
+      reactivateOriginalOnBreak: false,
+      approvalLevels: ["SALES_MANAGER"],
+    });
+
+    const overrides = await listRenegotiationRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+
+    // A geral continua intacta, não foi sobrescrita pela regra do empreendimento.
+    const general = await getGeneralRenegotiationRule(ctx2);
+    expect(Number(general?.maxDiscountOnChargesPercent)).toBe(15);
+
+    await prisma.renegotiationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });

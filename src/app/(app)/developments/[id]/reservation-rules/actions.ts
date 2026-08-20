@@ -47,12 +47,12 @@ function parseReservationRuleInput(formData: FormData): UpsertReservationRuleInp
   };
 }
 
+/** `developmentId` vazio/ausente = regra geral da organização (chamado também de /settings/rules/reservation). */
 export async function upsertReservationRuleAction(_prevState: FormState, formData: FormData): Promise<FormState> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const input = parseReservationRuleInput(formData);
   if ("error" in input) return input;
@@ -62,6 +62,6 @@ export async function upsertReservationRuleAction(_prevState: FormState, formDat
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao salvar regras de reserva." };
   }
-  revalidatePath(`/developments/${developmentId}/reservation-rules`);
+  revalidatePath(developmentId ? `/developments/${developmentId}/reservation-rules` : "/settings/rules/reservation");
   return { success: true };
 }

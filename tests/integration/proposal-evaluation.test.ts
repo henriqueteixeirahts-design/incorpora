@@ -8,7 +8,14 @@ import { createCustomer } from "@/server/customers";
 import { createBroker } from "@/server/crm";
 import { createSalesTable } from "@/server/sales-tables";
 import { createIndexRule, upsertIndexValue } from "@/server/index-rules";
-import { upsertProposalEvaluationRule } from "@/server/proposal-evaluation-rules";
+import {
+  upsertProposalEvaluationRule,
+  getEffectiveProposalEvaluationRule,
+  getGeneralProposalEvaluationRule,
+  listProposalEvaluationRuleOverrides,
+  DEFAULT_PROPOSAL_EVALUATION_RULE,
+  DEFAULT_ANALYSIS_APPROVAL_LEVELS,
+} from "@/server/proposal-evaluation-rules";
 import { createProposal, submitProposalForApproval, decideProposalApproval, getProposal } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature, getContract } from "@/server/contracts";
@@ -431,5 +438,116 @@ describe("Isolamento entre organizações", () => {
       await prisma.user.deleteMany({ where: { id: userB.id } });
       await prisma.organization.deleteMany({ where: { id: orgB.id } });
     }
+  });
+});
+
+/**
+ * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3 — regra geral (organização)
+ * OU por empreendimento, consistente. Regressão da cascata de resolução:
+ * empreendimento específico → geral da organização → default do código.
+ */
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem regra geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 1" } });
+    const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
+      name: "SPE Avaliação Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-avaliacao-geral-1@teste.local", phone: "62999990300",
+    });
+    const dev2 = await createDevelopment({ ...context, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Avaliação Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const rule = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    expect(rule).toEqual({ ...DEFAULT_PROPOSAL_EVALUATION_RULE, analysisApprovalLevels: DEFAULT_ANALYSIS_APPROVAL_LEVELS });
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 2" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Avaliação Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-avaliacao-geral-2@teste.local", phone: "62999990301",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Avaliação Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    const generalInput = {
+      allowOffTable: false,
+      discountRatePercent: 2,
+      discountRatePeriod: "YEARLY" as const,
+      vplTolerancePercent: 5,
+      vplAnalysisLimitPercent: 15,
+      minDownPaymentPercent: 20,
+      maxTermMonths: 100,
+      maxPostKeysPercent: 40,
+      analysisApprovalLevels: ["DIRECTOR" as const],
+    };
+    await upsertProposalEvaluationRule(ctx2, null, generalInput);
+
+    const general = await getGeneralProposalEvaluationRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(Number(general?.vplTolerancePercent)).toBe(5);
+
+    const effective = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    expect(effective).toEqual(generalInput);
+
+    await prisma.proposalEvaluationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 3" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Avaliação Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-avaliacao-geral-3@teste.local", phone: "62999990302",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Avaliação Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    const generalInput = {
+      allowOffTable: true,
+      discountRatePercent: 1,
+      discountRatePeriod: "MONTHLY" as const,
+      vplTolerancePercent: 3,
+      vplAnalysisLimitPercent: 10,
+      minDownPaymentPercent: 10,
+      maxTermMonths: 120,
+      maxPostKeysPercent: 30,
+      analysisApprovalLevels: ["SALES_MANAGER" as const],
+    };
+    const overrideInput = {
+      allowOffTable: false,
+      discountRatePercent: 1.5,
+      discountRatePeriod: "MONTHLY" as const,
+      vplTolerancePercent: 8,
+      vplAnalysisLimitPercent: 25,
+      minDownPaymentPercent: 25,
+      maxTermMonths: 80,
+      maxPostKeysPercent: 20,
+      analysisApprovalLevels: ["DIRECTOR" as const, "FINANCIAL" as const],
+    };
+    await upsertProposalEvaluationRule(ctx2, null, generalInput);
+    await upsertProposalEvaluationRule(ctx2, dev2.id, overrideInput);
+
+    const effective = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    expect(effective).toEqual(overrideInput);
+
+    const overrides = await listProposalEvaluationRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+
+    // A geral continua intacta, não foi sobrescrita pela regra do empreendimento.
+    const general = await getGeneralProposalEvaluationRule(ctx2);
+    expect(Number(general?.vplTolerancePercent)).toBe(3);
+
+    await prisma.proposalEvaluationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });

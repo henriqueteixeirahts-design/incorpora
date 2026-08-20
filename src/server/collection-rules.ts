@@ -8,22 +8,43 @@ import type { AccessContext } from "@/server/auth-context";
 export { DEFAULT_COLLECTION_STEPS, resolveCollectionStage, type CollectionStep };
 
 /**
- * Régua de cobrança por empreendimento (Fase B, Parte 3.2). Mesmo padrão
- * 1:1-por-Development das outras regras parametrizáveis: default sugerido
- * sem linha salva, upsert idempotente quando configurada. Etapa assistida
- * — as etapas só descrevem prazo × ação sugerida; "em qual etapa o cliente
- * está" é calculado na hora contra os dias em atraso, nunca persistido.
+ * Régua de cobrança — geral (organização) OU por empreendimento (Fase B,
+ * Parte 3.2; docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Resolução em
+ * cascata: régua do empreendimento específico → régua geral da organização
+ * → default do código. `developmentId: null` em `upsertCollectionRule`
+ * grava/edita a linha geral. Etapa assistida — as etapas só descrevem prazo
+ * × ação sugerida; "em qual etapa o cliente está" é calculado na hora
+ * contra os dias em atraso, nunca persistido.
  */
-export async function getEffectiveCollectionSteps(developmentId: string): Promise<CollectionStep[]> {
+export async function getEffectiveCollectionSteps(organizationId: string, developmentId: string): Promise<CollectionStep[]> {
   const rule = await prisma.collectionRule.findUnique({
     where: { developmentId },
     include: { steps: { orderBy: { sequence: "asc" } } },
   });
-  if (!rule || rule.steps.length === 0) return DEFAULT_COLLECTION_STEPS;
-  return rule.steps.map((s) => ({ sequence: s.sequence, offsetDays: s.offsetDays, actionLabel: s.actionLabel }));
+  if (rule && rule.steps.length > 0) {
+    return rule.steps.map((s) => ({ sequence: s.sequence, offsetDays: s.offsetDays, actionLabel: s.actionLabel }));
+  }
+
+  const general = await prisma.collectionRule.findFirst({
+    where: { organizationId, developmentId: null },
+    include: { steps: { orderBy: { sequence: "asc" } } },
+  });
+  if (general && general.steps.length > 0) {
+    return general.steps.map((s) => ({ sequence: s.sequence, offsetDays: s.offsetDays, actionLabel: s.actionLabel }));
+  }
+
+  return DEFAULT_COLLECTION_STEPS;
 }
 
-/** Regra bruta (ou null se ainda não configurada) — pra distinguir "usando os defaults" de "customizada" na tela. */
+/** Régua geral da organização, bruta (ou null se ainda não configurada). */
+export function getGeneralCollectionRule(context: AccessContext) {
+  return prisma.collectionRule.findFirst({
+    where: { organizationId: context.organizationId, developmentId: null },
+    include: { steps: { orderBy: { sequence: "asc" } } },
+  });
+}
+
+/** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export function getCollectionRule(context: AccessContext, developmentId: string) {
   return prisma.collectionRule.findFirst({
     where: { developmentId, development: { organizationId: context.organizationId } },
@@ -31,22 +52,45 @@ export function getCollectionRule(context: AccessContext, developmentId: string)
   });
 }
 
-export async function upsertCollectionRule(context: AccessContext, developmentId: string, steps: CollectionStep[]) {
+/** Empreendimentos da organização que têm uma régua própria (sobrescrevem a geral). */
+export function listCollectionRuleOverrides(context: AccessContext) {
+  return prisma.collectionRule.findMany({
+    where: { organizationId: context.organizationId, developmentId: { not: null } },
+    include: { development: true, steps: { orderBy: { sequence: "asc" } } },
+    orderBy: { development: { name: "asc" } },
+  });
+}
+
+/**
+ * `developmentId: null` grava a régua geral da organização; um id grava a
+ * régua daquele empreendimento específico. As etapas são sempre substituídas
+ * por completo (delete-all-and-recreate), tanto pra régua geral quanto pra
+ * régua por empreendimento.
+ */
+export async function upsertCollectionRule(context: AccessContext, developmentId: string | null, steps: CollectionStep[]) {
   if (steps.length === 0) throw new Error("A régua precisa ter ao menos uma etapa.");
 
   return prisma.$transaction(async (tx) => {
-    const development = await tx.development.findFirst({
-      where: { id: developmentId, organizationId: context.organizationId },
-    });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (developmentId) {
+      const development = await tx.development.findFirst({
+        where: { id: developmentId, organizationId: context.organizationId },
+      });
+      if (!development) throw new Error("Empreendimento inválido.");
+    }
 
-    const before = await tx.collectionRule.findUnique({ where: { developmentId }, include: { steps: true } });
+    // `developmentId` é @unique (não composto) — a busca da linha geral usa
+    // findFirst (não findUnique) porque não há chave única declarada sobre
+    // (organizationId, developmentId nulo); a unicidade de "uma geral por
+    // organização" é garantida aqui, na camada de serviço (find-then-create/
+    // update dentro da mesma transação), mesmo padrão já usado em
+    // distrato-rules.ts.
+    const before = developmentId
+      ? await tx.collectionRule.findUnique({ where: { developmentId }, include: { steps: true } })
+      : await tx.collectionRule.findFirst({ where: { organizationId: context.organizationId, developmentId: null }, include: { steps: true } });
 
-    const rule = await tx.collectionRule.upsert({
-      where: { developmentId },
-      create: { developmentId },
-      update: {},
-    });
+    const rule = before
+      ? before
+      : await tx.collectionRule.create({ data: { organizationId: context.organizationId, developmentId } });
 
     await tx.collectionRuleStep.deleteMany({ where: { collectionRuleId: rule.id } });
     await tx.collectionRuleStep.createMany({

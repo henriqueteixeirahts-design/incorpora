@@ -74,6 +74,12 @@ model Organization {
   renegotiationAgreements RenegotiationAgreement[]
   allocationTemplates     AllocationTemplate[]
   receivables             Receivable[]
+  reservationRules        ReservationRule[]
+  proposalEvaluationRules ProposalEvaluationRule[]
+  commissionReleaseRules  CommissionReleaseRule[]
+  distratoRules           DistratoRule[]
+  collectionRules         CollectionRule[]
+  renegotiationRules      RenegotiationRule[]
 
   @@map("organizations")
 }
@@ -1370,12 +1376,16 @@ model Reservation {
   @@map("reservations")
 }
 
-/// Regras de reserva por empreendimento (Parte 2) — nula/ausente até a TSH
-/// configurar; nesse caso os defaults sugeridos pela especificação valem
-/// (ver DEFAULT_RESERVATION_RULE em src/server/reservation-rules.ts).
+/// Regra de reserva — geral (organização, `developmentId` nulo) OU por
+/// empreendimento (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Nula/
+/// ausente até a TSH configurar; nesse caso os defaults sugeridos pela
+/// especificação valem (ver DEFAULT_RESERVATION_RULE em
+/// src/server/reservation-rules.ts). Mesmo padrão de todas as 6 regras
+/// parametrizáveis — ver comentário completo em `DistratoRule`.
 model ReservationRule {
   id                             String   @id @default(uuid()) @db.Uuid
-  developmentId                  String   @unique @db.Uuid
+  organizationId                 String   @db.Uuid
+  developmentId                  String?  @unique @db.Uuid
   validityHours                  Int      @default(48)
   maxActiveReservationsPerBroker Int? // nulo = sem limite
   waitlistEnabled                Boolean  @default(true)
@@ -1391,7 +1401,8 @@ model ReservationRule {
   createdAt                      DateTime @default(now())
   updatedAt                      DateTime @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("reservation_rules")
 }
@@ -1401,14 +1412,16 @@ enum RatePeriod {
   YEARLY // % a.a.
 }
 
-/// Regras do motor de avaliação automática de propostas por empreendimento
-/// (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2) — mesmo padrão de
-/// `ReservationRule` (1:1 com Development, defaults sugeridos quando não
-/// configurada — ver DEFAULT_PROPOSAL_EVALUATION_RULE em
-/// src/server/proposal-evaluation-rules.ts).
+/// Regras do motor de avaliação automática de propostas — geral (organização)
+/// OU por empreendimento (docs/ESPEC_MODULO_COMERCIAL.md, Parte 5.2;
+/// docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Defaults sugeridos quando
+/// não configurada — ver DEFAULT_PROPOSAL_EVALUATION_RULE em
+/// src/server/proposal-evaluation-rules.ts. Mesmo padrão das 6 regras
+/// parametrizáveis — ver comentário completo em `DistratoRule`.
 model ProposalEvaluationRule {
   id                      String          @id @default(uuid()) @db.Uuid
-  developmentId           String          @unique @db.Uuid
+  organizationId          String          @db.Uuid
+  developmentId           String?         @unique @db.Uuid
   allowOffTable           Boolean         @default(true)
   discountRatePercent     Decimal         @default(1) @db.Decimal(6, 3) // taxa de desconto (TMA) pro VPL
   discountRatePeriod      RatePeriod      @default(MONTHLY)
@@ -1423,7 +1436,8 @@ model ProposalEvaluationRule {
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("proposal_evaluation_rules")
 }
@@ -1657,60 +1671,71 @@ enum CommissionReleaseTrigger {
   ON_INSTALLMENTS_PAID_PERCENT // libera quando X% das parcelas da carteira estiverem pagas
 }
 
-/// Regra de liberação de comissão por empreendimento (Fase A, Parte 4.1 —
-/// "regra de liberação configurável"). Mesmo padrão 1:1-por-Development das
-/// outras regras parametrizáveis (ReservationRule, ProposalEvaluationRule):
-/// default sugerido sem linha salva, upsert idempotente quando configurada.
+/// Regra de liberação de comissão — geral (organização) OU por empreendimento
+/// (Fase A, Parte 4.1 — "regra de liberação configurável";
+/// docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Mesmo padrão das 6 regras
+/// parametrizáveis — ver comentário completo em `DistratoRule`.
 model CommissionReleaseRule {
   id                      String                   @id @default(uuid()) @db.Uuid
-  developmentId           String                   @unique @db.Uuid
+  organizationId          String                   @db.Uuid
+  developmentId           String?                  @unique @db.Uuid
   trigger                 CommissionReleaseTrigger @default(ON_CONTRACT_SIGNATURE)
   installmentsPaidPercent Int                      @default(50) // só usado quando trigger = ON_INSTALLMENTS_PAID_PERCENT
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("commission_release_rules")
 }
 
-/// Regra de distrato por empreendimento (Fase A, Parte 2.4 — Lei 13.786/18:
-/// retenção configurável, até 25% do valor pago, ou até 50% com patrimônio
-/// de afetação instituído). Mesmo padrão 1:1-por-Development das outras
-/// regras parametrizáveis: default sugerido sem linha salva, upsert
-/// idempotente quando configurada. O teto legal é validado no momento de
-/// salvar a regra (contra `Development.hasPropertyAffectation`), não
-/// travado no schema — o negócio pode mudar de patrimônio de afetação.
+/// Regra de distrato — geral (organização, `developmentId` nulo) OU por
+/// empreendimento (Fase A, Parte 2.4 — Lei 13.786/18: retenção configurável,
+/// até 25% do valor pago, ou até 50% com patrimônio de afetação instituído;
+/// docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3 — consistência geral ×
+/// empreendimento). No máximo uma linha geral por organização e uma por
+/// empreendimento — garantido em `upsertDistratoRule`, não no schema (índice
+/// parcial exigiria SQL fora do que o Prisma schema expressa declarativamente;
+/// mesmo padrão de "validação na camada de serviço" já usado no resto do
+/// projeto). O teto legal é validado no momento de salvar a regra (contra
+/// `Development.hasPropertyAffectation`), não travado no schema — o negócio
+/// pode mudar de patrimônio de afetação.
 model DistratoRule {
   id                          String   @id @default(uuid()) @db.Uuid
-  developmentId               String   @unique @db.Uuid
+  organizationId              String   @db.Uuid
+  developmentId               String?  @unique @db.Uuid
   retentionPercent            Decimal  @default(25) @db.Decimal(5, 2)
   reverseCommissionOnDistrato Boolean  @default(true) // estorna (CANCELLED) splits ainda não pagos ao distratar
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("distrato_rules")
 }
 
-/// Régua de cobrança (Fase B, Parte 3.2) — configuração por empreendimento,
-/// mesmo padrão 1:1-por-Development das outras regras parametrizáveis.
-/// Etapa assistida (não automática): as `CollectionRuleStep` só descrevem
+/// Régua de cobrança — geral (organização) OU por empreendimento (Fase B,
+/// Parte 3.2; docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Etapa
+/// assistida (não automática): as `CollectionRuleStep` só descrevem
 /// prazo × ação sugerida; quem "avança" na régua é calculado na hora, a
 /// partir dos dias em atraso — não existe um campo persistido de "etapa
 /// atual" em lugar nenhum. Quando a automação da Fase 2 chegar (e-mail/
 /// WhatsApp disparado sozinho), a mesma régua configurada aqui vira a fonte
 /// dos gatilhos — por isso as etapas já ficam com posição/prazo/ação como
-/// campos de primeira classe, não texto livre.
+/// campos de primeira classe, não texto livre. Mesmo padrão das 6 regras
+/// parametrizáveis — ver comentário completo em `DistratoRule`.
 model CollectionRule {
-  id            String   @id @default(uuid()) @db.Uuid
-  developmentId String   @unique @db.Uuid
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  developmentId  String?  @unique @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  development Development          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  steps       CollectionRuleStep[]
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development?         @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  steps        CollectionRuleStep[]
 
   @@map("collection_rules")
 }
@@ -1758,17 +1783,19 @@ model CollectionContactLog {
   @@map("collection_contact_logs")
 }
 
-/// Regra de renegociação de parcelas por empreendimento (Fase B, Parte 2.2,
-/// passo 4 — "mesma infraestrutura de aprovação existente"). Mesmo padrão
-/// de `ProposalEvaluationRule`: uma faixa de tolerância sem alçada
-/// (`maxDiscountOnChargesPercent`) e um teto rígido de prazo
+/// Regra de renegociação de parcelas — geral (organização) OU por
+/// empreendimento (Fase B, Parte 2.2, passo 4 — "mesma infraestrutura de
+/// aprovação existente"; docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3).
+/// Mesmo padrão de `ProposalEvaluationRule`: uma faixa de tolerância sem
+/// alçada (`maxDiscountOnChargesPercent`) e um teto rígido de prazo
 /// (`maxTermMonths`, sem bypass por alçada — acima disso o acordo é
 /// rejeitado, não aprovado por alguém). Acima da tolerância de desconto,
 /// o acordo precisa de aprovação nos níveis listados em `approvalLevels`
 /// (mesmo `ApprovalLevel`/`ApprovalDecision` já usados nas propostas).
 model RenegotiationRule {
   id                          String          @id @default(uuid()) @db.Uuid
-  developmentId               String          @unique @db.Uuid
+  organizationId              String          @db.Uuid
+  developmentId               String?         @unique @db.Uuid
   maxDiscountOnChargesPercent Decimal         @default(20) @db.Decimal(5, 2)
   maxTermMonths               Int             @default(24)
   brokenDealGraceDays         Int             @default(15)
@@ -1777,7 +1804,8 @@ model RenegotiationRule {
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
 
-  development Development @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("renegotiation_rules")
 }

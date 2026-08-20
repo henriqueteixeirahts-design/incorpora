@@ -10,7 +10,13 @@ import { createProposal, submitProposalForApproval } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
 import { registerInstallmentPayment } from "@/server/receivables";
-import { upsertDistratoRule, getEffectiveDistratoRule } from "@/server/distrato-rules";
+import {
+  upsertDistratoRule,
+  getEffectiveDistratoRule,
+  getGeneralDistratoRule,
+  listDistratoRuleOverrides,
+  DEFAULT_DISTRATO_RULE,
+} from "@/server/distrato-rules";
 import { createDistrato, signDistrato, getDistratoByContract } from "@/server/contract-distratos";
 
 /**
@@ -125,7 +131,7 @@ describe("Regra de retenção — teto legal", () => {
   it("aceita até 25% sem patrimônio de afetação, rejeita acima", async () => {
     const development = await createDevelopment(context, { speId: (await prisma.development.findFirstOrThrow({ where: { id: developmentId } })).speId, name: "Dev sem afetação", type: "RESIDENTIAL_BUILDING" });
     await upsertDistratoRule(context, development.id, { retentionPercent: 25, reverseCommissionOnDistrato: true });
-    const rule = await getEffectiveDistratoRule(development.id);
+    const rule = await getEffectiveDistratoRule(context.organizationId, development.id);
     expect(rule.retentionPercent).toBe(25);
 
     await expect(
@@ -139,12 +145,90 @@ describe("Regra de retenção — teto legal", () => {
     await prisma.development.update({ where: { id: development.id }, data: { hasPropertyAffectation: true } });
 
     await upsertDistratoRule(context, development.id, { retentionPercent: 50, reverseCommissionOnDistrato: true });
-    const rule = await getEffectiveDistratoRule(development.id);
+    const rule = await getEffectiveDistratoRule(context.organizationId, development.id);
     expect(rule.retentionPercent).toBe(50);
 
     await expect(
       upsertDistratoRule(context, development.id, { retentionPercent: 50.5, reverseCommissionOnDistrato: true }),
     ).rejects.toThrow(/teto legal/);
+  });
+});
+
+/**
+ * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3 — regra geral (organização)
+ * OU por empreendimento, consistente. Regressão da cascata de resolução:
+ * empreendimento específico → geral da organização → default do código.
+ */
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem regra geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Distrato Geral 1" } });
+    const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
+      name: "SPE Distrato Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-distrato-geral-1@teste.local", phone: "62999990200",
+    });
+    const dev2 = await createDevelopment({ ...context, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Distrato Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const rule = await getEffectiveDistratoRule(org2.id, dev2.id);
+    expect(rule).toEqual(DEFAULT_DISTRATO_RULE);
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Distrato Geral 2" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Distrato Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-distrato-geral-2@teste.local", phone: "62999990201",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Distrato Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertDistratoRule(ctx2, null, { retentionPercent: 18, reverseCommissionOnDistrato: false });
+
+    const general = await getGeneralDistratoRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(Number(general?.retentionPercent)).toBe(18);
+
+    const effective = await getEffectiveDistratoRule(org2.id, dev2.id);
+    expect(effective).toEqual({ retentionPercent: 18, reverseCommissionOnDistrato: false });
+
+    await prisma.distratoRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Distrato Geral 3" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Distrato Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-distrato-geral-3@teste.local", phone: "62999990202",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Distrato Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertDistratoRule(ctx2, null, { retentionPercent: 18, reverseCommissionOnDistrato: false });
+    await upsertDistratoRule(ctx2, dev2.id, { retentionPercent: 22, reverseCommissionOnDistrato: true });
+
+    const effective = await getEffectiveDistratoRule(org2.id, dev2.id);
+    expect(effective).toEqual({ retentionPercent: 22, reverseCommissionOnDistrato: true });
+
+    const overrides = await listDistratoRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+
+    // A geral continua intacta, não foi sobrescrita pela regra do empreendimento.
+    const general = await getGeneralDistratoRule(ctx2);
+    expect(Number(general?.retentionPercent)).toBe(18);
+
+    await prisma.distratoRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });
 

@@ -11,7 +11,8 @@ export function DistratoRuleForm({
   cap,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = regra geral da organização (sem empreendimento específico). */
+  developmentId: string | null;
   rule: { retentionPercent: number; reverseCommissionOnDistrato: boolean };
   cap: number;
   canEdit: boolean;
@@ -20,48 +21,46 @@ export function DistratoRuleForm({
 
   if (!canEdit) {
     return (
-      <div className="field-section" style={{ marginTop: "1.5rem", maxWidth: 600 }}>
-        <p>Retenção: {rule.retentionPercent}%</p>
-        <p>Estorna comissão não paga ao distratar: {rule.reverseCommissionOnDistrato ? "Sim" : "Não"}</p>
+      <div className="inc-card" style={{ marginTop: "16px", maxWidth: 520 }}>
+        <div className="inc-card__body">
+          <p>Retenção: {rule.retentionPercent}%</p>
+          <p>Estorna comissão não paga ao distratar: {rule.reverseCommissionOnDistrato ? "Sim" : "Não"}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <form action={dispatch} className="field-section" style={{ marginTop: "1.5rem", maxWidth: 500 }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+    <form action={dispatch} className="inc-card" style={{ marginTop: "16px", maxWidth: 480 }}>
+      <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
 
-      <div className="field">
-        <label htmlFor="dr-retention">% de retenção (teto legal: {cap}%)</label>
-        <input
-          id="dr-retention"
-          name="retentionPercent"
-          type="number"
-          step="0.01"
-          min="0"
-          max={cap}
-          defaultValue={rule.retentionPercent}
-        />
-      </div>
+        <label className="inc-field" htmlFor="dr-retention">
+          <span className="inc-label">% de retenção (teto legal: {cap}%)</span>
+          <input
+            id="dr-retention"
+            name="retentionPercent"
+            className="inc-input"
+            type="number"
+            step="0.01"
+            min="0"
+            max={cap}
+            defaultValue={rule.retentionPercent}
+          />
+        </label>
 
-      <div className="field" style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <input
-          id="dr-reverse"
-          name="reverseCommissionOnDistrato"
-          type="checkbox"
-          defaultChecked={rule.reverseCommissionOnDistrato}
-        />
-        <label htmlFor="dr-reverse" style={{ margin: 0 }}>
+        <label htmlFor="dr-reverse" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "var(--inc-fs-sm)" }}>
+          <input id="dr-reverse" name="reverseCommissionOnDistrato" type="checkbox" defaultChecked={rule.reverseCommissionOnDistrato} />
           Estornar comissões ainda não pagas ao distratar
         </label>
+
+        {state.error ? <p className="error-text">{state.error}</p> : null}
+        {state.success ? <p style={{ fontSize: "var(--inc-fs-sm)", color: "var(--inc-text-secondary)" }}>Regra salva.</p> : null}
+
+        <button type="submit" className="inc-btn inc-btn--primary" disabled={pending} style={{ alignSelf: "flex-start" }}>
+          {pending ? "Salvando..." : "Salvar regra"}
+        </button>
       </div>
-
-      {state.error ? <p className="error-text">{state.error}</p> : null}
-      {state.success ? <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>Regra salva.</p> : null}
-
-      <button type="submit" disabled={pending} style={{ marginTop: "1rem" }}>
-        {pending ? "Salvando..." : "Salvar regra"}
-      </button>
     </form>
   );
 }

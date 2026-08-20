@@ -12,7 +12,13 @@ import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
 import { registerInstallmentPayment } from "@/server/receivables";
 import { advancePayableStatus } from "@/server/payables";
-import { upsertCommissionReleaseRule } from "@/server/commission-release-rules";
+import {
+  upsertCommissionReleaseRule,
+  getEffectiveCommissionReleaseRule,
+  getGeneralCommissionReleaseRule,
+  listCommissionReleaseRuleOverrides,
+  DEFAULT_COMMISSION_RELEASE_RULE,
+} from "@/server/commission-release-rules";
 import { getCommissionStatement } from "@/server/commissions";
 
 /**
@@ -268,6 +274,93 @@ describe("Liberação de comissão — gatilho por % de parcelas pagas", () => {
     });
     split = await prisma.commissionSplit.findFirstOrThrow({ where: { saleId: sale.id } });
     expect(split.status).toBe("RELEASED");
+  });
+});
+
+/**
+ * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3 — regra geral (organização)
+ * OU por empreendimento, consistente. Regressão da cascata de resolução:
+ * empreendimento específico → geral da organização → default do código.
+ */
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem regra geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Comissão Geral 1" } });
+    const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
+      name: "SPE Comissão Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-comissao-geral-1@teste.local", phone: "62999990300",
+    });
+    const dev2 = await createDevelopment({ ...context, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Comissão Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const rule = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    expect(rule).toEqual(DEFAULT_COMMISSION_RELEASE_RULE);
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Comissão Geral 2" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Comissão Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-comissao-geral-2@teste.local", phone: "62999990301",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Comissão Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertCommissionReleaseRule(ctx2, null, {
+      trigger: "ON_DOWN_PAYMENT_RECEIVED",
+      installmentsPaidPercent: 50,
+    });
+
+    const general = await getGeneralCommissionReleaseRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(general?.trigger).toBe("ON_DOWN_PAYMENT_RECEIVED");
+
+    const effective = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    expect(effective).toEqual({ trigger: "ON_DOWN_PAYMENT_RECEIVED", installmentsPaidPercent: 50 });
+
+    await prisma.commissionReleaseRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Comissão Geral 3" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Comissão Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-comissao-geral-3@teste.local", phone: "62999990302",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Comissão Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertCommissionReleaseRule(ctx2, null, {
+      trigger: "ON_DOWN_PAYMENT_RECEIVED",
+      installmentsPaidPercent: 50,
+    });
+    await upsertCommissionReleaseRule(ctx2, dev2.id, {
+      trigger: "ON_INSTALLMENTS_PAID_PERCENT",
+      installmentsPaidPercent: 75,
+    });
+
+    const effective = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    expect(effective).toEqual({ trigger: "ON_INSTALLMENTS_PAID_PERCENT", installmentsPaidPercent: 75 });
+
+    const overrides = await listCommissionReleaseRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+
+    // A geral continua intacta, não foi sobrescrita pela regra do empreendimento.
+    const general = await getGeneralCommissionReleaseRule(ctx2);
+    expect(general?.trigger).toBe("ON_DOWN_PAYMENT_RECEIVED");
+
+    await prisma.commissionReleaseRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });
 

@@ -96,7 +96,7 @@ export default async function CommercialPage({
       listReservations(context.organizationId),
       listProposals(context.organizationId),
       listWaitlistForOrganization(context.organizationId),
-      getEffectiveReservationRule(id),
+      getEffectiveReservationRule(context.organizationId, id),
     ]);
 
   const reservations = allReservations.filter((r) => r.unit.developmentId === id);

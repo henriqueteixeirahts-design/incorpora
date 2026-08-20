@@ -22,7 +22,8 @@ export function ProposalEvaluationRuleForm({
   rule,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = parâmetros gerais da organização (sem empreendimento específico). */
+  developmentId: string | null;
   rule: {
     allowOffTable: boolean;
     discountRatePercent: number;
@@ -53,7 +54,7 @@ export function ProposalEvaluationRuleForm({
 
   return (
     <form action={dispatch} className="inc-card" style={{ marginTop: "18px", maxWidth: 680, padding: "20px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+      {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
 
       <div>
         <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Aceite fora da tabela</div>

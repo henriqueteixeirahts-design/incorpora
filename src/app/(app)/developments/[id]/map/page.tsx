@@ -35,7 +35,7 @@ export default async function DevelopmentMapPage({
       listBrokers(context.organizationId),
       listAgencies(context.organizationId),
       listSalesTables(id),
-      getEffectiveReservationRule(id),
+      getEffectiveReservationRule(context.organizationId, id),
     ]);
 
   const principalUnits = units.filter((unit) => !unit.isAccessory);

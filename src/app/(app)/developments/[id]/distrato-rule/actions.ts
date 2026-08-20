@@ -6,12 +6,12 @@ import { upsertDistratoRule } from "@/server/distrato-rules";
 
 export type FormState = { error?: string; success?: boolean };
 
+/** `developmentId` vazio/ausente = regra geral da organização (chamado também de /settings/rules/distrato). */
 export async function upsertDistratoRuleAction(_prevState: FormState, formData: FormData): Promise<FormState> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const retentionPercent = Number(formData.get("retentionPercent") ?? 25);
   const reverseCommissionOnDistrato = formData.get("reverseCommissionOnDistrato") === "on";
@@ -26,6 +26,6 @@ export async function upsertDistratoRuleAction(_prevState: FormState, formData: 
     return { error: error instanceof Error ? error.message : "Falha ao salvar regra de distrato." };
   }
 
-  revalidatePath(`/developments/${developmentId}/distrato-rule`);
+  revalidatePath(developmentId ? `/developments/${developmentId}/distrato-rule` : "/settings/rules/distrato");
   return { success: true };
 }

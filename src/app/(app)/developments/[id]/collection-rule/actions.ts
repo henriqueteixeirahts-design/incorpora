@@ -6,12 +6,12 @@ import { upsertCollectionRule, type CollectionStep } from "@/server/collection-r
 
 export type FormState = { error?: string; success?: boolean };
 
+/** `developmentId` vazio/ausente = régua geral da organização (chamado também de /settings/rules/collection). */
 export async function upsertCollectionRuleAction(_prevState: FormState, formData: FormData): Promise<FormState> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const stepsRaw = String(formData.get("stepsJson") ?? "[]");
   let steps: CollectionStep[];
@@ -32,6 +32,6 @@ export async function upsertCollectionRuleAction(_prevState: FormState, formData
     return { error: error instanceof Error ? error.message : "Falha ao salvar a régua." };
   }
 
-  revalidatePath(`/developments/${developmentId}/collection-rule`);
+  revalidatePath(developmentId ? `/developments/${developmentId}/collection-rule` : "/settings/rules/collection");
   return { success: true };
 }

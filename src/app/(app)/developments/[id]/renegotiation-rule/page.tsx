@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
-import { getEffectiveRenegotiationRule } from "@/server/renegotiation-rules";
+import { getEffectiveRenegotiationRule, getRenegotiationRule } from "@/server/renegotiation-rules";
 import { RenegotiationRuleForm } from "./renegotiation-rule-form";
 
 export default async function RenegotiationRulePage({
@@ -16,7 +16,10 @@ export default async function RenegotiationRulePage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  const rule = await getEffectiveRenegotiationRule(id);
+  const [rule, ownRule] = await Promise.all([
+    getEffectiveRenegotiationRule(context.organizationId, id),
+    getRenegotiationRule(context, id),
+  ]);
   const canEdit = hasPermission(context, "development", "EDIT");
 
   return (
@@ -29,6 +32,16 @@ export default async function RenegotiationRulePage({
         Tolerância de desconto sobre encargos sem alçada, prazo máximo de reparcelamento e comportamento de acordo
         quebrado (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md, Parte 2.2). Descontos acima da tolerância exigem
         aprovação nos níveis configurados.
+        {" "}
+        {ownRule ? (
+          "Este empreendimento tem uma regra própria (sobrescreve a geral)."
+        ) : (
+          <>
+            Usando a{" "}
+            <Link href="/settings/rules/renegotiation">regra geral da organização</Link>
+            {" "}(ou o default do sistema, se a geral também não estiver configurada).
+          </>
+        )}
       </p>
 
       <RenegotiationRuleForm developmentId={id} rule={rule} canEdit={canEdit} />

@@ -66,7 +66,7 @@ export async function createRenegotiationAgreement(context: AccessContext, contr
       throw new Error("Desconto sobre encargos inválido (0 a 100%).");
     }
 
-    const rule = await getEffectiveRenegotiationRule(contract.developmentId);
+    const rule = await getEffectiveRenegotiationRule(context.organizationId, contract.developmentId);
     if (input.monthlyInstallments > rule.maxTermMonths) {
       throw new Error(`Prazo do reparcelamento acima do máximo permitido pra este empreendimento (${rule.maxTermMonths} meses).`);
     }
@@ -325,7 +325,7 @@ export async function checkAndUpdateBrokenAgreementsForCustomer(organizationId: 
   let brokenCount = 0;
 
   for (const agreement of agreements) {
-    const rule = await getEffectiveRenegotiationRule(agreement.contract.developmentId);
+    const rule = await getEffectiveRenegotiationRule(organizationId, agreement.contract.developmentId);
     const graceMs = rule.brokenDealGraceDays * 24 * 60 * 60 * 1000;
 
     const brokenInstallment = agreement.destinationInstallments.find(

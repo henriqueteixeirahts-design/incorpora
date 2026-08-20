@@ -109,7 +109,7 @@ export async function tryReleaseCommissions(
   const pendingSplits = contract.sale.commissionSplits.filter((s) => s.status === "PENDING");
   if (pendingSplits.length === 0) return;
 
-  const rule = await getEffectiveCommissionReleaseRule(contract.developmentId);
+  const rule = await getEffectiveCommissionReleaseRule(organizationId, contract.developmentId);
   const installments = contract.portfolio?.installments ?? [];
 
   let eligible = false;

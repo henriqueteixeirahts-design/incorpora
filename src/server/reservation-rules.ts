@@ -7,7 +7,15 @@ import type { AccessContext } from "@/server/auth-context";
 
 const ENTITY_TYPE = "ReservationRule";
 
-/** Defaults sugeridos pela especificação (Parte 2) — valem quando o empreendimento ainda não tem regra configurada. */
+/**
+ * Regra de reserva — geral (organização) OU por empreendimento (Fase A,
+ * Parte 2.4; docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Resolução em
+ * cascata: regra do empreendimento específico → regra geral da organização
+ * → default do código. `developmentId: null` em `upsertReservationRule`
+ * grava/edita a linha geral.
+ */
+
+/** Defaults sugeridos pela especificação (Parte 2) — valem quando não há regra geral nem específica configurada. */
 export const DEFAULT_RESERVATION_RULE = {
   validityHours: 48,
   maxActiveReservationsPerBroker: 3 as number | null,
@@ -22,10 +30,17 @@ export const DEFAULT_RESERVATION_RULE = {
 
 export type ReservationRuleValues = typeof DEFAULT_RESERVATION_RULE;
 
-/** Regra efetiva do empreendimento — a configurada, ou os defaults sugeridos quando não há linha ainda. */
-export async function getEffectiveReservationRule(developmentId: string): Promise<ReservationRuleValues> {
-  const rule = await prisma.reservationRule.findUnique({ where: { developmentId } });
-  if (!rule) return DEFAULT_RESERVATION_RULE;
+function toValues(rule: {
+  validityHours: number;
+  maxActiveReservationsPerBroker: number | null;
+  waitlistEnabled: boolean;
+  waitlistPriorityHours: number;
+  renewalAllowed: boolean;
+  maxRenewals: number;
+  requiresApprovalForRenewal: boolean;
+  requireIdentifiedCustomer: boolean;
+  allowedReserverRoles: string[];
+}): ReservationRuleValues {
   return {
     validityHours: rule.validityHours,
     maxActiveReservationsPerBroker: rule.maxActiveReservationsPerBroker,
@@ -39,7 +54,23 @@ export async function getEffectiveReservationRule(developmentId: string): Promis
   };
 }
 
-/** Regra bruta (ou null se ainda não configurada) — pra distinguir "usando os defaults" de "customizada" na tela. */
+/** Regra efetiva: do empreendimento específico → geral da organização → default do código. */
+export async function getEffectiveReservationRule(organizationId: string, developmentId: string): Promise<ReservationRuleValues> {
+  const rule = await prisma.reservationRule.findUnique({ where: { developmentId } });
+  if (rule) return toValues(rule);
+
+  const general = await prisma.reservationRule.findFirst({ where: { organizationId, developmentId: null } });
+  if (general) return toValues(general);
+
+  return DEFAULT_RESERVATION_RULE;
+}
+
+/** Regra geral da organização, bruta (ou null se ainda não configurada). */
+export function getGeneralReservationRule(context: AccessContext) {
+  return prisma.reservationRule.findFirst({ where: { organizationId: context.organizationId, developmentId: null } });
+}
+
+/** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export async function getReservationRule(context: AccessContext, developmentId: string) {
   const development = await prisma.development.findFirst({
     where: { id: developmentId, ...orgScope(context) },
@@ -48,26 +79,47 @@ export async function getReservationRule(context: AccessContext, developmentId: 
   return prisma.reservationRule.findUnique({ where: { developmentId } });
 }
 
+/** Empreendimentos da organização que têm uma regra própria (sobrescrevem a geral). */
+export function listReservationRuleOverrides(context: AccessContext) {
+  return prisma.reservationRule.findMany({
+    where: { organizationId: context.organizationId, developmentId: { not: null } },
+    include: { development: true },
+    orderBy: { development: { name: "asc" } },
+  });
+}
+
 export type UpsertReservationRuleInput = ReservationRuleValues;
 
+/**
+ * `developmentId: null` grava a regra geral da organização; um id grava a
+ * regra daquele empreendimento específico.
+ */
 export async function upsertReservationRule(
   context: AccessContext,
-  developmentId: string,
+  developmentId: string | null,
   input: UpsertReservationRuleInput,
 ) {
-  const development = await prisma.development.findFirst({
-    where: { id: developmentId, ...orgScope(context) },
-  });
-  if (!development) throw new Error("Empreendimento não encontrado.");
-
-  const before = await prisma.reservationRule.findUnique({ where: { developmentId } });
-
   return prisma.$transaction(async (tx) => {
-    const rule = await tx.reservationRule.upsert({
-      where: { developmentId },
-      create: { developmentId, ...input },
-      update: input,
-    });
+    if (developmentId) {
+      const development = await tx.development.findFirst({
+        where: { id: developmentId, organizationId: context.organizationId },
+      });
+      if (!development) throw new Error("Empreendimento inválido.");
+    }
+
+    // `developmentId` é @unique (não composto) — a busca da linha geral usa
+    // findFirst (não findUnique) porque não há chave única declarada sobre
+    // (organizationId, developmentId nulo); a unicidade de "uma geral por
+    // organização" é garantida aqui, na camada de serviço (find-then-create/
+    // update dentro da mesma transação), não por constraint de banco — mesmo
+    // padrão de validação em serviço já usado no resto do projeto.
+    const before = developmentId
+      ? await tx.reservationRule.findUnique({ where: { developmentId } })
+      : await tx.reservationRule.findFirst({ where: { organizationId: context.organizationId, developmentId: null } });
+
+    const rule = before
+      ? await tx.reservationRule.update({ where: { id: before.id }, data: input })
+      : await tx.reservationRule.create({ data: { organizationId: context.organizationId, developmentId, ...input } });
 
     await recordAuditEvent(tx, {
       organizationId: context.organizationId,
@@ -75,7 +127,7 @@ export async function upsertReservationRule(
       action: before ? "update" : "create",
       entityType: ENTITY_TYPE,
       entityId: rule.id,
-      beforeData: before ?? undefined,
+      beforeData: before,
       afterData: rule,
     });
 

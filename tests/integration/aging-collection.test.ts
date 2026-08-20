@@ -10,7 +10,13 @@ import { createProposal, submitProposalForApproval } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
 import { getPortfolioAging, getOverdueCustomerStages, getCustomerCollectionStage } from "@/server/aging";
-import { upsertCollectionRule } from "@/server/collection-rules";
+import {
+  upsertCollectionRule,
+  getEffectiveCollectionSteps,
+  getGeneralCollectionRule,
+  listCollectionRuleOverrides,
+  DEFAULT_COLLECTION_STEPS,
+} from "@/server/collection-rules";
 import { logCollectionContact, listCollectionHistory } from "@/server/collection-log";
 
 /**
@@ -257,5 +263,85 @@ describe("Histórico de cobrança", () => {
     } finally {
       await prisma.organization.deleteMany({ where: { id: orgB.id } });
     }
+  });
+});
+
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem régua geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Régua Geral 1" } });
+    const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
+      name: "SPE Régua Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-regua-geral-1@teste.local", phone: "62999990300",
+    });
+    const dev2 = await createDevelopment({ ...context, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Régua Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const steps = await getEffectiveCollectionSteps(org2.id, dev2.id);
+    expect(steps).toEqual(DEFAULT_COLLECTION_STEPS);
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("régua geral configurada vale pra empreendimento sem régua própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Régua Geral 2" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Régua Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-regua-geral-2@teste.local", phone: "62999990301",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Régua Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    const generalSteps = [
+      { sequence: 1, offsetDays: 0, actionLabel: "Aviso geral no vencimento" },
+      { sequence: 2, offsetDays: 10, actionLabel: "Cobrança geral aos 10 dias" },
+    ];
+    await upsertCollectionRule(ctx2, null, generalSteps);
+
+    const general = await getGeneralCollectionRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(general?.steps).toHaveLength(2);
+
+    const effective = await getEffectiveCollectionSteps(org2.id, dev2.id);
+    expect(effective).toEqual(generalSteps);
+
+    await prisma.collectionRuleStep.deleteMany({ where: { collectionRule: { organizationId: org2.id } } });
+    await prisma.collectionRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("régua do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Régua Geral 3" } });
+    const ctx2 = { ...context, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Régua Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-regua-geral-3@teste.local", phone: "62999990302",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Régua Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertCollectionRule(ctx2, null, [{ sequence: 1, offsetDays: 0, actionLabel: "Aviso geral" }]);
+    const ownSteps = [
+      { sequence: 1, offsetDays: 5, actionLabel: "Aviso próprio" },
+      { sequence: 2, offsetDays: 25, actionLabel: "Cobrança própria" },
+    ];
+    await upsertCollectionRule(ctx2, dev2.id, ownSteps);
+
+    const effective = await getEffectiveCollectionSteps(org2.id, dev2.id);
+    expect(effective).toEqual(ownSteps);
+
+    const overrides = await listCollectionRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+    expect(overrides[0].steps).toHaveLength(2);
+
+    await prisma.collectionRuleStep.deleteMany({ where: { collectionRule: { organizationId: org2.id } } });
+    await prisma.collectionRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });

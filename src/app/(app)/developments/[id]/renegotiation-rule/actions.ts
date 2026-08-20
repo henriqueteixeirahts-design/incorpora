@@ -7,12 +7,12 @@ import type { ApprovalLevel } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
+/** `developmentId` vazio/ausente = regra geral da organização (chamado também de /settings/rules/renegotiation). */
 export async function upsertRenegotiationRuleAction(_prevState: FormState, formData: FormData): Promise<FormState> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const maxDiscountOnChargesPercent = Number(formData.get("maxDiscountOnChargesPercent") ?? 20);
   const maxTermMonths = Number(formData.get("maxTermMonths") ?? 24);
@@ -38,6 +38,6 @@ export async function upsertRenegotiationRuleAction(_prevState: FormState, formD
     return { error: error instanceof Error ? error.message : "Falha ao salvar a regra." };
   }
 
-  revalidatePath(`/developments/${developmentId}/renegotiation-rule`);
+  revalidatePath(developmentId ? `/developments/${developmentId}/renegotiation-rule` : "/settings/rules/renegotiation");
   return { success: true };
 }

@@ -6,7 +6,13 @@ import { createDevelopment } from "@/server/developments";
 import { createUnit } from "@/server/units";
 import { createCustomer } from "@/server/customers";
 import { createBroker } from "@/server/crm";
-import { upsertReservationRule, getEffectiveReservationRule } from "@/server/reservation-rules";
+import {
+  upsertReservationRule,
+  getEffectiveReservationRule,
+  getGeneralReservationRule,
+  listReservationRuleOverrides,
+  DEFAULT_RESERVATION_RULE,
+} from "@/server/reservation-rules";
 import {
   createReservation,
   cancelReservation,
@@ -80,7 +86,7 @@ afterAll(async () => {
 
 describe("Regra de reserva — defaults e configuração", () => {
   it("usa os defaults sugeridos quando o empreendimento não tem regra configurada", async () => {
-    const rule = await getEffectiveReservationRule(developmentId);
+    const rule = await getEffectiveReservationRule(orgA.id, developmentId);
     expect(rule.validityHours).toBe(48);
     expect(rule.maxActiveReservationsPerBroker).toBe(3);
     expect(rule.waitlistEnabled).toBe(true);
@@ -110,6 +116,84 @@ describe("Regra de reserva — defaults e configuração", () => {
 
     const rowCount = await prisma.reservationRule.count({ where: { developmentId } });
     expect(rowCount).toBe(1);
+  });
+});
+
+describe("Regra geral × por empreendimento (Parte 1.3)", () => {
+  it("sem regra geral nem específica, cai no default do código", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 1" } });
+    const spe2 = await createSpe({ ...contextA, organizationId: org2.id }, {
+      name: "SPE Reserva Geral 1", document: "63265390000141", status: "ACTIVE",
+      email: "spe-reserva-geral-1@teste.local", phone: "62999990300",
+    });
+    const dev2 = await createDevelopment({ ...contextA, organizationId: org2.id }, {
+      speId: spe2.id, name: "Dev Reserva Geral 1", type: "RESIDENTIAL_BUILDING",
+    });
+
+    const rule = await getEffectiveReservationRule(org2.id, dev2.id);
+    expect(rule).toEqual(DEFAULT_RESERVATION_RULE);
+
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 2" } });
+    const ctx2 = { ...contextA, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Reserva Geral 2", document: "63265390000141", status: "ACTIVE",
+      email: "spe-reserva-geral-2@teste.local", phone: "62999990301",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Reserva Geral 2", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertReservationRule(ctx2, null, {
+      ...DEFAULT_RESERVATION_RULE,
+      validityHours: 72,
+      maxActiveReservationsPerBroker: 5,
+    });
+
+    const general = await getGeneralReservationRule(ctx2);
+    expect(general?.developmentId).toBeNull();
+    expect(general?.validityHours).toBe(72);
+
+    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    expect(effective.validityHours).toBe(72);
+    expect(effective.maxActiveReservationsPerBroker).toBe(5);
+
+    await prisma.reservationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
+  });
+
+  it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
+    const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 3" } });
+    const ctx2 = { ...contextA, organizationId: org2.id };
+    const spe2 = await createSpe(ctx2, {
+      name: "SPE Reserva Geral 3", document: "63265390000141", status: "ACTIVE",
+      email: "spe-reserva-geral-3@teste.local", phone: "62999990302",
+    });
+    const dev2 = await createDevelopment(ctx2, { speId: spe2.id, name: "Dev Reserva Geral 3", type: "RESIDENTIAL_BUILDING" });
+
+    await upsertReservationRule(ctx2, null, { ...DEFAULT_RESERVATION_RULE, validityHours: 72 });
+    await upsertReservationRule(ctx2, dev2.id, { ...DEFAULT_RESERVATION_RULE, validityHours: 24 });
+
+    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    expect(effective.validityHours).toBe(24);
+
+    const overrides = await listReservationRuleOverrides(ctx2);
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0].developmentId).toBe(dev2.id);
+
+    // A geral continua intacta, não foi sobrescrita pela regra do empreendimento.
+    const general = await getGeneralReservationRule(ctx2);
+    expect(general?.validityHours).toBe(72);
+
+    await prisma.reservationRule.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.development.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org2.id } });
+    await prisma.organization.delete({ where: { id: org2.id } });
   });
 });
 

@@ -21,7 +21,8 @@ export function RenegotiationRuleForm({
   rule,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = regra geral da organização (sem empreendimento específico). */
+  developmentId: string | null;
   rule: RenegotiationRuleValues;
   canEdit: boolean;
 }) {
@@ -41,7 +42,7 @@ export function RenegotiationRuleForm({
 
   return (
     <form action={dispatch} className="field-section" style={{ marginTop: "1.5rem", maxWidth: 500 }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+      {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
 
       <div className="field">
         <label htmlFor="rr-discount">Tolerância de desconto sobre encargos sem alçada (%)</label>

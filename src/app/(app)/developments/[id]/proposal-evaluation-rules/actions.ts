@@ -53,12 +53,12 @@ function parseInput(formData: FormData): UpsertProposalEvaluationRuleInput | { e
   };
 }
 
+/** `developmentId` vazio/ausente = parâmetros gerais da organização (chamado também de /settings/rules/proposal-evaluation). */
 export async function upsertProposalEvaluationRuleAction(_prevState: FormState, formData: FormData): Promise<FormState> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
 
-  const developmentId = String(formData.get("developmentId") ?? "");
-  if (!developmentId) return { error: "Empreendimento inválido." };
+  const developmentId = String(formData.get("developmentId") ?? "").trim() || null;
 
   const input = parseInput(formData);
   if ("error" in input) return input;
@@ -68,6 +68,8 @@ export async function upsertProposalEvaluationRuleAction(_prevState: FormState, 
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao salvar regras de avaliação." };
   }
-  revalidatePath(`/developments/${developmentId}/proposal-evaluation-rules`);
+  revalidatePath(
+    developmentId ? `/developments/${developmentId}/proposal-evaluation-rules` : "/settings/rules/proposal-evaluation",
+  );
   return { success: true };
 }

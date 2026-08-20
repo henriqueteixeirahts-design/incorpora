@@ -12,7 +12,8 @@ export function ReservationRuleForm({
   roles,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = regra geral da organização (sem empreendimento específico). */
+  developmentId: string | null;
   rule: ReservationRuleValues;
   roles: string[];
   canEdit: boolean;
@@ -36,7 +37,7 @@ export function ReservationRuleForm({
 
   return (
     <form action={dispatch} className="inc-card" style={{ marginTop: "18px", maxWidth: 680, padding: "20px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+      {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
 
       <div>
         <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Prazos</div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
-import { getEffectiveReservationRule } from "@/server/reservation-rules";
+import { getEffectiveReservationRule, getReservationRule } from "@/server/reservation-rules";
 import { listRoles } from "@/server/users";
 import { ReservationRuleForm } from "./reservation-rule-form";
 
@@ -17,8 +17,9 @@ export default async function ReservationRulesPage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  const [rule, roles] = await Promise.all([
-    getEffectiveReservationRule(id),
+  const [rule, ownRule, roles] = await Promise.all([
+    getEffectiveReservationRule(context.organizationId, id),
+    getReservationRule(context, id),
     listRoles(context.organizationId),
   ]);
 
@@ -35,8 +36,18 @@ export default async function ReservationRulesPage({
         </div>
       </div>
       <p style={{ color: "var(--inc-text-soft)", fontSize: "13px", maxWidth: 680 }}>
-        Parâmetros de reserva deste empreendimento (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2). Sem
-        configuração salva, valem os padrões sugeridos pela especificação.
+        Parâmetros de reserva deste empreendimento (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2).{" "}
+        {ownRule ? (
+          "Este empreendimento tem uma regra própria (sobrescreve a geral)."
+        ) : (
+          <>
+            Usando a{" "}
+            <Link href="/settings/rules/reservation" style={{ color: "var(--inc-brand-azul)" }}>
+              regra geral da organização
+            </Link>
+            {" "}(ou os padrões sugeridos pela especificação, se a geral também não estiver configurada).
+          </>
+        )}
       </p>
 
       <ReservationRuleForm developmentId={id} rule={rule} roles={roles.map((r) => r.name)} canEdit={canEdit} />

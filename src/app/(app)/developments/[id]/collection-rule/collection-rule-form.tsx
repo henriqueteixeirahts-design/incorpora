@@ -12,7 +12,8 @@ export function CollectionRuleForm({
   steps,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = régua geral da organização (sem empreendimento específico). */
+  developmentId: string | null;
   steps: { sequence: number; offsetDays: number; actionLabel: string }[];
   canEdit: boolean;
 }) {
@@ -53,7 +54,7 @@ export function CollectionRuleForm({
 
   return (
     <form action={dispatch} className="field-section" style={{ marginTop: "1.5rem", maxWidth: 600 }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+      {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
       <input type="hidden" name="stepsJson" value={stepsJson} />
 
       <table>

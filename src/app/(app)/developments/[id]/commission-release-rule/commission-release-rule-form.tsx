@@ -17,7 +17,8 @@ export function CommissionReleaseRuleForm({
   rule,
   canEdit,
 }: {
-  developmentId: string;
+  /** null = regra geral da organização (sem empreendimento específico). */
+  developmentId: string | null;
   rule: { trigger: CommissionReleaseTrigger; installmentsPaidPercent: number };
   canEdit: boolean;
 }) {
@@ -36,7 +37,7 @@ export function CommissionReleaseRuleForm({
 
   return (
     <form action={dispatch} className="field-section" style={{ marginTop: "1.5rem", maxWidth: 500 }}>
-      <input type="hidden" name="developmentId" value={developmentId} />
+      {developmentId ? <input type="hidden" name="developmentId" value={developmentId} /> : null}
 
       <h3>Gatilho de liberação</h3>
       <div className="field">

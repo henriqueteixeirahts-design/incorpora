@@ -99,7 +99,7 @@ export default async function SaleDetailPage({
   const distratoTemplates = contract
     ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "RESCISSION")
     : [];
-  const distratoRule = contract ? await getEffectiveDistratoRule(sale.developmentId) : null;
+  const distratoRule = contract ? await getEffectiveDistratoRule(context.organizationId, sale.developmentId) : null;
   const distratoDocuments = distrato ? await listDistratoGeneratedDocuments(context.organizationId, distrato.id) : [];
   const distratoDocumentUrls = await Promise.all(
     distratoDocuments.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)),

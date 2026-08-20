@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
-import { getEffectiveCollectionSteps } from "@/server/collection-rules";
+import { getEffectiveCollectionSteps, getCollectionRule } from "@/server/collection-rules";
 import { CollectionRuleForm } from "./collection-rule-form";
 
 export default async function CollectionRulePage({
@@ -16,7 +16,10 @@ export default async function CollectionRulePage({
   const development = await getDevelopment(context.organizationId, id);
   if (!development) notFound();
 
-  const steps = await getEffectiveCollectionSteps(id);
+  const [steps, ownRule] = await Promise.all([
+    getEffectiveCollectionSteps(context.organizationId, id),
+    getCollectionRule(context, id),
+  ]);
   const canEdit = hasPermission(context, "development", "EDIT");
 
   return (
@@ -29,6 +32,16 @@ export default async function CollectionRulePage({
         Etapas da régua (prazo × ação sugerida) usadas pelo painel de Inadimplência pra mostrar em que etapa cada
         cliente está e a próxima ação sugerida (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md, Parte 3.2). Assistida por
         ora — o sistema não dispara nada sozinho, só orienta.
+        {" "}
+        {ownRule ? (
+          "Este empreendimento tem uma régua própria (sobrescreve a geral)."
+        ) : (
+          <>
+            Usando a{" "}
+            <Link href="/settings/rules/collection">regra geral da organização</Link>
+            {" "}(ou o default do sistema, se a geral também não estiver configurada).
+          </>
+        )}
       </p>
 
       <CollectionRuleForm developmentId={id} steps={steps} canEdit={canEdit} />

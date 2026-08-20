@@ -79,6 +79,15 @@
   color: var(--inc-brand-azul-claro);
 }
 .inc-nav__list { flex: 1; display: flex; flex-direction: column; gap: 1px; padding: 0 var(--inc-space-5); overflow-y: auto; }
+.inc-nav__group-label {
+  margin: var(--inc-space-7) var(--inc-space-6) var(--inc-space-2);
+  font-size: 10px;
+  font-weight: var(--inc-fw-semibold);
+  letter-spacing: var(--inc-ls-brand);
+  text-transform: uppercase;
+  color: #6f8798;
+}
+.inc-nav__group:first-child .inc-nav__group-label { margin-top: 0; }
 .inc-nav__item {
   display: flex;
   align-items: center;

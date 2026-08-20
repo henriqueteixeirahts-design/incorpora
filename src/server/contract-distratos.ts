@@ -49,7 +49,7 @@ export async function createDistrato(context: AccessContext, contractId: string,
     if (contract.status !== "SIGNED") throw new Error("Só é possível distratar contrato assinado.");
     if (contract.distrato) throw new Error("Este contrato já tem um distrato — rescisão é terminal, não é possível criar outro.");
 
-    const rule = await getEffectiveDistratoRule(contract.developmentId);
+    const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
     const totalPaid = sumPaid(contract.portfolio?.installments ?? []);
 
     const settlement = calculateDistratoSettlement({
@@ -168,7 +168,7 @@ export async function signDistrato(context: AccessContext, distratoId: string, s
       await tx.installment.update({ where: { id: installment.id }, data: { status: "CANCELLED" } });
     }
 
-    const rule = await getEffectiveDistratoRule(contract.developmentId);
+    const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
     let reversedCommissions = 0;
     if (rule.reverseCommissionOnDistrato) {
       const toReverse = contract.sale.commissionSplits.filter((s) => s.status === "PENDING" || s.status === "RELEASED");

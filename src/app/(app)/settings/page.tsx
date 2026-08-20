@@ -24,6 +24,41 @@ export default async function SettingsPage() {
       ],
     },
     {
+      title: "Regras parametrizáveis",
+      items: [
+        {
+          href: "/settings/rules/reservation",
+          label: "Regras de reserva",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+        {
+          href: "/settings/rules/proposal-evaluation",
+          label: "Parâmetros de avaliação",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+        {
+          href: "/settings/rules/commission-release",
+          label: "Liberação de comissão",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+        {
+          href: "/settings/rules/distrato",
+          label: "Regra de distrato",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+        {
+          href: "/settings/rules/collection",
+          label: "Régua de cobrança",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+        {
+          href: "/settings/rules/renegotiation",
+          label: "Renegociação de parcelas",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
+      ],
+    },
+    {
       title: "Documentos",
       items: [
         {
