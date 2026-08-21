@@ -1,5 +1,5 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { listAgenciesPaged, listBrokersPaged, listAgencies, type AgencySortField, type BrokerSortField } from "@/server/crm";
+import { listAgenciesPaged, listBrokersPaged, listAgencies, listManagerBrokers, type AgencySortField, type BrokerSortField } from "@/server/crm";
 import { AgenciesManager } from "./agencies-manager";
 import { BrokersManager } from "./brokers-manager";
 
@@ -23,7 +23,7 @@ export default async function PartnersPage({
   const brSortDir = params.bdir === "desc" ? "desc" : "asc";
   const brPage = Math.max(1, Number(params.bpage) || 1);
 
-  const [agenciesResult, brokersResult, allAgencies] = await Promise.all([
+  const [agenciesResult, brokersResult, allAgencies, managerBrokers] = await Promise.all([
     listAgenciesPaged(context.organizationId, {
       search: agSearch,
       sortBy: agSortBy,
@@ -39,6 +39,7 @@ export default async function PartnersPage({
       pageSize: PAGE_SIZE,
     }),
     listAgencies(context.organizationId),
+    listManagerBrokers(context.organizationId),
   ]);
 
   const canCreateAgency = hasPermission(context, "agency", "CREATE");
@@ -47,6 +48,8 @@ export default async function PartnersPage({
   const canCreateBroker = hasPermission(context, "broker", "CREATE");
   const canEditBroker = hasPermission(context, "broker", "EDIT");
   const canDeleteBroker = hasPermission(context, "broker", "DELETE");
+
+  const managerOptions = managerBrokers.map((m) => ({ id: m.id, name: m.name }));
 
   return (
     <>
@@ -61,6 +64,7 @@ export default async function PartnersPage({
         <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Imobiliárias</div>
         <AgenciesManager
           agencies={agenciesResult.items}
+          managers={managerOptions}
           total={agenciesResult.total}
           page={agPage}
           totalPages={Math.max(1, Math.ceil(agenciesResult.total / PAGE_SIZE))}
@@ -80,13 +84,32 @@ export default async function PartnersPage({
             id: b.id,
             name: b.name,
             document: b.document,
+            creci: b.creci,
             email: b.email,
             phone: b.phone,
+            role: b.role,
             agencyId: b.agencyId,
             agencyName: b.agency?.name ?? null,
+            managerId: b.managerId,
+            managerName: b.manager?.name ?? null,
+            zipCode: b.zipCode,
+            street: b.street,
+            number: b.number,
+            complement: b.complement,
+            neighborhood: b.neighborhood,
+            city: b.city,
+            state: b.state,
+            billingType: b.billingType,
+            billingDocument: b.billingDocument,
+            billingName: b.billingName,
+            billingBankName: b.billingBankName,
+            billingBankAgency: b.billingBankAgency,
+            billingBankAccount: b.billingBankAccount,
+            billingPixKey: b.billingPixKey,
             audit: b.audit,
           }))}
           agencies={allAgencies.map((a) => ({ id: a.id, name: a.name }))}
+          managers={managerOptions}
           total={brokersResult.total}
           page={brPage}
           totalPages={Math.max(1, Math.ceil(brokersResult.total / PAGE_SIZE))}

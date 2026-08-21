@@ -4,6 +4,8 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
+import { AddressFields } from "@/components/AddressFields";
+import { formatDocument, isValidDocument } from "@/lib/br-validation";
 import { createAgencyAction, updateAgencyAction, deleteAgencyAction, type FormState } from "./actions";
 import type { AgencySortField } from "@/server/crm";
 import { formatDateTimeBR } from "@/lib/format";
@@ -12,8 +14,21 @@ export type AgencyRow = {
   id: string;
   name: string;
   document: string | null;
+  zipCode: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  regionalManagerBrokerId: string | null;
+  regionalManagerName: string | null;
+  productManagerBrokerId: string | null;
+  productManagerName: string | null;
   audit: { createdByName: string | null; createdAt: Date; updatedByName: string | null; updatedAt: Date };
 };
+
+export type ManagerOption = { id: string; name: string };
 
 type ModalState = { mode: "create" } | { mode: "edit"; agency: AgencyRow } | null;
 
@@ -21,6 +36,7 @@ const initialState: FormState = {};
 
 export function AgenciesManager({
   agencies,
+  managers,
   total,
   page,
   totalPages,
@@ -32,6 +48,7 @@ export function AgenciesManager({
   canDelete,
 }: {
   agencies: AgencyRow[];
+  managers: ManagerOption[];
   total: number;
   page: number;
   totalPages: number;
@@ -106,13 +123,14 @@ export function AgenciesManager({
                 </Link>
               </th>
               <th>CNPJ</th>
+              <th>Gerente regional / produto</th>
               {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
           </thead>
           <tbody>
             {agencies.length === 0 ? (
               <tr>
-                <td colSpan={3} className="is-empty">
+                <td colSpan={4} className="is-empty">
                   {search ? "Nenhuma imobiliária encontrada." : "Nenhuma imobiliária cadastrada."}
                 </td>
               </tr>
@@ -121,6 +139,9 @@ export function AgenciesManager({
               <tr key={agency.id}>
                 <td className="is-key">{agency.name}</td>
                 <td className="is-muted">{agency.document ?? "—"}</td>
+                <td className="is-muted">
+                  {[agency.regionalManagerName, agency.productManagerName].filter(Boolean).join(" · ") || "—"}
+                </td>
                 {canEdit || canDelete ? (
                   <td>
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
@@ -175,6 +196,7 @@ export function AgenciesManager({
         <AgencyModal
           mode={modal.mode}
           agency={modal.mode === "edit" ? modal.agency : null}
+          managers={managers}
           onClose={() => setModal(null)}
         />
       ) : null}
@@ -185,15 +207,19 @@ export function AgenciesManager({
 function AgencyModal({
   mode,
   agency,
+  managers,
   onClose,
 }: {
   mode: "create" | "edit";
   agency: AgencyRow | null;
+  managers: ManagerOption[];
   onClose: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const formAction = mode === "create" ? createAgencyAction : updateAgencyAction;
   const [state, dispatch, pending] = useActionState(formAction, initialState);
+  const [documentError, setDocumentError] = useState<string | null>(null);
 
   useEffect(() => {
     if (state.success) onClose();
@@ -205,7 +231,7 @@ function AgencyModal({
       open
       onClose={onClose}
       title={mode === "edit" ? `Editar imobiliária — ${agency!.name}` : "Nova imobiliária"}
-      width={440}
+      width={640}
       footer={
         <>
           <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
@@ -227,16 +253,60 @@ function AgencyModal({
           </p>
         ) : null}
         <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Identificação</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px", marginBottom: "18px" }}>
           <label className="inc-field">
             <span className="inc-label">Nome *</span>
             <input id="agency-name" name="name" className="inc-input" required defaultValue={agency?.name ?? ""} />
           </label>
           <label className="inc-field">
             <span className="inc-label">CNPJ</span>
-            <input id="agency-document" name="document" className="inc-input" defaultValue={agency?.document ?? ""} />
+            <input
+              id="agency-document"
+              name="document"
+              ref={documentInputRef}
+              className={`inc-input${documentError ? " inc-input--invalid" : ""}`}
+              defaultValue={agency?.document ? formatDocument(agency.document, "COMPANY") : ""}
+              onBlur={(e) => {
+                const formatted = formatDocument(e.target.value, "COMPANY");
+                e.target.value = formatted;
+                setDocumentError(formatted.trim() && !isValidDocument(formatted, "COMPANY") ? "CNPJ inválido." : null);
+              }}
+            />
+            {documentError ? <span className="inc-help inc-help--error">{documentError}</span> : null}
           </label>
         </div>
+
+        <div style={{ marginBottom: "18px" }}>
+          <AddressFields
+            idPrefix="agency-"
+            defaultValues={agency ?? undefined}
+          />
+        </div>
+
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>
+          Split fixo (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3.2)
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+          <label className="inc-field">
+            <span className="inc-label">Gerente regional</span>
+            <select id="agency-regional-manager" name="regionalManagerBrokerId" className="inc-select" defaultValue={agency?.regionalManagerBrokerId ?? ""}>
+              <option value="">Nenhum</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="inc-field">
+            <span className="inc-label">Gerente de produto</span>
+            <select id="agency-product-manager" name="productManagerBrokerId" className="inc-select" defaultValue={agency?.productManagerBrokerId ?? ""}>
+              <option value="">Nenhum</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>

@@ -12,14 +12,27 @@ import {
   type CreateAgencyInput,
   type CreateBrokerInput,
 } from "@/server/crm";
+import type { BrokerRole, CustomerType } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
 function parseAgencyInput(formData: FormData): CreateAgencyInput | { error: string } {
   const name = String(formData.get("name") ?? "").trim();
-  const document = String(formData.get("document") ?? "").trim();
   if (!name) return { error: "Informe o nome da imobiliária." };
-  return { name, document: document || undefined };
+
+  return {
+    name,
+    document: String(formData.get("document") ?? "").trim() || undefined,
+    zipCode: String(formData.get("zipCode") ?? "").trim() || undefined,
+    street: String(formData.get("street") ?? "").trim() || undefined,
+    number: String(formData.get("number") ?? "").trim() || undefined,
+    complement: String(formData.get("complement") ?? "").trim() || undefined,
+    neighborhood: String(formData.get("neighborhood") ?? "").trim() || undefined,
+    city: String(formData.get("city") ?? "").trim() || undefined,
+    state: String(formData.get("state") ?? "").trim() || undefined,
+    regionalManagerBrokerId: String(formData.get("regionalManagerBrokerId") ?? "").trim() || undefined,
+    productManagerBrokerId: String(formData.get("productManagerBrokerId") ?? "").trim() || undefined,
+  };
 }
 
 export async function createAgencyAction(
@@ -80,19 +93,37 @@ export async function deleteAgencyAction(
 
 function parseBrokerInput(formData: FormData): CreateBrokerInput | { error: string } {
   const name = String(formData.get("name") ?? "").trim();
-  const document = String(formData.get("document") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
-  const agencyId = String(formData.get("agencyId") ?? "").trim();
-
   if (!name) return { error: "Informe o nome do corretor." };
+
+  const role = String(formData.get("role") ?? "BROKER").trim() as BrokerRole;
+  const billingTypeRaw = String(formData.get("billingType") ?? "").trim();
+  const billingType = (billingTypeRaw === "INDIVIDUAL" || billingTypeRaw === "COMPANY" ? billingTypeRaw : undefined) as
+    | CustomerType
+    | undefined;
 
   return {
     name,
-    document: document || undefined,
-    email: email || undefined,
-    phone: phone || undefined,
-    agencyId: agencyId || undefined,
+    document: String(formData.get("document") ?? "").trim() || undefined,
+    creci: String(formData.get("creci") ?? "").trim() || undefined,
+    email: String(formData.get("email") ?? "").trim() || undefined,
+    phone: String(formData.get("phone") ?? "").trim() || undefined,
+    agencyId: String(formData.get("agencyId") ?? "").trim() || undefined,
+    managerId: String(formData.get("managerId") ?? "").trim() || undefined,
+    role: role === "MANAGER" ? "MANAGER" : "BROKER",
+    zipCode: String(formData.get("zipCode") ?? "").trim() || undefined,
+    street: String(formData.get("street") ?? "").trim() || undefined,
+    number: String(formData.get("number") ?? "").trim() || undefined,
+    complement: String(formData.get("complement") ?? "").trim() || undefined,
+    neighborhood: String(formData.get("neighborhood") ?? "").trim() || undefined,
+    city: String(formData.get("city") ?? "").trim() || undefined,
+    state: String(formData.get("state") ?? "").trim() || undefined,
+    billingType,
+    billingDocument: String(formData.get("billingDocument") ?? "").trim() || undefined,
+    billingName: String(formData.get("billingName") ?? "").trim() || undefined,
+    billingBankName: String(formData.get("billingBankName") ?? "").trim() || undefined,
+    billingBankAgency: String(formData.get("billingBankAgency") ?? "").trim() || undefined,
+    billingBankAccount: String(formData.get("billingBankAccount") ?? "").trim() || undefined,
+    billingPixKey: String(formData.get("billingPixKey") ?? "").trim() || undefined,
   };
 }
 
