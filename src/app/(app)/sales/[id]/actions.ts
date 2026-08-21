@@ -134,7 +134,7 @@ export async function recalculatePortfolioAction(formData: FormData) {
   const portfolioId = String(formData.get("portfolioId") ?? "");
   if (!portfolioId) return;
 
-  await recalculatePortfolio(context.organizationId, portfolioId);
+  await recalculatePortfolio(context, portfolioId);
   revalidatePath(`/sales/${saleId}`);
 }
 
@@ -385,7 +385,7 @@ export async function simulateAnticipationAction(
 
   try {
     const result = await simulateInstallmentAnticipation(
-      context.organizationId,
+      context,
       installmentIds,
       discountPercent,
     );

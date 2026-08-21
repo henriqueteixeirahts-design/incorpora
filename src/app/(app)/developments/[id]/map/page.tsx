@@ -20,21 +20,21 @@ export default async function DevelopmentMapPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   await runJobForSingleOrganization(expireReservationsJob, context.organizationId, "EVENT");
 
   const [units, contracts, allReservations, allWaitlist, customers, brokers, agencies, salesTables, rule] =
     await Promise.all([
-      listUnits(id),
+      listUnits(context, id),
       listExchangeContracts(context, id),
-      listReservations(context.organizationId),
-      listWaitlistForOrganization(context.organizationId),
+      listReservations(context),
+      listWaitlistForOrganization(context),
       listCustomers(context.organizationId),
       listBrokers(context.organizationId),
       listAgencies(context.organizationId),
-      listSalesTables(id),
+      listSalesTables(context, id),
       getEffectiveReservationRule(context.organizationId, id),
     ]);
 

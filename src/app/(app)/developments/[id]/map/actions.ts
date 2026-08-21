@@ -95,7 +95,7 @@ export async function renewReservationFromMapAction(
   const context = await requireAccessContext();
 
   try {
-    const requiresApproval = await reservationRequiresApprovalToRenew(context.organizationId, reservationId);
+    const requiresApproval = await reservationRequiresApprovalToRenew(context, reservationId);
     const canRenew = requiresApproval
       ? hasPermission(context, "reservation", "APPROVE")
       : hasPermission(context, "reservation", "EDIT");

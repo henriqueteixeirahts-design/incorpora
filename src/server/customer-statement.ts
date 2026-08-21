@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getInstallmentLivePosition } from "@/server/receivables";
 import type { CalculateInstallmentResult } from "@/lib/index-correction";
+import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -80,14 +82,20 @@ const INSTALLMENT_SITUATION_LABELS: Record<string, string> = {
  * motor de correção já existente — `getInstallmentLivePosition`, puro,
  * nunca grava `FinancialCalculation`) na data de referência pedida. É
  * exibição da posição, não um recálculo novo.
+ *
+ * Escopo por empreendimento (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte
+ * 2.5): um cliente pode ter contratos em mais de um empreendimento — um
+ * usuário restrito a um empreendimento vê só os contratos dele (o extrato
+ * fica parcial, não bloqueado por inteiro), e os totais `consolidated.*`
+ * somam só o que ele pode ver. Nunca vaza valor de contrato fora do escopo.
  */
 export async function getCustomerFinancialPosition(
-  organizationId: string,
+  context: AccessContext,
   customerId: string,
   asOfDate: Date = new Date(),
 ): Promise<CustomerFinancialPosition | null> {
   const customer = await prisma.customer.findFirst({
-    where: { id: customerId, organizationId },
+    where: { id: customerId, organizationId: context.organizationId },
     include: {
       contracts: {
         where: { portfolio: { isNot: null } },
@@ -106,7 +114,9 @@ export async function getCustomerFinancialPosition(
   });
   if (!customer) return null;
 
-  const contracts: ContractStatement[] = customer.contracts.map((contract) => {
+  const visibleContracts = customer.contracts.filter((c) => canAccessDevelopment(context, c.developmentId));
+
+  const contracts: ContractStatement[] = visibleContracts.map((contract) => {
     const installments = contract.portfolio?.installments ?? [];
 
     const installmentRows: InstallmentStatementRow[] = installments.map((installment) => {

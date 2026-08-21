@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // "os arquivos HTML/JS aqui são referências de design, não código de produção") — não é código
     // deste projeto, só documentação vendorizada; nunca deveria ter sido varrido pelo lint.
     "docs/visual/design_handoff_incorpora/referencia/**",
+    // Worktrees isolados de agentes (ferramenta de orquestração multi-agente) — cópias temporárias
+    // do repositório inteiro, incluindo o material vendorizado acima; nunca é código deste projeto.
+    ".claude/worktrees/**",
   ]),
 ]);
 

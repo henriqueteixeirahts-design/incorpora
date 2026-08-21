@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getCashFlow } from "@/server/cash-flow";
 import { resolvePayableDestinations } from "@/server/payable-allocations";
+import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 
 // Relatórios executivos (Sprint 9, PRD seção 22 e 28). Reaproveitam os dados
 // já modelados nas sprints anteriores — nenhuma tabela nova. "Mapa de vendas"
@@ -151,7 +153,12 @@ export async function getPayablesSummary(organizationId: string, developmentId?:
  * cobre o essencial pedido no PRD (estoque, vendas, carteira, despesas,
  * fluxo de caixa).
  */
-export async function getInvestorReport(organizationId: string, developmentId: string) {
+export async function getInvestorReport(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) {
+    throw new Error("Empreendimento inválido.");
+  }
+  const organizationId = context.organizationId;
+
   const [development, sales, receivables, payables, cashFlow] = await Promise.all([
     prisma.development.findFirst({
       where: { id: developmentId, organizationId },
@@ -160,7 +167,7 @@ export async function getInvestorReport(organizationId: string, developmentId: s
     getSalesSummary(organizationId, developmentId),
     getReceivablesSummary(organizationId, developmentId),
     getPayablesSummary(organizationId, developmentId),
-    getCashFlow(organizationId, { developmentId, monthsBack: 1, monthsForward: 3 }),
+    getCashFlow(context, { developmentId, monthsBack: 1, monthsForward: 3 }),
   ]);
 
   if (!development) throw new Error("Empreendimento inválido.");

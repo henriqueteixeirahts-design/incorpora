@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { CommissionReleaseTrigger } from "@/generated/prisma/client";
 
@@ -46,18 +47,24 @@ export function getGeneralCommissionReleaseRule(context: AccessContext) {
 
 /** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export function getCommissionReleaseRule(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return Promise.resolve(null);
   return prisma.commissionReleaseRule.findFirst({
     where: { developmentId, development: { organizationId: context.organizationId } },
   });
 }
 
-/** Empreendimentos da organização que têm uma regra própria (sobrescrevem a geral). */
-export function listCommissionReleaseRuleOverrides(context: AccessContext) {
-  return prisma.commissionReleaseRule.findMany({
+/**
+ * Empreendimentos da organização que têm uma regra própria (sobrescrevem a
+ * geral) — filtrado pelo `developmentAccess` do usuário, pra não vazar quais
+ * empreendimentos fora do escopo dele têm regra customizada.
+ */
+export async function listCommissionReleaseRuleOverrides(context: AccessContext) {
+  const rules = await prisma.commissionReleaseRule.findMany({
     where: { organizationId: context.organizationId, developmentId: { not: null } },
     include: { development: true },
     orderBy: { development: { name: "asc" } },
   });
+  return rules.filter((r) => canAccessDevelopment(context, r.developmentId));
 }
 
 /**
@@ -74,7 +81,9 @@ export async function upsertCommissionReleaseRule(
       const development = await tx.development.findFirst({
         where: { id: developmentId, organizationId: context.organizationId },
       });
-      if (!development) throw new Error("Empreendimento inválido.");
+      if (!development || !canAccessDevelopment(context, developmentId)) {
+        throw new Error("Empreendimento inválido.");
+      }
     }
 
     // `developmentId` é @unique (não composto) — a busca da linha geral usa

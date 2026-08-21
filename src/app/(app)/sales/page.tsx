@@ -31,7 +31,7 @@ export default async function SalesPage({
   const walletStatus = (params.walletStatus as WalletStatusFilter) || "";
 
   const [{ items, total }, brokers, agencies] = await Promise.all([
-    listSalesPaged(context.organizationId, {
+    listSalesPaged(context, {
       search,
       sortBy,
       sortDir,

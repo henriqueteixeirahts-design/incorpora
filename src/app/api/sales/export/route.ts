@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const context = await requireAccessContext();
   const params = request.nextUrl.searchParams;
 
-  const { items } = await listSalesPaged(context.organizationId, {
+  const { items } = await listSalesPaged(context, {
     search: params.get("q") ?? undefined,
     contractStatus: (params.get("contractStatus") as ContractStatusFilter) || undefined,
     brokerId: params.get("brokerId") ?? undefined,

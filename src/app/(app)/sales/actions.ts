@@ -38,7 +38,7 @@ export async function addCommissionSplitAction(
 export async function getSaleCommissionSplitsAction(saleId: string) {
   const context = await requireAccessContext();
   if (!hasPermission(context, "sale", "VIEW")) return null;
-  const sale = await getSale(context.organizationId, saleId);
+  const sale = await getSale(context, saleId);
   return sale?.commissionSplits ?? null;
 }
 

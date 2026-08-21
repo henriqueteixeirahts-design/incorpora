@@ -60,7 +60,7 @@ export async function simulateFullSettlementAction(
   if (!contractId || !targetDateRaw) return { error: "Informe a data de quitação." };
 
   try {
-    const result = await simulateFullSettlement(context.organizationId, contractId, parseDateOnly(targetDateRaw));
+    const result = await simulateFullSettlement(context, contractId, parseDateOnly(targetDateRaw));
     return { result };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao simular quitação." };
@@ -81,7 +81,7 @@ export async function generateStatementPdfAction(
   if (!customerId || !contractId || !documentTemplateId) return { error: "Selecione um modelo." };
 
   try {
-    const position = await getCustomerFinancialPosition(context.organizationId, customerId);
+    const position = await getCustomerFinancialPosition(context, customerId);
     if (!position) return { error: "Cliente inválido." };
     const contractStatement = position.contracts.find((c) => c.contractId === contractId);
     if (!contractStatement) return { error: "Contrato inválido." };

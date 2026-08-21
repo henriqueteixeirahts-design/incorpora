@@ -81,21 +81,21 @@ export default async function CommercialPage({
   const { unitId: defaultUnitId } = await searchParams;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   await runJobForSingleOrganization(expireReservationsJob, context.organizationId, "EVENT");
 
   const [units, customers, brokers, agencies, salesTables, allReservations, allProposals, allWaitlist, rule] =
     await Promise.all([
-      listUnits(id),
+      listUnits(context, id),
       listCustomers(context.organizationId),
       listBrokers(context.organizationId),
       listAgencies(context.organizationId),
-      listSalesTables(id),
-      listReservations(context.organizationId),
-      listProposals(context.organizationId),
-      listWaitlistForOrganization(context.organizationId),
+      listSalesTables(context, id),
+      listReservations(context),
+      listProposals(context),
+      listWaitlistForOrganization(context),
       getEffectiveReservationRule(context.organizationId, id),
     ]);
 

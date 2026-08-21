@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getInstallmentLivePosition } from "@/server/receivables";
 import { getEffectiveCollectionSteps, resolveCollectionStage, type CollectionStep } from "@/server/collection-rules";
+import type { AccessContext } from "@/server/auth-context";
+import { developmentAccessScope, canAccessDevelopment } from "@/server/scope";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -69,21 +71,45 @@ export type AgingFilters = {
   maxValue?: number;
 };
 
+function emptyAgingResult() {
+  return {
+    asOfDate: new Date(),
+    summaries: AGING_BUCKET_ORDER.map((bucket) => ({
+      bucket,
+      label: AGING_BUCKET_LABELS[bucket],
+      totalValue: 0,
+      installmentCount: 0,
+      customerCount: 0,
+    })),
+    rows: [] as AgingRow[],
+  };
+}
+
 /**
  * Aging da carteira (Fase B, Parte 3.1) — agrupa os títulos vencidos (+ os
  * "a vencer" nos próximos 30 dias) por faixa de atraso. Valor de cada
  * parcela calculado AO VIVO (`getInstallmentLivePosition`, mesmo princípio
  * da etapa 1: exibição, não recálculo persistido).
+ *
+ * Escopo por EMPREENDIMENTO (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5)
+ * — `Contract.developmentId` nunca é opcional, então um usuário restrito só
+ * vê parcelas de contratos dos empreendimentos concedidos a ele.
  */
-export async function getPortfolioAging(organizationId: string, filters: AgingFilters = {}) {
+export async function getPortfolioAging(context: AccessContext, filters: AgingFilters = {}) {
+  if (filters.developmentId && !canAccessDevelopment(context, filters.developmentId)) {
+    return emptyAgingResult();
+  }
+
   const now = new Date();
   const horizon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const installments = await prisma.installment.findMany({
     where: {
       portfolio: {
-        organizationId,
-        ...(filters.developmentId ? { contract: { developmentId: filters.developmentId } } : {}),
+        organizationId: context.organizationId,
+        contract: filters.developmentId
+          ? { developmentId: filters.developmentId }
+          : developmentAccessScope(context),
       },
       status: { notIn: ["PAID", "CANCELLED"] },
       dueDate: { lte: horizon },
@@ -178,11 +204,19 @@ export type CustomerCollectionStage = {
  * parcela. Cliente com parcelas em atraso em mais de um empreendimento:
  * decisão de escopo — usa a régua do empreendimento da parcela mais
  * atrasada, não uma fusão entre réguas de empreendimentos diferentes.
+ *
+ * Escopo por empreendimento: usuário restrito só considera parcelas de
+ * contratos dos empreendimentos concedidos a ele (mesma regra de
+ * `getPortfolioAging`).
  */
-export async function getOverdueCustomerStages(organizationId: string): Promise<CustomerCollectionStage[]> {
+export async function getOverdueCustomerStages(context: AccessContext): Promise<CustomerCollectionStage[]> {
   const now = new Date();
   const overdueInstallments = await prisma.installment.findMany({
-    where: { portfolio: { organizationId }, status: { notIn: ["PAID", "CANCELLED"] }, dueDate: { lt: now } },
+    where: {
+      portfolio: { organizationId: context.organizationId, contract: developmentAccessScope(context) },
+      status: { notIn: ["PAID", "CANCELLED"] },
+      dueDate: { lt: now },
+    },
     include: {
       portfolio: {
         include: {
@@ -226,7 +260,7 @@ export async function getOverdueCustomerStages(organizationId: string): Promise<
   const result: CustomerCollectionStage[] = [];
   for (const [customerId, worst] of worstByCustomer.entries()) {
     if (!stepsByDevelopment.has(worst.developmentId)) {
-      stepsByDevelopment.set(worst.developmentId, await getEffectiveCollectionSteps(organizationId, worst.developmentId));
+      stepsByDevelopment.set(worst.developmentId, await getEffectiveCollectionSteps(context.organizationId, worst.developmentId));
     }
     const steps = stepsByDevelopment.get(worst.developmentId)!;
     const { currentStep, nextStep } = resolveCollectionStage(steps, worst.daysOverdue);
@@ -244,7 +278,7 @@ export async function getOverdueCustomerStages(organizationId: string): Promise<
 }
 
 /** Régua de um único cliente — usado no extrato do cliente e no drill-down do painel. */
-export async function getCustomerCollectionStage(organizationId: string, customerId: string): Promise<CustomerCollectionStage | null> {
-  const stages = await getOverdueCustomerStages(organizationId);
+export async function getCustomerCollectionStage(context: AccessContext, customerId: string): Promise<CustomerCollectionStage | null> {
+  const stages = await getOverdueCustomerStages(context);
   return stages.find((s) => s.customerId === customerId) ?? null;
 }

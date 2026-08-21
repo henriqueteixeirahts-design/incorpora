@@ -4,11 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
+import { developmentIdAccessScope, canAccessDevelopment } from "@/server/scope";
 import type { DevelopmentType, Prisma } from "@/generated/prisma/client";
 
-export function listDevelopments(organizationId: string) {
+/**
+ * `Development` é a raiz do escopo por empreendimento
+ * (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5) — todo `where` aqui
+ * combina o isolamento por organização (Fundações) com o filtro de
+ * `developmentAccess` do usuário, pra nenhuma listagem/leitura vazar a
+ * existência de um empreendimento fora do escopo dele.
+ */
+export function listDevelopments(context: AccessContext) {
   return prisma.development.findMany({
-    where: { organizationId },
+    where: { organizationId: context.organizationId, ...developmentIdAccessScope(context) },
     include: { spe: true, _count: { select: { units: true } } },
     orderBy: { name: "asc" },
   });
@@ -17,7 +25,7 @@ export function listDevelopments(organizationId: string) {
 export type DevelopmentSortField = "name" | "type" | "city" | "createdAt";
 
 export async function listDevelopmentsPaged(
-  organizationId: string,
+  context: AccessContext,
   params: { search?: string; sortBy?: DevelopmentSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
 ) {
   const page = Math.max(1, params.page ?? 1);
@@ -27,7 +35,8 @@ export async function listDevelopmentsPaged(
   const search = params.search?.trim();
 
   const where: Prisma.DevelopmentWhereInput = {
-    organizationId,
+    organizationId: context.organizationId,
+    ...developmentIdAccessScope(context),
     ...(search
       ? {
           OR: [
@@ -52,9 +61,11 @@ export async function listDevelopmentsPaged(
   return { items, total, page, pageSize };
 }
 
-export async function getDevelopment(organizationId: string, developmentId: string) {
+export async function getDevelopment(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return null;
+
   const development = await prisma.development.findFirst({
-    where: { id: developmentId, organizationId },
+    where: { id: developmentId, organizationId: context.organizationId },
     include: {
       spe: true,
       postHabiteSeIndexRule: true,
@@ -64,7 +75,7 @@ export async function getDevelopment(organizationId: string, developmentId: stri
   if (!development) return null;
 
   const auditTrail = await prisma.auditEvent.findMany({
-    where: { organizationId, entityType: "Development", entityId: developmentId },
+    where: { organizationId: context.organizationId, entityType: "Development", entityId: developmentId },
     orderBy: { createdAt: "asc" },
     include: { actor: true },
   });
@@ -145,7 +156,9 @@ export async function updateDevelopment(
     const before = await tx.development.findFirst({
       where: { id: developmentId, organizationId: context.organizationId },
     });
-    if (!before) throw new Error("Empreendimento não encontrado.");
+    if (!before || !canAccessDevelopment(context, developmentId)) {
+      throw new Error("Empreendimento não encontrado.");
+    }
 
     const spe = await tx.specialPurposeEntity.findFirst({
       where: { id: input.speId, organizationId: context.organizationId },
@@ -182,7 +195,9 @@ export async function deleteDevelopment(context: AccessContext, developmentId: s
   const development = await prisma.development.findFirst({
     where: { id: developmentId, organizationId: context.organizationId },
   });
-  if (!development) throw new Error("Empreendimento não encontrado.");
+  if (!development || !canAccessDevelopment(context, developmentId)) {
+    throw new Error("Empreendimento não encontrado.");
+  }
 
   const [units, costCenters, payables, payableAllocations] = await Promise.all([
     prisma.unit.count({ where: { developmentId } }),
@@ -219,7 +234,9 @@ export async function createBuilding(
     const development = await tx.development.findFirst({
       where: { id: developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, developmentId)) {
+      throw new Error("Empreendimento inválido.");
+    }
 
     const building = await tx.building.create({ data: { developmentId, name } });
 
@@ -246,7 +263,9 @@ export async function createFloor(
     const building = await tx.building.findFirst({
       where: { id: buildingId, development: { organizationId: context.organizationId } },
     });
-    if (!building) throw new Error("Torre/bloco inválido.");
+    if (!building || !canAccessDevelopment(context, building.developmentId)) {
+      throw new Error("Torre/bloco inválido.");
+    }
 
     const floor = await tx.floor.create({ data: { buildingId, level, label } });
 

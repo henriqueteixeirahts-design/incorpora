@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { resolvePayableDestinations } from "@/server/payable-allocations";
 import { getOpeningBalanceTotal } from "@/server/bank-accounts";
 import { periodKey, type CashFlowGranularity } from "@/lib/cash-flow-period";
+import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment, developmentAccessScope, developmentIdAccessScope } from "@/server/scope";
 
 export type { CashFlowGranularity } from "@/lib/cash-flow-period";
 
@@ -48,7 +50,8 @@ export type CashFlowOptions = {
  * todas geradas pela mesma varredura dia a dia do intervalo (garante que
  * todo período apareça, mesmo sem movimento).
  */
-export async function getCashFlow(organizationId: string, options: CashFlowOptions = {}): Promise<CashFlowBucket[]> {
+export async function getCashFlow(context: AccessContext, options: CashFlowOptions = {}): Promise<CashFlowBucket[]> {
+  const organizationId = context.organizationId;
   const granularity = options.granularity ?? "monthly";
   const today = new Date();
 
@@ -75,18 +78,25 @@ export async function getCashFlow(organizationId: string, options: CashFlowOptio
   // em toda a cadeia (carteira só chega em SPE via Contract.development),
   // então "filtrar por SPE" concretamente significa "empreendimentos
   // daquela SPE, mais lançamentos avulsos com esse speId direto".
+  // Escopo por EMPREENDIMENTO (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte
+  // 2.5) — aplicado mesmo quando o chamador não passa filtro nenhum:
+  // `developmentIds` explícito (filtro de tela) já nasce restrito ao
+  // `developmentAccess` do usuário (SPE: só os developments concedidos
+  // daquela SPE; development único: vazio se fora do escopo — devolve
+  // "sem dado", nunca erro). Sem filtro explícito, `contractScope` cai pro
+  // escopo do usuário direto.
   let developmentIds: string[] | undefined;
   if (options.speId) {
     const developments = await prisma.development.findMany({
-      where: { organizationId, speId: options.speId },
+      where: { organizationId, speId: options.speId, ...developmentIdAccessScope(context) },
       select: { id: true },
     });
     developmentIds = developments.map((d) => d.id);
   } else if (options.developmentId) {
-    developmentIds = [options.developmentId];
+    developmentIds = canAccessDevelopment(context, options.developmentId) ? [options.developmentId] : [];
   }
 
-  const contractScope = developmentIds ? { developmentId: { in: developmentIds } } : undefined;
+  const contractScope = developmentIds ? { developmentId: { in: developmentIds } } : developmentAccessScope(context);
 
   const [installments, payments, payables, receivablesAvulsos, openingBalance] = await Promise.all([
     prisma.installment.findMany({
@@ -143,12 +153,20 @@ export async function getCashFlow(organizationId: string, options: CashFlowOptio
   ]);
 
   function matchesScope(entry: { developmentId: string | null; speId: string | null }) {
-    if (!developmentIds) return true;
-    if (entry.developmentId) return developmentIds.includes(entry.developmentId);
-    // lançamento sem empreendimento (nível organização/SPE): só entra no
-    // recorte quando o filtro é por SPE e bate direto com o speId do
-    // lançamento — nunca entra num filtro por empreendimento específico.
-    return !!options.speId && entry.speId === options.speId;
+    if (developmentIds) {
+      if (entry.developmentId) {
+        if (!developmentIds.includes(entry.developmentId)) return false;
+      } else if (!(options.speId && entry.speId === options.speId)) {
+        // lançamento sem empreendimento (nível organização/SPE): só entra no
+        // recorte quando o filtro é por SPE e bate direto com o speId do
+        // lançamento — nunca entra num filtro por empreendimento específico.
+        return false;
+      }
+    }
+    // Escopo por empreendimento do usuário — lançamento sem `developmentId`
+    // (nível organização) sempre visível; com `developmentId`, só se
+    // estiver no `developmentAccess` do usuário.
+    return canAccessDevelopment(context, entry.developmentId);
   }
 
   const buckets = new Map<string, CashFlowBucket>();
@@ -190,9 +208,7 @@ export async function getCashFlow(organizationId: string, options: CashFlowOptio
   }
   for (const payable of payables) {
     const destinations = resolvePayableDestinations(payable);
-    const relevant = developmentIds
-      ? destinations.filter((d) => matchesScope({ developmentId: d.developmentId, speId: payable.speId }))
-      : destinations;
+    const relevant = destinations.filter((d) => matchesScope({ developmentId: d.developmentId, speId: payable.speId }));
     if (relevant.length === 0) continue;
     const allocatedAmount = relevant.reduce((acc, d) => acc + d.amount, 0);
 

@@ -41,7 +41,7 @@ export default async function FinanceSetupPage({
       page: spPage,
       pageSize: PAGE_SIZE,
     }),
-    listCostCentersPaged(context.organizationId, {
+    listCostCentersPaged(context, {
       search: ccSearch,
       sortBy: ccSortBy,
       sortDir: ccSortDir,
@@ -55,8 +55,8 @@ export default async function FinanceSetupPage({
       page: bPage,
       pageSize: PAGE_SIZE,
     }),
-    listDevelopments(context.organizationId),
-    listAllocationTemplates(context.organizationId),
+    listDevelopments(context),
+    listAllocationTemplates(context),
   ]);
 
   const canCreateSupplier = hasPermission(context, "supplier", "CREATE");

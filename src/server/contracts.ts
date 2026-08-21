@@ -6,12 +6,13 @@ import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { tryReleaseCommissions } from "@/server/commissions";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import type { Prisma } from "@/generated/prisma/client";
 
-export function getContractBySale(organizationId: string, saleId: string) {
-  return prisma.contract.findFirst({
-    where: { saleId, organizationId },
+export async function getContractBySale(context: AccessContext, saleId: string) {
+  const contract = await prisma.contract.findFirst({
+    where: { saleId, organizationId: context.organizationId },
     include: {
       indexRule: true,
       customer: true,
@@ -25,11 +26,13 @@ export function getContractBySale(organizationId: string, saleId: string) {
       },
     },
   });
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) return null;
+  return contract;
 }
 
-export function getContract(organizationId: string, contractId: string) {
-  return prisma.contract.findFirst({
-    where: { id: contractId, organizationId },
+export async function getContract(context: AccessContext, contractId: string) {
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, organizationId: context.organizationId },
     include: {
       unit: true,
       customer: true,
@@ -46,6 +49,8 @@ export function getContract(organizationId: string, contractId: string) {
       },
     },
   });
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) return null;
+  return contract;
 }
 
 async function nextContractNumber(tx: Prisma.TransactionClient, organizationId: string) {
@@ -67,7 +72,7 @@ export async function createContract(context: AccessContext, saleId: string, not
     const sale = await tx.sale.findFirst({
       where: { id: saleId, organizationId: context.organizationId },
     });
-    if (!sale) throw new Error("Venda inválida.");
+    if (!sale || !canAccessDevelopment(context, sale.developmentId)) throw new Error("Venda inválida.");
 
     const existing = await tx.contract.findUnique({ where: { saleId } });
     if (existing) throw new Error("Esta venda já possui contrato.");
@@ -115,7 +120,7 @@ export async function markAwaitingSignature(context: AccessContext, contractId: 
       where: { id: contractId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "DRAFT") throw new Error("Contrato não está em rascunho.");
 
     const updated = await tx.contract.update({
@@ -171,7 +176,7 @@ export async function confirmSignature(
         unit: true,
       },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status === "SIGNED") throw new Error("Contrato já está assinado.");
     if (contract.status === "CANCELLED") throw new Error("Contrato cancelado.");
 

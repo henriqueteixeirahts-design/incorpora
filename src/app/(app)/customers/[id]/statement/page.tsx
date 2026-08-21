@@ -27,7 +27,7 @@ export default async function CustomerStatementPage({
   // estado atualizado na mesma carga da página.
   await checkAndUpdateBrokenAgreementsForCustomer(context.organizationId, id);
 
-  const position = await getCustomerFinancialPosition(context.organizationId, id);
+  const position = await getCustomerFinancialPosition(context, id);
   if (!position) notFound();
 
   const developmentIds = Array.from(new Set(position.contracts.map((c) => c.developmentId)));
@@ -46,12 +46,12 @@ export default async function CustomerStatementPage({
 
   const [collectionHistory, collectionStage] = await Promise.all([
     listCollectionHistory(context.organizationId, id),
-    getCustomerCollectionStage(context.organizationId, id),
+    getCustomerCollectionStage(context, id),
   ]);
 
   const renegotiationsByContractId: Record<string, RenegotiationRow[]> = {};
   for (const contract of position.contracts) {
-    const agreements = await listRenegotiations(context.organizationId, contract.contractId);
+    const agreements = await listRenegotiations(context, contract.contractId);
     renegotiationsByContractId[contract.contractId] = await Promise.all(
       agreements.map(async (agreement) => {
         const documents = await listRenegotiationGeneratedDocuments(context.organizationId, agreement.id);

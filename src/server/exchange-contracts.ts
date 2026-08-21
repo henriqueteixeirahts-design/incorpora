@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
-import { developmentOwnedScope, orgScope } from "@/server/scope";
+import { developmentOwnedScope, orgScope, canAccessDevelopment } from "@/server/scope";
 import { changeUnitStatusTx } from "@/server/units";
 import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
@@ -18,7 +18,9 @@ export async function listExchangeContracts(context: AccessContext, developmentI
   const development = await prisma.development.findFirst({
     where: { id: developmentId, ...orgScope(context) },
   });
-  if (!development) throw new Error("Empreendimento não encontrado.");
+  if (!development || !canAccessDevelopment(context, developmentId)) {
+    throw new Error("Empreendimento não encontrado.");
+  }
 
   return prisma.exchangeContract.findMany({
     where: { developmentId },
@@ -32,7 +34,7 @@ export async function getExchangeContractDetail(context: AccessContext, contract
     where: { id: contractId, ...developmentOwnedScope(context) },
     include: { permutante: true, lands: { include: { land: true } }, units: true, development: true },
   });
-  if (!contract) return null;
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) return null;
 
   const signedUrl = contract.contractDocumentPath
     ? await getSignedDocumentUrl(contract.contractDocumentPath).catch(() => null)
@@ -65,7 +67,9 @@ export async function createExchangeContract(context: AccessContext, input: Crea
   const development = await prisma.development.findFirst({
     where: { id: input.developmentId, organizationId: context.organizationId },
   });
-  if (!development) throw new Error("Empreendimento não encontrado.");
+  if (!development || !canAccessDevelopment(context, input.developmentId)) {
+    throw new Error("Empreendimento não encontrado.");
+  }
 
   const permutante = await prisma.permutante.findFirst({
     where: { id: input.permutanteId, organizationId: context.organizationId },
@@ -114,7 +118,9 @@ export async function updateExchangeContract(
     where: { id: contractId, ...developmentOwnedScope(context) },
     include: { units: true },
   });
-  if (!before) throw new Error("Contrato de permuta não encontrado.");
+  if (!before || !canAccessDevelopment(context, before.developmentId)) {
+    throw new Error("Contrato de permuta não encontrado.");
+  }
 
   const permutante = await prisma.permutante.findFirst({
     where: { id: input.permutanteId, organizationId: context.organizationId },
@@ -181,7 +187,9 @@ export async function deleteExchangeContract(context: AccessContext, contractId:
     where: { id: contractId, ...developmentOwnedScope(context) },
     include: { units: true },
   });
-  if (!contract) throw new Error("Contrato de permuta não encontrado.");
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) {
+    throw new Error("Contrato de permuta não encontrado.");
+  }
   if (contract.units.length > 0) {
     throw new Error("Remova o destaque de todas as unidades antes de excluir o contrato.");
   }
@@ -205,7 +213,9 @@ export async function uploadExchangeContractDocument(context: AccessContext, con
   const contract = await prisma.exchangeContract.findFirst({
     where: { id: contractId, ...developmentOwnedScope(context) },
   });
-  if (!contract) throw new Error("Contrato de permuta não encontrado.");
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) {
+    throw new Error("Contrato de permuta não encontrado.");
+  }
 
   const path = await uploadEntityDocument(file, ENTITY_TYPE, contractId);
 
@@ -235,7 +245,9 @@ export async function destacarUnidade(context: AccessContext, contractId: string
   const contract = await prisma.exchangeContract.findFirst({
     where: { id: contractId, ...developmentOwnedScope(context) },
   });
-  if (!contract) throw new Error("Contrato de permuta não encontrado.");
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) {
+    throw new Error("Contrato de permuta não encontrado.");
+  }
   if (contract.type === "FINANCIAL") throw new Error("Contrato de permuta financeira não destaca unidades.");
 
   const unit = await prisma.unit.findFirst({ where: { id: unitId, developmentId: contract.developmentId } });
@@ -291,7 +303,9 @@ export async function removerDestaque(context: AccessContext, contractId: string
   const contract = await prisma.exchangeContract.findFirst({
     where: { id: contractId, ...developmentOwnedScope(context) },
   });
-  if (!contract) throw new Error("Contrato de permuta não encontrado.");
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) {
+    throw new Error("Contrato de permuta não encontrado.");
+  }
 
   const unit = await prisma.unit.findFirst({ where: { id: unitId, exchangeContractId: contractId } });
   if (!unit) throw new Error("Unidade não está destacada neste contrato.");

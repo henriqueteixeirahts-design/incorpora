@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { DEFAULT_COLLECTION_STEPS, resolveCollectionStage, type CollectionStep } from "@/lib/collection-stage";
+import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 
 export { DEFAULT_COLLECTION_STEPS, resolveCollectionStage, type CollectionStep };
@@ -46,19 +47,25 @@ export function getGeneralCollectionRule(context: AccessContext) {
 
 /** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export function getCollectionRule(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return Promise.resolve(null);
   return prisma.collectionRule.findFirst({
     where: { developmentId, development: { organizationId: context.organizationId } },
     include: { steps: { orderBy: { sequence: "asc" } } },
   });
 }
 
-/** Empreendimentos da organização que têm uma régua própria (sobrescrevem a geral). */
-export function listCollectionRuleOverrides(context: AccessContext) {
-  return prisma.collectionRule.findMany({
+/**
+ * Empreendimentos da organização que têm uma régua própria (sobrescrevem a
+ * geral) — filtrado pelo `developmentAccess` do usuário, pra não vazar quais
+ * empreendimentos fora do escopo dele têm régua customizada.
+ */
+export async function listCollectionRuleOverrides(context: AccessContext) {
+  const rules = await prisma.collectionRule.findMany({
     where: { organizationId: context.organizationId, developmentId: { not: null } },
     include: { development: true, steps: { orderBy: { sequence: "asc" } } },
     orderBy: { development: { name: "asc" } },
   });
+  return rules.filter((r) => canAccessDevelopment(context, r.developmentId));
 }
 
 /**
@@ -75,7 +82,9 @@ export async function upsertCollectionRule(context: AccessContext, developmentId
       const development = await tx.development.findFirst({
         where: { id: developmentId, organizationId: context.organizationId },
       });
-      if (!development) throw new Error("Empreendimento inválido.");
+      if (!development || !canAccessDevelopment(context, developmentId)) {
+        throw new Error("Empreendimento inválido.");
+      }
     }
 
     // `developmentId` é @unique (não composto) — a busca da linha geral usa

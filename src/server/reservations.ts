@@ -6,17 +6,27 @@ import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import type { AccessContext } from "@/server/auth-context";
+import { developmentIdAccessScope, canAccessDevelopment } from "@/server/scope";
 import type { Prisma, Unit, Reservation, ReservationWaitlistEntry } from "@/generated/prisma/client";
 
-export function listReservations(organizationId: string) {
+export function listReservations(context: AccessContext) {
   return prisma.reservation.findMany({
-    where: { organizationId },
+    where: {
+      organizationId: context.organizationId,
+      ...(context.developmentAccess === "ALL" ? {} : { unit: { developmentId: { in: [...context.developmentAccess] } } }),
+    },
     include: { unit: true, customer: true, broker: true, agency: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export function listWaitlistForUnit(unitId: string) {
+export async function listWaitlistForUnit(context: AccessContext, unitId: string) {
+  const unit = await prisma.unit.findFirst({
+    where: { id: unitId, development: { organizationId: context.organizationId } },
+    select: { developmentId: true },
+  });
+  if (!unit || !canAccessDevelopment(context, unit.developmentId)) return [];
+
   return prisma.reservationWaitlistEntry.findMany({
     where: { unitId, status: "WAITING" },
     include: { customer: true, broker: true },
@@ -24,9 +34,12 @@ export function listWaitlistForUnit(unitId: string) {
   });
 }
 
-export function listWaitlistForOrganization(organizationId: string) {
+export function listWaitlistForOrganization(context: AccessContext) {
   return prisma.reservationWaitlistEntry.findMany({
-    where: { status: "WAITING", unit: { development: { organizationId } } },
+    where: {
+      status: "WAITING",
+      unit: { development: { organizationId: context.organizationId, ...developmentIdAccessScope(context) } },
+    },
     include: { unit: true, customer: true, broker: true },
     orderBy: { createdAt: "asc" },
   });
@@ -178,7 +191,7 @@ export async function createReservation(
     const unit = await tx.unit.findFirst({
       where: { id: input.unitId, development: { organizationId: context.organizationId } },
     });
-    if (!unit) throw new Error("Unidade inválida.");
+    if (!unit || !canAccessDevelopment(context, unit.developmentId)) throw new Error("Unidade inválida.");
 
     const rule = await getEffectiveReservationRule(context.organizationId, unit.developmentId);
 
@@ -320,7 +333,7 @@ export async function cancelReservation(
       where: { id: reservationId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!reservation) throw new Error("Reserva inválida.");
+    if (!reservation || !canAccessDevelopment(context, reservation.unit.developmentId)) throw new Error("Reserva inválida.");
     if (reservation.status !== "ACTIVE") throw new Error("Reserva não está ativa.");
 
     const updated = await tx.reservation.update({
@@ -353,8 +366,9 @@ export async function cancelWaitlistEntry(context: AccessContext, entryId: strin
   return prisma.$transaction(async (tx) => {
     const entry = await tx.reservationWaitlistEntry.findFirst({
       where: { id: entryId, status: "WAITING", unit: { development: { organizationId: context.organizationId } } },
+      include: { unit: true },
     });
-    if (!entry) throw new Error("Entrada na fila não encontrada.");
+    if (!entry || !canAccessDevelopment(context, entry.unit.developmentId)) throw new Error("Entrada na fila não encontrada.");
 
     const updated = await tx.reservationWaitlistEntry.update({
       where: { id: entryId },
@@ -381,15 +395,15 @@ export async function cancelWaitlistEntry(context: AccessContext, entryId: strin
  * (`reservation.APPROVE`, checado na action, não aqui) pode renovar.
  */
 export async function reservationRequiresApprovalToRenew(
-  organizationId: string,
+  context: AccessContext,
   reservationId: string,
 ): Promise<boolean> {
   const reservation = await prisma.reservation.findFirst({
-    where: { id: reservationId, organizationId },
+    where: { id: reservationId, organizationId: context.organizationId },
     include: { unit: true },
   });
-  if (!reservation) throw new Error("Reserva inválida.");
-  const rule = await getEffectiveReservationRule(organizationId, reservation.unit.developmentId);
+  if (!reservation || !canAccessDevelopment(context, reservation.unit.developmentId)) throw new Error("Reserva inválida.");
+  const rule = await getEffectiveReservationRule(context.organizationId, reservation.unit.developmentId);
   return rule.requiresApprovalForRenewal;
 }
 
@@ -399,7 +413,7 @@ export async function renewReservation(context: AccessContext, reservationId: st
       where: { id: reservationId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!reservation) throw new Error("Reserva inválida.");
+    if (!reservation || !canAccessDevelopment(context, reservation.unit.developmentId)) throw new Error("Reserva inválida.");
     if (reservation.status !== "ACTIVE") throw new Error("Reserva não está ativa.");
 
     const rule = await getEffectiveReservationRule(context.organizationId, reservation.unit.developmentId);

@@ -86,7 +86,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "distratos@teste.local", fullName: "Usuário Distratos" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Distratos",
@@ -448,7 +448,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-distratos@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const { contract } = await setUpSignedContract("DT401");
@@ -456,7 +456,7 @@ describe("Isolamento entre organizações", () => {
 
       await expect(signDistrato(contextB, distrato.id)).rejects.toThrow();
 
-      const listB = await getDistratoByContract(orgB.id, contract.id);
+      const listB = await getDistratoByContract(contextB, contract.id);
       expect(listB).toBeNull();
     } finally {
       await prisma.auditEvent.deleteMany({ where: { organizationId: orgB.id } });

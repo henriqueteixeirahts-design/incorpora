@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
-import { orgScope } from "@/server/scope";
+import { orgScope, canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 
 const ENTITY_TYPE = "ReservationRule";
@@ -72,6 +72,7 @@ export function getGeneralReservationRule(context: AccessContext) {
 
 /** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export async function getReservationRule(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return null;
   const development = await prisma.development.findFirst({
     where: { id: developmentId, ...orgScope(context) },
   });
@@ -79,13 +80,18 @@ export async function getReservationRule(context: AccessContext, developmentId: 
   return prisma.reservationRule.findUnique({ where: { developmentId } });
 }
 
-/** Empreendimentos da organização que têm uma regra própria (sobrescrevem a geral). */
-export function listReservationRuleOverrides(context: AccessContext) {
-  return prisma.reservationRule.findMany({
+/**
+ * Empreendimentos da organização que têm uma regra própria (sobrescrevem a
+ * geral) — filtrado pelo `developmentAccess` do usuário, pra não vazar quais
+ * empreendimentos fora do escopo dele têm regra customizada.
+ */
+export async function listReservationRuleOverrides(context: AccessContext) {
+  const rules = await prisma.reservationRule.findMany({
     where: { organizationId: context.organizationId, developmentId: { not: null } },
     include: { development: true },
     orderBy: { development: { name: "asc" } },
   });
+  return rules.filter((r) => canAccessDevelopment(context, r.developmentId));
 }
 
 export type UpsertReservationRuleInput = ReservationRuleValues;
@@ -104,7 +110,9 @@ export async function upsertReservationRule(
       const development = await tx.development.findFirst({
         where: { id: developmentId, organizationId: context.organizationId },
       });
-      if (!development) throw new Error("Empreendimento inválido.");
+      if (!development || !canAccessDevelopment(context, developmentId)) {
+        throw new Error("Empreendimento inválido.");
+      }
     }
 
     // `developmentId` é @unique (não composto) — a busca da linha geral usa

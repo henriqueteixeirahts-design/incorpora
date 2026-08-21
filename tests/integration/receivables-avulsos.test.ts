@@ -45,7 +45,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "avulsos@teste.local", fullName: "Usuário Avulsos" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Avulsos",
@@ -73,7 +73,7 @@ describe("CRUD básico", () => {
       context,
       baseInput({ developmentId, speId, customerId, category: "ASSIGNMENT_FEE", amount: 3500 }),
     );
-    const detail = await getReceivableDetail(org.id, receivable.id);
+    const detail = await getReceivableDetail(context, receivable.id);
     expect(detail).toMatchObject({
       category: "ASSIGNMENT_FEE",
       status: "PENDING",
@@ -86,7 +86,7 @@ describe("CRUD básico", () => {
 
   it("permite lançar sem empreendimento/SPE/cliente (todos opcionais, conforme spec)", async () => {
     const receivable = await createReceivable(context, baseInput({ category: "YIELD", origin: "Rendimento aplicação" }));
-    const detail = await getReceivableDetail(org.id, receivable.id);
+    const detail = await getReceivableDetail(context, receivable.id);
     expect(detail!.developmentId).toBeNull();
     expect(detail!.speId).toBeNull();
     expect(detail!.customerId).toBeNull();
@@ -95,7 +95,7 @@ describe("CRUD básico", () => {
   it("edita só enquanto pendente", async () => {
     const receivable = await createReceivable(context, baseInput({ amount: 1000 }));
     await updateReceivable(context, receivable.id, baseInput({ amount: 1200 }));
-    const detail = await getReceivableDetail(org.id, receivable.id);
+    const detail = await getReceivableDetail(context, receivable.id);
     expect(Number(detail!.amount)).toBe(1200);
 
     await registerReceivableReceipt(context, receivable.id);
@@ -109,7 +109,7 @@ describe("Registrar recebimento e cancelar", () => {
     const receivedAt = new Date("2026-08-20");
     await registerReceivableReceipt(context, receivable.id, { receivedAt, receivedAmount: 2000 });
 
-    const detail = await getReceivableDetail(org.id, receivable.id);
+    const detail = await getReceivableDetail(context, receivable.id);
     expect(detail!.status).toBe("RECEIVED");
     expect(Number(detail!.receivedAmount)).toBe(2000);
     expect(detail!.receivedAt!.toISOString().slice(0, 10)).toBe("2026-08-20");
@@ -124,7 +124,7 @@ describe("Registrar recebimento e cancelar", () => {
   it("cancela um recebível pendente, mas não um já recebido", async () => {
     const pending = await createReceivable(context, baseInput());
     await cancelReceivable(context, pending.id);
-    const detailPending = await getReceivableDetail(org.id, pending.id);
+    const detailPending = await getReceivableDetail(context, pending.id);
     expect(detailPending!.status).toBe("CANCELLED");
 
     const received = await createReceivable(context, baseInput());
@@ -140,12 +140,12 @@ describe("Filtros da lista", () => {
     await createReceivable(context, baseInput({ developmentId, category: "REFUND", origin: "Reembolso A" }));
     await createReceivable(context, baseInput({ developmentId: otherDev.id, category: "OTHER", origin: "Diverso B" }));
 
-    const byDevelopment = await listReceivablesPaged(org.id, { developmentId });
+    const byDevelopment = await listReceivablesPaged(context, { developmentId });
     expect(byDevelopment.items.every((r) => r.developmentId === developmentId)).toBe(true);
     expect(byDevelopment.items.some((r) => r.origin === "Reembolso A")).toBe(true);
     expect(byDevelopment.items.some((r) => r.origin === "Diverso B")).toBe(false);
 
-    const byCategory = await listReceivablesPaged(org.id, { category: "REFUND" });
+    const byCategory = await listReceivablesPaged(context, { category: "REFUND" });
     expect(byCategory.items.every((r) => r.category === "REFUND")).toBe(true);
   });
 });
@@ -153,27 +153,27 @@ describe("Filtros da lista", () => {
 describe("Fluxo de caixa soma recebíveis avulsos sem duplicar a carteira", () => {
   it("entra em receivablesForecast no mês de vencimento, e em receivablesRealized no mês do recebimento", async () => {
     const dueDate = new Date();
-    const before = await getCashFlow(org.id, { developmentId, monthsBack: 0, monthsForward: 0 });
+    const before = await getCashFlow(context, { developmentId, monthsBack: 0, monthsForward: 0 });
 
     const receivable = await createReceivable(context, baseInput({ developmentId, dueDate, amount: 4000, origin: "Fluxo de caixa avulso" }));
 
-    const afterCreate = await getCashFlow(org.id, { developmentId, monthsBack: 0, monthsForward: 0 });
+    const afterCreate = await getCashFlow(context, { developmentId, monthsBack: 0, monthsForward: 0 });
     expect(afterCreate[0].receivablesForecast - before[0].receivablesForecast).toBe(4000);
     expect(afterCreate[0].receivablesRealized - before[0].receivablesRealized).toBe(0);
 
     await registerReceivableReceipt(context, receivable.id, { receivedAt: new Date(), receivedAmount: 4000 });
-    const afterReceipt = await getCashFlow(org.id, { developmentId, monthsBack: 0, monthsForward: 0 });
+    const afterReceipt = await getCashFlow(context, { developmentId, monthsBack: 0, monthsForward: 0 });
     expect(afterReceipt[0].receivablesRealized - before[0].receivablesRealized).toBe(4000);
   });
 
   it("recebível cancelado não entra no fluxo de caixa previsto", async () => {
     const dueDate = new Date();
-    const before = await getCashFlow(org.id, { developmentId, monthsBack: 0, monthsForward: 0 });
+    const before = await getCashFlow(context, { developmentId, monthsBack: 0, monthsForward: 0 });
 
     const receivable = await createReceivable(context, baseInput({ developmentId, dueDate, amount: 777, origin: "Cancelado no fluxo" }));
     await cancelReceivable(context, receivable.id);
 
-    const after = await getCashFlow(org.id, { developmentId, monthsBack: 0, monthsForward: 0 });
+    const after = await getCashFlow(context, { developmentId, monthsBack: 0, monthsForward: 0 });
     expect(after[0].receivablesForecast - before[0].receivablesForecast).toBe(0);
   });
 });
@@ -186,7 +186,14 @@ describe("Isolamento entre organizações", () => {
     });
 
     const receivable = await createReceivable(context, baseInput({ origin: "Só da Org A" }));
-    const detailFromB = await getReceivableDetail(orgB.id, receivable.id);
+    const contextB: AccessContext = {
+      userId: userB.id,
+      organizationId: orgB.id,
+      roleNames: [],
+      permissions: new Set(),
+      developmentAccess: "ALL",
+    };
+    const detailFromB = await getReceivableDetail(contextB, receivable.id);
     expect(detailFromB).toBeNull();
 
     await prisma.organization.delete({ where: { id: orgB.id } });

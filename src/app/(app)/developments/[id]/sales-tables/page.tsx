@@ -19,11 +19,11 @@ export default async function SalesTablesPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   const [salesTables, indexRules] = await Promise.all([
-    listSalesTables(id),
+    listSalesTables(context, id),
     listIndexRules(context.organizationId),
   ]);
   const canCreate = hasPermission(context, "sales_table", "CREATE");

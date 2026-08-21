@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { createAssignmentFeeReceivable } from "@/server/receivables-avulsos";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { Prisma } from "@/generated/prisma/client";
 
 async function nextAssignmentSequence(tx: Prisma.TransactionClient, contractId: string) {
@@ -31,7 +32,7 @@ export async function createAssignment(context: AccessContext, contractId: strin
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "SIGNED") throw new Error("Só é possível ceder direitos de contrato assinado.");
 
     const newCustomer = await tx.customer.findFirst({
@@ -106,7 +107,7 @@ export async function signAssignment(context: AccessContext, assignmentId: strin
       where: { id: assignmentId, organizationId: context.organizationId },
       include: { contract: { include: { development: { select: { speId: true } } } } },
     });
-    if (!assignment) throw new Error("Cessão inválida.");
+    if (!assignment || !canAccessDevelopment(context, assignment.contract.developmentId)) throw new Error("Cessão inválida.");
     if (assignment.status === "SIGNED") throw new Error("Cessão já assinada.");
     if (assignment.contract.customerId !== assignment.previousCustomerId) {
       throw new Error("O titular do contrato mudou desde a criação desta cessão — cancele e crie uma nova.");
@@ -177,17 +178,21 @@ export async function signAssignment(context: AccessContext, assignmentId: strin
   });
 }
 
-export function listAssignments(organizationId: string, contractId: string) {
+export function listAssignments(context: AccessContext, contractId: string) {
+  const developmentFilter =
+    context.developmentAccess === "ALL" ? {} : { contract: { developmentId: { in: [...context.developmentAccess] } } };
   return prisma.contractAssignment.findMany({
-    where: { organizationId, contractId },
+    where: { organizationId: context.organizationId, contractId, ...developmentFilter },
     include: { previousCustomer: true, newCustomer: true },
     orderBy: { sequenceNumber: "asc" },
   });
 }
 
-export function getAssignment(organizationId: string, assignmentId: string) {
-  return prisma.contractAssignment.findFirst({
-    where: { id: assignmentId, organizationId },
+export async function getAssignment(context: AccessContext, assignmentId: string) {
+  const assignment = await prisma.contractAssignment.findFirst({
+    where: { id: assignmentId, organizationId: context.organizationId },
     include: { contract: true, previousCustomer: true, newCustomer: true },
   });
+  if (!assignment || !canAccessDevelopment(context, assignment.contract.developmentId)) return null;
+  return assignment;
 }

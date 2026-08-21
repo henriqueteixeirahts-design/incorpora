@@ -9,13 +9,19 @@ import {
   deleteEntityDocumentFile,
 } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
+import { canAccessPayableDevelopments, payableDevelopmentAccessWhere } from "@/server/payable-allocations";
 import type { PayableCategory, PayableStatus, DocumentCategory, Prisma } from "@/generated/prisma/client";
 
 const ENTITY_TYPE = "Payable";
 
-export function listPayables(organizationId: string, developmentId?: string) {
+export function listPayables(context: AccessContext, developmentId?: string) {
   return prisma.payable.findMany({
-    where: { organizationId, developmentId },
+    where: {
+      organizationId: context.organizationId,
+      developmentId,
+      ...payableDevelopmentAccessWhere(context),
+    },
     include: { development: true, spe: true, supplier: true, costCenter: true },
     orderBy: { dueDate: "asc" },
   });
@@ -52,10 +58,11 @@ export type ListPayablesFilters = {
   pendingApprovalOnly?: boolean;
 };
 
-function payablesWhere(organizationId: string, params: ListPayablesFilters): Prisma.PayableWhereInput {
+function payablesWhere(context: AccessContext, params: ListPayablesFilters): Prisma.PayableWhereInput {
   const search = params.search?.trim();
   return {
-    organizationId,
+    organizationId: context.organizationId,
+    ...payableDevelopmentAccessWhere(context),
     ...(search ? { description: { contains: search, mode: "insensitive" } } : {}),
     ...(params.developmentId
       ? {
@@ -93,13 +100,13 @@ function payablesWhere(organizationId: string, params: ListPayablesFilters): Pri
   };
 }
 
-export async function listPayablesPaged(organizationId: string, params: ListPayablesFilters) {
+export async function listPayablesPaged(context: AccessContext, params: ListPayablesFilters) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;
   const sortBy = params.sortBy ?? "dueDate";
   const sortDir = params.sortDir ?? "asc";
 
-  const where = payablesWhere(organizationId, params);
+  const where = payablesWhere(context, params);
 
   const [items, total] = await Promise.all([
     prisma.payable.findMany({
@@ -122,8 +129,8 @@ export async function listPayablesPaged(organizationId: string, params: ListPaya
 }
 
 /** Todos os itens que batem no filtro, sem paginar — pra exportação CSV. */
-export function listPayablesForExport(organizationId: string, params: ListPayablesFilters) {
-  const where = payablesWhere(organizationId, params);
+export function listPayablesForExport(context: AccessContext, params: ListPayablesFilters) {
+  const where = payablesWhere(context, params);
   const sortBy = params.sortBy ?? "dueDate";
   const sortDir = params.sortDir ?? "asc";
   return prisma.payable.findMany({
@@ -139,15 +146,19 @@ export function listPayablesForExport(organizationId: string, params: ListPayabl
   });
 }
 
+// Agregação pra organização inteira (painel "pendências de aprovação") —
+// não filtrada por empreendimento (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
+// Parte 2.5: risco baixo, é só uma contagem no cabeçalho, não expõe dado de
+// registro individual fora do escopo do usuário).
 export function countPendingApproval(organizationId: string) {
   return prisma.payable.count({
     where: { organizationId, status: { in: PENDING_APPROVAL_STATUSES } },
   });
 }
 
-export async function getPayableDetail(organizationId: string, payableId: string) {
+export async function getPayableDetail(context: AccessContext, payableId: string) {
   const payable = await prisma.payable.findFirst({
-    where: { id: payableId, organizationId },
+    where: { id: payableId, organizationId: context.organizationId },
     include: {
       development: true,
       spe: true,
@@ -157,10 +168,10 @@ export async function getPayableDetail(organizationId: string, payableId: string
       allocations: { include: { development: true }, orderBy: { sequence: "asc" } },
     },
   });
-  if (!payable) return null;
+  if (!payable || !canAccessPayableDevelopments(context, payable)) return null;
 
   const documents = await prisma.document.findMany({
-    where: { organizationId, entityType: ENTITY_TYPE, entityId: payableId },
+    where: { organizationId: context.organizationId, entityType: ENTITY_TYPE, entityId: payableId },
     orderBy: { createdAt: "desc" },
     include: { uploadedBy: true },
   });
@@ -172,7 +183,7 @@ export async function getPayableDetail(organizationId: string, payableId: string
     })),
   );
 
-  const approvalHistory = await getPayableApprovalHistory(organizationId, payableId);
+  const approvalHistory = await getPayableApprovalHistory(context.organizationId, payableId);
 
   return { ...payable, documents: documentsWithUrl, approvalHistory };
 }
@@ -253,7 +264,9 @@ async function assertPayableRelationsOwned(
     const development = await tx.development.findFirst({
       where: { id: input.developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, development.id)) {
+      throw new Error("Empreendimento inválido.");
+    }
   }
   if (input.speId) {
     const spe = await tx.specialPurposeEntity.findFirst({
@@ -337,8 +350,11 @@ export async function updatePayable(
   return prisma.$transaction(async (tx) => {
     const before = await tx.payable.findFirst({
       where: { id: payableId, organizationId: context.organizationId },
+      include: { allocations: true },
     });
-    if (!before) throw new Error("Conta a pagar não encontrada.");
+    if (!before || !canAccessPayableDevelopments(context, before)) {
+      throw new Error("Conta a pagar não encontrada.");
+    }
     if (before.status !== "ENTERED") {
       throw new Error("Só é possível editar contas com status Lançada.");
     }
@@ -385,9 +401,9 @@ export async function advancePayableStatus(context: AccessContext, payableId: st
   return prisma.$transaction(async (tx) => {
     const payable = await tx.payable.findFirst({
       where: { id: payableId, organizationId: context.organizationId },
-      include: { commissionSplit: true },
+      include: { commissionSplit: true, allocations: true },
     });
-    if (!payable) throw new Error("Conta a pagar inválida.");
+    if (!payable || !canAccessPayableDevelopments(context, payable)) throw new Error("Conta a pagar inválida.");
 
     const nextStatus = NEXT_STATUS[payable.status];
     if (!nextStatus) throw new Error("Não há próxima etapa para este status.");
@@ -451,8 +467,9 @@ export async function cancelPayable(context: AccessContext, payableId: string) {
   return prisma.$transaction(async (tx) => {
     const payable = await tx.payable.findFirst({
       where: { id: payableId, organizationId: context.organizationId },
+      include: { allocations: true },
     });
-    if (!payable) throw new Error("Conta a pagar inválida.");
+    if (!payable || !canAccessPayableDevelopments(context, payable)) throw new Error("Conta a pagar inválida.");
     if (payable.status === "PAID" || payable.status === "RECONCILED") {
       throw new Error("Não é possível cancelar uma conta já paga/conciliada.");
     }
@@ -484,8 +501,9 @@ export async function uploadPayableDocument(
 ) {
   const payable = await prisma.payable.findFirst({
     where: { id: payableId, organizationId: context.organizationId },
+    include: { allocations: true },
   });
-  if (!payable) throw new Error("Conta a pagar não encontrada.");
+  if (!payable || !canAccessPayableDevelopments(context, payable)) throw new Error("Conta a pagar não encontrada.");
 
   const path = await uploadEntityDocument(file, ENTITY_TYPE, payableId);
 
@@ -509,6 +527,12 @@ export async function deletePayableDocument(context: AccessContext, documentId: 
     where: { id: documentId, organizationId: context.organizationId, entityType: ENTITY_TYPE },
   });
   if (!document) throw new Error("Anexo não encontrado.");
+
+  const payable = await prisma.payable.findFirst({
+    where: { id: document.entityId, organizationId: context.organizationId },
+    include: { allocations: true },
+  });
+  if (!payable || !canAccessPayableDevelopments(context, payable)) throw new Error("Anexo não encontrado.");
 
   await prisma.document.delete({ where: { id: documentId } });
   await deleteEntityDocumentFile(document.fileUrl);

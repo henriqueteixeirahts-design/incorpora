@@ -29,7 +29,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "validacao-proposta@teste.local", fullName: "Usuário Validação Proposta" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Validação de Proposta",

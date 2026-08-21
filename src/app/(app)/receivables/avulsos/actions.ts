@@ -69,7 +69,7 @@ export async function updateReceivableAction(_prevState: FormState, formData: Fo
 export async function getReceivableDetailAction(receivableId: string) {
   const context = await requireAccessContext();
   if (!hasPermission(context, "installment", "VIEW")) return null;
-  return getReceivableDetail(context.organizationId, receivableId);
+  return getReceivableDetail(context, receivableId);
 }
 
 export async function registerReceivableReceiptAction(formData: FormData) {

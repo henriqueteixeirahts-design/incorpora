@@ -19,7 +19,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "seed-modelos@teste.local", fullName: "Usuário Seed Modelos" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
 afterAll(async () => {
@@ -65,7 +65,7 @@ describe("seedDefaultDocumentTemplates", () => {
     const otherUser = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "seed-modelos-contrato@teste.local", fullName: "Usuário Seed Contrato" },
     });
-    const otherContext: AccessContext = { userId: otherUser.id, organizationId: otherOrg.id, roleNames: [], permissions: new Set() };
+    const otherContext: AccessContext = { userId: otherUser.id, organizationId: otherOrg.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const result = await seedDefaultDocumentTemplates(otherContext, {
@@ -91,7 +91,7 @@ describe("seedDefaultDocumentTemplates", () => {
     const user2 = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "seed-manual@teste.local", fullName: "Usuário Seed Manual" },
     });
-    const context2: AccessContext = { userId: user2.id, organizationId: org2.id, roleNames: [], permissions: new Set() };
+    const context2: AccessContext = { userId: user2.id, organizationId: org2.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const manual = await createDocumentTemplate(context2, {

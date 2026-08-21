@@ -64,3 +64,23 @@ export function assertDestinationsMatchAmount(amount: number, destinations: Allo
     );
   }
 }
+
+/**
+ * Escopo por EMPREENDIMENTO (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5)
+ * aplicado a uma entidade que pode ter VÁRIOS destinos de empreendimento
+ * (Payable rateado entre vários `developmentId` via `PayableAllocation`, ou
+ * um `AllocationTemplate` com múltiplos destinos) — visível/acessível se
+ * PELO MENOS UM destino está no escopo do usuário. Lista de destinos vazia
+ * ou só com `developmentId: null` (nível organização) é sempre visível —
+ * mesma convenção de `canAccessDevelopment` em src/server/scope.ts pra
+ * entidade sem empreendimento específico.
+ */
+export function developmentIdsWithinAccess(
+  developmentIds: (string | null | undefined)[],
+  developmentAccess: "ALL" | Set<string>,
+): boolean {
+  if (developmentAccess === "ALL") return true;
+  const ids = developmentIds.filter((id): id is string => !!id);
+  if (ids.length === 0) return true;
+  return ids.some((id) => developmentAccess.has(id));
+}

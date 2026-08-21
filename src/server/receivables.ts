@@ -7,6 +7,7 @@ import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-co
 import { simulateAnticipation } from "@/lib/anticipation";
 import { tryReleaseCommissions } from "@/server/commissions";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { IndexCode, InterestType, Prisma } from "@/generated/prisma/client";
 
 export type SetCorrectionRuleInput = {
@@ -26,7 +27,7 @@ export async function setContractCorrectionRule(
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
 
     const updated = await tx.contract.update({
       where: { id: contractId },
@@ -72,7 +73,7 @@ export async function setDevelopmentCorrectionRule(
     const development = await tx.development.findFirst({
       where: { id: developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, developmentId)) throw new Error("Empreendimento inválido.");
 
     const updated = await tx.development.update({
       where: { id: developmentId },
@@ -141,6 +142,14 @@ export function buildCorrectionPhases(contract: ContractWithIndexRule, developme
  * Recalcula uma parcela na data de referência informada (padrão: hoje) e
  * grava o resultado em FinancialCalculation — nunca sobrescreve cálculos
  * anteriores, só acrescenta (PRD seção 12: memória de cálculo auditável).
+ *
+ * Não valida escopo de empreendimento sozinha (não recebe `AccessContext` —
+ * é uma função interna de transação, chamada em cascata por
+ * `recalculatePortfolio`, `registerInstallmentPayment`,
+ * `listOverdueInstallments`, `simulateInstallmentAnticipation` e pela rotina
+ * agendada `recalculateAllOpenInstallments`). O CALLER precisa ter validado
+ * `canAccessDevelopment`/`developmentAccessScope` antes de chamar — mesma
+ * convenção de `changeUnitStatusTx` em `units.ts`.
  */
 export async function recalculateInstallment(
   tx: Prisma.TransactionClient,
@@ -219,12 +228,14 @@ export async function recalculateInstallment(
   });
 }
 
-export async function recalculatePortfolio(organizationId: string, portfolioId: string) {
+export async function recalculatePortfolio(context: AccessContext, portfolioId: string) {
   const portfolio = await prisma.receivablePortfolio.findFirst({
-    where: { id: portfolioId, organizationId },
-    include: { installments: true },
+    where: { id: portfolioId, organizationId: context.organizationId },
+    include: { installments: true, contract: true },
   });
-  if (!portfolio) throw new Error("Carteira inválida.");
+  if (!portfolio || !canAccessDevelopment(context, portfolio.contract.developmentId)) {
+    throw new Error("Carteira inválida.");
+  }
 
   const asOfDate = new Date();
   for (const installment of portfolio.installments) {
@@ -250,7 +261,9 @@ export async function registerInstallmentPayment(
       where: { id: installmentId, portfolio: { organizationId: context.organizationId } },
       include: { portfolio: { include: { contract: true } } },
     });
-    if (!installment) throw new Error("Parcela inválida.");
+    if (!installment || !canAccessDevelopment(context, installment.portfolio.contract.developmentId)) {
+      throw new Error("Parcela inválida.");
+    }
     if (installment.status === "CANCELLED") throw new Error("Parcela cancelada.");
 
     // Recalcula antes de registrar o recebimento, para comparar contra o valor corrigido atual.
@@ -334,10 +347,15 @@ export async function recalculateAllOpenInstallments(organizationId: string) {
  * inadimplência sempre mostra números atualizados mesmo entre execuções do
  * cron (ex.: alguém consultando no meio do mês).
  */
-export async function listOverdueInstallments(organizationId: string) {
+export async function listOverdueInstallments(context: AccessContext) {
+  const developmentFilter =
+    context.developmentAccess === "ALL"
+      ? {}
+      : { contract: { developmentId: { in: [...context.developmentAccess] } } };
+
   const openInstallments = await prisma.installment.findMany({
     where: {
-      portfolio: { organizationId },
+      portfolio: { organizationId: context.organizationId, ...developmentFilter },
       status: { notIn: ["PAID", "CANCELLED"] },
       dueDate: { lt: new Date() },
     },
@@ -349,7 +367,7 @@ export async function listOverdueInstallments(organizationId: string) {
   }
 
   return prisma.installment.findMany({
-    where: { portfolio: { organizationId }, status: "OVERDUE" },
+    where: { portfolio: { organizationId: context.organizationId, ...developmentFilter }, status: "OVERDUE" },
     include: {
       portfolio: {
         include: {
@@ -362,14 +380,14 @@ export async function listOverdueInstallments(organizationId: string) {
 }
 
 export async function simulateInstallmentAnticipation(
-  organizationId: string,
+  context: AccessContext,
   installmentIds: string[],
   discountPercent: number,
 ) {
   const installments = await prisma.installment.findMany({
     where: {
       id: { in: installmentIds },
-      portfolio: { organizationId },
+      portfolio: { organizationId: context.organizationId },
       status: { notIn: ["PAID", "CANCELLED"] },
     },
     include: {
@@ -386,6 +404,9 @@ export async function simulateInstallmentAnticipation(
     },
   });
   if (installments.length === 0) throw new Error("Selecione ao menos uma parcela em aberto.");
+  if (installments.some((i) => !canAccessDevelopment(context, i.portfolio.contract.developmentId))) {
+    throw new Error("Selecione ao menos uma parcela em aberto.");
+  }
 
   const contract = installments[0].portfolio.contract;
   const baseMonth = contract.signedAt ?? contract.issuedAt;
@@ -488,16 +509,16 @@ export function getInstallmentLivePosition(
  * de todas as parcelas ainda em aberto de um contrato, numa data de
  * referência escolhida. Puro/leitura — não persiste nada.
  */
-export async function simulateFullSettlement(organizationId: string, contractId: string, targetDate: Date) {
+export async function simulateFullSettlement(context: AccessContext, contractId: string, targetDate: Date) {
   const contract = await prisma.contract.findFirst({
-    where: { id: contractId, organizationId },
+    where: { id: contractId, organizationId: context.organizationId },
     include: {
       indexRule: { include: { values: true } },
       development: { include: { postHabiteSeIndexRule: { include: { values: true } } } },
       portfolio: { include: { installments: true } },
     },
   });
-  if (!contract) throw new Error("Contrato inválido.");
+  if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
 
   const openInstallments = (contract.portfolio?.installments ?? []).filter(
     (i) => i.status !== "PAID" && i.status !== "CANCELLED",

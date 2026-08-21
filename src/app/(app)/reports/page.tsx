@@ -19,7 +19,7 @@ export default async function ReportsPage() {
     getInventoryPosition(context.organizationId),
     getReceivablesSummary(context.organizationId),
     getPayablesSummary(context.organizationId),
-    listDevelopments(context.organizationId),
+    listDevelopments(context),
   ]);
 
   const cards = [

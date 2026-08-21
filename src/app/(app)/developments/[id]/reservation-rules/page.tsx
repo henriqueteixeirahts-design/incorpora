@@ -14,7 +14,7 @@ export default async function ReservationRulesPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   const [rule, ownRule, roles] = await Promise.all([

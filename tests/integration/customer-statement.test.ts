@@ -73,7 +73,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "extrato@teste.local", fullName: "Usuário Extrato" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Extrato",
@@ -134,7 +134,7 @@ describe("Posição financeira — rigor centavo a centavo (multa/mora)", () => 
     const dueDate = new Date("2026-05-31");
     await prisma.installment.update({ where: { id: parcelas[1].id }, data: { dueDate } });
 
-    const position = await getCustomerFinancialPosition(org.id, customer.id, asOfDate);
+    const position = await getCustomerFinancialPosition(context, customer.id, asOfDate);
     expect(position).not.toBeNull();
     expect(position!.contracts).toHaveLength(1);
 
@@ -183,8 +183,8 @@ describe("Posição financeira — rigor centavo a centavo (multa/mora)", () => 
     await registerInstallmentPayment(context, entrada.id, { amount: 40000, paidAt: new Date() });
 
     const asOfDate = new Date("2026-08-01");
-    const position = await getCustomerFinancialPosition(org.id, customer.id, asOfDate);
-    const settlement = await simulateFullSettlement(org.id, contract.id, asOfDate);
+    const position = await getCustomerFinancialPosition(context, customer.id, asOfDate);
+    const settlement = await simulateFullSettlement(context, contract.id, asOfDate);
 
     expect(settlement.total).toBe(position!.contracts[0].outstandingBalance);
   });
@@ -201,7 +201,7 @@ describe("Situação do contrato", () => {
       await registerInstallmentPayment(context, installment.id, { amount: Number(installment.originalValue), paidAt: new Date() });
     }
 
-    const position = await getCustomerFinancialPosition(org.id, customer.id);
+    const position = await getCustomerFinancialPosition(context, customer.id);
     expect(position!.contracts[0].situationLabel).toBe("Quitado");
     expect(position!.contracts[0].outstandingBalance).toBe(0);
   });
@@ -218,7 +218,7 @@ describe("Situação do contrato", () => {
     const amendment = await createAmendment(context, contract.id, { type: "FLOW_RENEGOTIATION", monthlyInstallments: 2 });
     await signAmendment(context, amendment.id);
 
-    const position = await getCustomerFinancialPosition(org.id, customer.id);
+    const position = await getCustomerFinancialPosition(context, customer.id);
     const c = position!.contracts[0];
     expect(c.situationLabel).toBe("Renegociado");
 
@@ -240,7 +240,7 @@ describe("Situação do contrato", () => {
     const distrato = await createDistrato(context, contract.id, { refundDueDate: new Date() });
     await signDistrato(context, distrato.id);
 
-    const position = await getCustomerFinancialPosition(org.id, customer.id);
+    const position = await getCustomerFinancialPosition(context, customer.id);
     const c = position!.contracts[0];
     expect(c.situationLabel).toBe("Distratado");
     expect(c.distratoNumber).toBe(distrato.distratoNumber);
@@ -259,7 +259,7 @@ describe("Posição consolidada por cliente (mais de um contrato)", () => {
     const entrada2 = portfolio2.installments.find((i) => i.isDownPayment)!;
     await registerInstallmentPayment(context, entrada2.id, { amount: 40000, paidAt: new Date() });
 
-    const position = await getCustomerFinancialPosition(org.id, customer.id);
+    const position = await getCustomerFinancialPosition(context, customer.id);
     expect(position!.contracts).toHaveLength(2);
     // Dois contratos de 200000 cada = 400000 contratado; 40000 pago no segundo, nada no primeiro.
     expect(position!.consolidated.contractedValue).toBe(400000);
@@ -272,7 +272,14 @@ describe("Isolamento entre organizações", () => {
     const orgB = await prisma.organization.create({ data: { name: "Org B — Extrato" } });
     try {
       const { customer } = await setUpSignedContract("EX401");
-      const position = await getCustomerFinancialPosition(orgB.id, customer.id);
+      const contextB: AccessContext = {
+        userId: crypto.randomUUID(),
+        organizationId: orgB.id,
+        roleNames: [],
+        permissions: new Set(),
+        developmentAccess: "ALL",
+      };
+      const position = await getCustomerFinancialPosition(contextB, customer.id);
       expect(position).toBeNull();
     } finally {
       await prisma.organization.deleteMany({ where: { id: orgB.id } });

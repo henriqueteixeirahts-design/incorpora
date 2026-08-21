@@ -129,7 +129,7 @@ export async function updatePayableAction(
 export async function getPayableDetailAction(payableId: string) {
   const context = await requireAccessContext();
   if (!hasPermission(context, "payable", "VIEW")) return null;
-  return getPayableDetail(context.organizationId, payableId);
+  return getPayableDetail(context, payableId);
 }
 
 export async function advancePayableStatusAction(formData: FormData) {
@@ -210,7 +210,7 @@ export async function setPayableAllocationsAction(
 export async function listAllocationTemplatesAction() {
   const context = await requireAccessContext();
   if (!hasPermission(context, "payable", "VIEW")) return [];
-  return listAllocationTemplates(context.organizationId);
+  return listAllocationTemplates(context);
 }
 
 export async function createAllocationTemplateAction(
@@ -252,7 +252,7 @@ export async function applyAllocationTemplateAction(
   const context = await requireAccessContext();
   if (!hasPermission(context, "payable", "VIEW")) return { error: "Sem permissão." };
 
-  const templates = await listAllocationTemplates(context.organizationId);
+  const templates = await listAllocationTemplates(context);
   const template = templates.find((t) => t.id === templateId);
   if (!template) return { error: "Modelo de rateio não encontrado." };
 

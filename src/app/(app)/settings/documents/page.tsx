@@ -23,7 +23,7 @@ export default async function DocumentTemplatesPage() {
   const context = await requireAccessContext();
   const [templates, developments] = await Promise.all([
     listDocumentTemplates(context.organizationId),
-    listDevelopments(context.organizationId),
+    listDevelopments(context),
   ]);
 
   const canCreate = hasPermission(context, "document_template", "CREATE");

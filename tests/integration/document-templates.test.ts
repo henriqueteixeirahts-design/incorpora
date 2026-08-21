@@ -43,7 +43,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "modelos-doc@teste.local", fullName: "Usuário Modelos" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Modelos de Documento",
@@ -328,7 +328,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-modelos@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const templateA = await createDocumentTemplate(context, {

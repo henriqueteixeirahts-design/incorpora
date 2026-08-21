@@ -43,7 +43,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "payables@teste.local", fullName: "Usuário Financeiro" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Payables",
@@ -78,7 +78,7 @@ describe("Itens da conta a pagar — soma centavo a centavo", () => {
       }),
     );
 
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.items).toHaveLength(2);
     const sum = detail!.items.reduce((acc, item) => acc + Number(item.amount), 0);
     expect(sum).toBeCloseTo(1500.5, 2);
@@ -101,7 +101,7 @@ describe("Itens da conta a pagar — soma centavo a centavo", () => {
 
   it("permite lançar sem itens (detalhamento é opcional)", async () => {
     const payable = await createPayable(context, baseInput({ amount: 5000 }));
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.items).toHaveLength(0);
   });
 });
@@ -130,7 +130,7 @@ describe("Anexos — quem enviou (achado 23)", () => {
       },
     });
 
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.documents).toHaveLength(1);
     expect(detail!.documents[0].uploadedByName).toBe("Usuário Financeiro");
   });
@@ -144,15 +144,15 @@ describe("Filtros da lista", () => {
     await createPayable(context, baseInput({ developmentId: otherDevelopment.id, amount: 8000, description: "Conta B" }));
     await createPayable(context, baseInput({ developmentId, supplierId, amount: 50000, description: "Conta C — cara" }));
 
-    const byDevelopment = await listPayablesPaged(org.id, { developmentId });
+    const byDevelopment = await listPayablesPaged(context, { developmentId });
     expect(byDevelopment.items.every((p) => p.developmentId === developmentId)).toBe(true);
     expect(byDevelopment.items.some((p) => p.description === "Conta A")).toBe(true);
     expect(byDevelopment.items.some((p) => p.description === "Conta B")).toBe(false);
 
-    const bySupplier = await listPayablesPaged(org.id, { supplierId });
+    const bySupplier = await listPayablesPaged(context, { supplierId });
     expect(bySupplier.items.every((p) => p.supplierId === supplierId)).toBe(true);
 
-    const byRange = await listPayablesPaged(org.id, { minAmount: 10000, maxAmount: 60000 });
+    const byRange = await listPayablesPaged(context, { minAmount: 10000, maxAmount: 60000 });
     expect(byRange.items.some((p) => p.description === "Conta C — cara")).toBe(true);
     expect(byRange.items.some((p) => p.description === "Conta A")).toBe(false);
   });
@@ -167,7 +167,7 @@ describe("Histórico de aprovação (quem avançou cada etapa)", () => {
     await advancePayableStatus(context, payable.id); // ENTERED -> REVIEWED
     await advancePayableStatus(context, payable.id); // REVIEWED -> APPROVED
 
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.status).toBe("APPROVED");
     expect(detail!.approvalHistory).toHaveLength(2);
     expect(detail!.approvalHistory[0]).toMatchObject({

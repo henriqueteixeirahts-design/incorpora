@@ -4,8 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 
-export function listSalesTables(developmentId: string) {
+export function listSalesTables(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return Promise.resolve([]);
   return prisma.salesTable.findMany({
     where: { developmentId },
     include: { _count: { select: { units: true } } },
@@ -13,14 +15,16 @@ export function listSalesTables(developmentId: string) {
   });
 }
 
-export function getSalesTable(organizationId: string, salesTableId: string) {
-  return prisma.salesTable.findFirst({
-    where: { id: salesTableId, development: { organizationId } },
+export async function getSalesTable(context: AccessContext, salesTableId: string) {
+  const salesTable = await prisma.salesTable.findFirst({
+    where: { id: salesTableId, development: { organizationId: context.organizationId } },
     include: {
       development: true,
       units: { include: { unit: true }, orderBy: { unit: { number: "asc" } } },
     },
   });
+  if (!salesTable || !canAccessDevelopment(context, salesTable.developmentId)) return null;
+  return salesTable;
 }
 
 export type CreateSalesTableInput = {
@@ -44,7 +48,7 @@ export async function createSalesTable(context: AccessContext, input: CreateSale
     const development = await tx.development.findFirst({
       where: { id: input.developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, development.id)) throw new Error("Empreendimento inválido.");
 
     const salesTable = await tx.salesTable.create({
       data: {
@@ -98,7 +102,7 @@ export async function setSalesTableUnitPrice(
     const salesTable = await tx.salesTable.findFirst({
       where: { id: salesTableId, development: { organizationId: context.organizationId } },
     });
-    if (!salesTable) throw new Error("Tabela de vendas inválida.");
+    if (!salesTable || !canAccessDevelopment(context, salesTable.developmentId)) throw new Error("Tabela de vendas inválida.");
 
     const unit = await tx.unit.findFirst({
       where: { id: unitId, developmentId: salesTable.developmentId },

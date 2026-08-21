@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const context = await requireAccessContext();
   const params = request.nextUrl.searchParams;
 
-  const items = await listReceivablesForExport(context.organizationId, {
+  const items = await listReceivablesForExport(context, {
     search: params.get("q") ?? undefined,
     developmentId: params.get("developmentId") ?? undefined,
     speId: params.get("speId") ?? undefined,

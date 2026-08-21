@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import {
   Prisma,
   type UnitType,
@@ -12,7 +13,14 @@ import {
   type UnitLinkPricing,
 } from "@/generated/prisma/client";
 
-export function listUnits(developmentId: string) {
+/**
+ * `developmentId` fora do escopo do usuário (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
+ * Parte 2.5) devolve lista vazia, não erro — mesma convenção de "não
+ * encontrado" do isolamento por organização (nunca confirma a existência de
+ * dado fora do alcance do usuário).
+ */
+export function listUnits(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return Promise.resolve([]);
   return prisma.unit.findMany({
     where: { developmentId },
     include: {
@@ -49,7 +57,9 @@ export async function createUnit(context: AccessContext, input: CreateUnitInput)
     const development = await tx.development.findFirst({
       where: { id: input.developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, development.id)) {
+      throw new Error("Empreendimento inválido.");
+    }
 
     const unit = await tx.unit.create({
       data: {
@@ -170,7 +180,9 @@ export async function updateUnitStatus(
     const unit = await tx.unit.findFirst({
       where: { id: unitId, development: { organizationId: context.organizationId } },
     });
-    if (!unit) throw new Error("Unidade inválida.");
+    if (!unit || !canAccessDevelopment(context, unit.developmentId)) {
+      throw new Error("Unidade inválida.");
+    }
 
     return changeUnitStatusTx(tx, {
       organizationId: context.organizationId,
@@ -201,6 +213,9 @@ export async function linkUnits(
       }),
     ]);
     if (!principal || !accessory) throw new Error("Unidade inválida.");
+    if (!canAccessDevelopment(context, principal.developmentId) || !canAccessDevelopment(context, accessory.developmentId)) {
+      throw new Error("Unidade inválida.");
+    }
     if (!accessory.isAccessory) throw new Error("A unidade vinculada precisa ser acessória.");
     if (principal.developmentId !== accessory.developmentId) {
       throw new Error("As unidades precisam pertencer ao mesmo empreendimento.");

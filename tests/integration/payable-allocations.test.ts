@@ -43,7 +43,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "allocations@teste.local", fullName: "Usuário Rateio" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Allocations",
@@ -72,7 +72,7 @@ describe("setPayableAllocations — validação centavo a centavo", () => {
       { developmentId: devAId, percent: 60, amount: 600 },
       { developmentId: devBId, percent: 40, amount: 400 },
     ]);
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.allocations).toHaveLength(2);
     expect(detail!.allocations.reduce((acc, a) => acc + Number(a.amount), 0)).toBe(1000);
   });
@@ -113,7 +113,7 @@ describe("setPayableAllocations — validação centavo a centavo", () => {
       { developmentId: devBId, percent: 50, amount: 500 },
     ]);
     await setPayableAllocations(context, payable.id, []);
-    const detail = await getPayableDetail(org.id, payable.id);
+    const detail = await getPayableDetail(context, payable.id);
     expect(detail!.allocations).toHaveLength(0);
   });
 });
@@ -139,7 +139,7 @@ describe("Modelos de rateio salvos", () => {
         { developmentId: devBId, percent: 40 },
       ],
     });
-    const templates = await listAllocationTemplates(org.id);
+    const templates = await listAllocationTemplates(context);
     const template = templates.find((t) => t.name === "Administrativo 60/40");
     expect(template).toBeDefined();
     expect(template!.destinations).toHaveLength(2);
@@ -176,9 +176,9 @@ describe("Regressão crítica: relatórios e fluxo de caixa nunca duplicam o val
   it("getCashFlow soma só a fração de cada empreendimento no mês de vencimento", async () => {
     const dueDate = new Date();
     const before = await Promise.all([
-      getCashFlow(org.id, { developmentId: devAId, monthsBack: 0, monthsForward: 0 }),
-      getCashFlow(org.id, { developmentId: devBId, monthsBack: 0, monthsForward: 0 }),
-      getCashFlow(org.id, { monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { developmentId: devAId, monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { developmentId: devBId, monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { monthsBack: 0, monthsForward: 0 }),
     ]);
 
     const payable = await createPayable(context, baseInput({ amount: 5000, dueDate, description: "Rateio fluxo de caixa" }));
@@ -188,9 +188,9 @@ describe("Regressão crítica: relatórios e fluxo de caixa nunca duplicam o val
     ]);
 
     const [flowA, flowB, flowOrg] = await Promise.all([
-      getCashFlow(org.id, { developmentId: devAId, monthsBack: 0, monthsForward: 0 }),
-      getCashFlow(org.id, { developmentId: devBId, monthsBack: 0, monthsForward: 0 }),
-      getCashFlow(org.id, { monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { developmentId: devAId, monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { developmentId: devBId, monthsBack: 0, monthsForward: 0 }),
+      getCashFlow(context, { monthsBack: 0, monthsForward: 0 }),
     ]);
 
     expect(flowA[0].payablesForecast - before[0][0].payablesForecast).toBe(3500);
@@ -202,7 +202,7 @@ describe("Regressão crítica: relatórios e fluxo de caixa nunca duplicam o val
     const before = await Promise.all([getPayablesSummary(org.id, devAId), getPayablesSummary(org.id, devBId)]);
 
     const payable = await createPayable(context, baseInput({ amount: 2000, developmentId: devAId, description: "Sem rateio" }));
-    const matching = await getPayableDetail(org.id, payable.id);
+    const matching = await getPayableDetail(context, payable.id);
     expect(matching!.allocations).toHaveLength(0);
 
     const [summaryA, summaryB] = await Promise.all([getPayablesSummary(org.id, devAId), getPayablesSummary(org.id, devBId)]);

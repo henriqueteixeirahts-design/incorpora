@@ -41,8 +41,8 @@ beforeAll(async () => {
     data: { id: crypto.randomUUID(), email: "org-b-permuta@teste.local", fullName: "Usuário Org B" },
   });
 
-  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: [], permissions: new Set() };
-  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
+  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const speA = await createSpe(contextA, {
     name: "SPE Permuta A",

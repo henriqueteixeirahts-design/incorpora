@@ -30,9 +30,9 @@ export default async function DashboardPage() {
       getReceivablesSummary(context.organizationId),
       getInventoryPosition(context.organizationId),
       canViewAudit ? getLatestAuditRun(context.organizationId) : Promise.resolve(null),
-      getDashboardMirrorSummary(context.organizationId),
-      getCashFlow(context.organizationId, { monthsBack: 0, monthsForward: 5 }),
-      getRecentSales(context.organizationId, 6),
+      getDashboardMirrorSummary(context),
+      getCashFlow(context, { monthsBack: 0, monthsForward: 5 }),
+      getRecentSales(context, 6),
     ]);
 
   const availableUnits = inventory.rows.find((row) => row.status === "AVAILABLE")?.count ?? 0;

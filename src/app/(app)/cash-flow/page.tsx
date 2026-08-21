@@ -24,8 +24,8 @@ export default async function CashFlowPage({
   const speId = params.speId || undefined;
 
   const [buckets, developments, spes] = await Promise.all([
-    getCashFlow(context.organizationId, { developmentId, speId, granularity }),
-    listDevelopments(context.organizationId),
+    getCashFlow(context, { developmentId, speId, granularity }),
+    listDevelopments(context),
     listSpes(context.organizationId),
   ]);
 

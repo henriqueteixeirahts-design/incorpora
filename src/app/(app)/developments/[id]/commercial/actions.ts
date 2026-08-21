@@ -94,7 +94,7 @@ export async function renewReservationAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") ?? "");
   if (!reservationId) return;
 
-  const requiresApproval = await reservationRequiresApprovalToRenew(context.organizationId, reservationId);
+  const requiresApproval = await reservationRequiresApprovalToRenew(context, reservationId);
   const canRenew = requiresApproval
     ? hasPermission(context, "reservation", "APPROVE")
     : hasPermission(context, "reservation", "EDIT");

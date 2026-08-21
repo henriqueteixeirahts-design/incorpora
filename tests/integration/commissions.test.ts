@@ -79,7 +79,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "comissoes@teste.local", fullName: "Usuário Comissões" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Comissões",
@@ -366,7 +366,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
 
 describe("Extrato consolidado por corretor/imobiliária", () => {
   it("filtra por corretor e soma os totais por status corretamente", async () => {
-    const statement = await getCommissionStatement(org.id, { brokerId: broker.id });
+    const statement = await getCommissionStatement(context, { brokerId: broker.id });
     expect(statement.splits.length).toBeGreaterThan(0);
     expect(statement.splits.every((s) => s.brokerId === broker.id)).toBe(true);
 
@@ -384,14 +384,14 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-comissoes@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       await expect(
         upsertCommissionReleaseRule(contextB, developmentId, { trigger: "ON_CONTRACT_SIGNATURE", installmentsPaidPercent: 50 }),
       ).rejects.toThrow();
 
-      const statementB = await getCommissionStatement(orgB.id, {});
+      const statementB = await getCommissionStatement(contextB, {});
       expect(statementB.splits).toHaveLength(0);
     } finally {
       await prisma.auditEvent.deleteMany({ where: { organizationId: orgB.id } });

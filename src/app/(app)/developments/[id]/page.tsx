@@ -21,10 +21,10 @@ export default async function DevelopmentDetailPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
-  const units = await listUnits(id);
+  const units = await listUnits(context, id);
   const indexRules = await listIndexRules(context.organizationId);
   const canEdit = hasPermission(context, "development", "EDIT");
   const canCreateUnit = hasPermission(context, "unit", "CREATE");

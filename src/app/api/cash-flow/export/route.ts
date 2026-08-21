@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const developmentId = params.get("developmentId") || undefined;
   const speId = params.get("speId") || undefined;
 
-  const buckets = await getCashFlow(context.organizationId, { developmentId, speId, granularity });
+  const buckets = await getCashFlow(context, { developmentId, speId, granularity });
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(`Fluxo de caixa (${GRANULARITY_LABELS[granularity]})`);

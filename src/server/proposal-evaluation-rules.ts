@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
+import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { ProposalEvaluationRuleValues } from "@/lib/proposal-evaluation";
 import type { ApprovalLevel } from "@/generated/prisma/client";
@@ -76,18 +77,24 @@ export function getGeneralProposalEvaluationRule(context: AccessContext) {
 
 /** Regra bruta de um empreendimento (ou null) — pra distinguir "usando a geral/default" de "customizada" na tela. */
 export function getProposalEvaluationRule(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return Promise.resolve(null);
   return prisma.proposalEvaluationRule.findFirst({
     where: { developmentId, development: { organizationId: context.organizationId } },
   });
 }
 
-/** Empreendimentos da organização que têm uma regra própria (sobrescrevem a geral). */
-export function listProposalEvaluationRuleOverrides(context: AccessContext) {
-  return prisma.proposalEvaluationRule.findMany({
+/**
+ * Empreendimentos da organização que têm uma regra própria (sobrescrevem a
+ * geral) — filtrado pelo `developmentAccess` do usuário, pra não vazar quais
+ * empreendimentos fora do escopo dele têm regra customizada.
+ */
+export async function listProposalEvaluationRuleOverrides(context: AccessContext) {
+  const rules = await prisma.proposalEvaluationRule.findMany({
     where: { organizationId: context.organizationId, developmentId: { not: null } },
     include: { development: true },
     orderBy: { development: { name: "asc" } },
   });
+  return rules.filter((r) => canAccessDevelopment(context, r.developmentId));
 }
 
 export type UpsertProposalEvaluationRuleInput = ProposalEvaluationRuleValues & {
@@ -108,7 +115,9 @@ export async function upsertProposalEvaluationRule(
       const development = await tx.development.findFirst({
         where: { id: developmentId, organizationId: context.organizationId },
       });
-      if (!development) throw new Error("Empreendimento não encontrado.");
+      if (!development || !canAccessDevelopment(context, developmentId)) {
+        throw new Error("Empreendimento não encontrado.");
+      }
     }
 
     // `developmentId` é @unique (não composto) — a busca da linha geral usa

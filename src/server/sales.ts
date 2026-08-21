@@ -5,11 +5,12 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import type { AccessContext } from "@/server/auth-context";
+import { developmentAccessScope, canAccessDevelopment } from "@/server/scope";
 import type { CommissionBeneficiaryType, DownPaymentDestination, Prisma } from "@/generated/prisma/client";
 
-export function listSales(organizationId: string) {
+export function listSales(context: AccessContext) {
   return prisma.sale.findMany({
-    where: { organizationId },
+    where: { organizationId: context.organizationId, ...developmentAccessScope(context) },
     include: { unit: true, customer: true, development: true, commissionSplits: true },
     orderBy: { saleDate: "desc" },
   });
@@ -39,7 +40,7 @@ export function walletStatusFromInstallments(installments: { status: string }[] 
   return installments.some((i) => i.status === "OVERDUE") ? "INADIMPLENTE" : "EM_DIA";
 }
 
-export async function listSalesPaged(organizationId: string, params: ListSalesFilters) {
+export async function listSalesPaged(context: AccessContext, params: ListSalesFilters) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;
   const sortBy = params.sortBy ?? "saleDate";
@@ -47,7 +48,8 @@ export async function listSalesPaged(organizationId: string, params: ListSalesFi
   const search = params.search?.trim();
 
   const where: Prisma.SaleWhereInput = {
-    organizationId,
+    organizationId: context.organizationId,
+    ...developmentAccessScope(context),
     ...(search
       ? {
           OR: [
@@ -119,9 +121,9 @@ export async function listSalesPaged(organizationId: string, params: ListSalesFi
   return { items, total, page, pageSize };
 }
 
-export function getSale(organizationId: string, saleId: string) {
-  return prisma.sale.findFirst({
-    where: { id: saleId, organizationId },
+export async function getSale(context: AccessContext, saleId: string) {
+  const sale = await prisma.sale.findFirst({
+    where: { id: saleId, organizationId: context.organizationId },
     include: {
       organization: true,
       unit: true,
@@ -132,6 +134,8 @@ export function getSale(organizationId: string, saleId: string) {
       reservation: true,
     },
   });
+  if (!sale || !canAccessDevelopment(context, sale.developmentId)) return null;
+  return sale;
 }
 
 async function nextSaleNumber(tx: Prisma.TransactionClient, organizationId: string) {
@@ -155,7 +159,7 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
       where: { id: proposalId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!proposal) throw new Error("Proposta inválida.");
+    if (!proposal || !canAccessDevelopment(context, proposal.developmentId)) throw new Error("Proposta inválida.");
     if (proposal.status !== "APPROVED") throw new Error("Proposta precisa estar aprovada.");
 
     const activeReservation = await tx.reservation.findFirst({
@@ -251,7 +255,7 @@ export async function addCommissionSplit(
     const sale = await tx.sale.findFirst({
       where: { id: saleId, organizationId: context.organizationId },
     });
-    if (!sale) throw new Error("Venda inválida.");
+    if (!sale || !canAccessDevelopment(context, sale.developmentId)) throw new Error("Venda inválida.");
 
     const value = round2((Number(sale.salePrice) * input.percent) / 100);
 
@@ -294,7 +298,7 @@ export async function setSaleDownPaymentDestinationOverride(
 ) {
   return prisma.$transaction(async (tx) => {
     const sale = await tx.sale.findFirst({ where: { id: saleId, organizationId: context.organizationId } });
-    if (!sale) throw new Error("Venda inválida.");
+    if (!sale || !canAccessDevelopment(context, sale.developmentId)) throw new Error("Venda inválida.");
 
     const updated = await tx.sale.update({
       where: { id: saleId },

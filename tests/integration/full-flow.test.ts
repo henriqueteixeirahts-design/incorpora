@@ -35,7 +35,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "fluxo-completo@teste.local", fullName: "Usuário Fluxo Completo" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Fluxo Completo",
@@ -132,7 +132,7 @@ describe("Ciclo completo: reserva → proposta → aprovação → venda → con
 
     // 3. Envio pra aprovação — aprovação automática, sem alçada humana
     await submitProposalForApproval(context, proposal.id);
-    let proposalDetail = await getProposal(org.id, proposal.id);
+    let proposalDetail = await getProposal(context, proposal.id);
     expect(proposalDetail?.status).toBe("APPROVED");
     unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("PROPOSAL_APPROVED");
@@ -140,14 +140,14 @@ describe("Ciclo completo: reserva → proposta → aprovação → venda → con
     // 5. Conversão em venda
     const sale = await convertProposalToSale(context, proposal.id);
     expect(Number(sale.salePrice)).toBe(500000);
-    proposalDetail = await getProposal(org.id, proposal.id);
+    proposalDetail = await getProposal(context, proposal.id);
     expect(proposalDetail?.status).toBe("CONVERTED");
     unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("CONTRACT_IN_PROGRESS");
     const reservationAfterSale = await prisma.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
     expect(reservationAfterSale.status).toBe("CONVERTED");
 
-    const saleDetail = await getSale(org.id, sale.id);
+    const saleDetail = await getSale(context, sale.id);
     expect(saleDetail?.id).toBe(sale.id);
 
     // 6. Contrato (rascunho)
@@ -157,14 +157,14 @@ describe("Ciclo completo: reserva → proposta → aprovação → venda → con
 
     // 7. Envio pra assinatura
     await markAwaitingSignature(context, contract.id);
-    let contractDetail = await getContract(org.id, contract.id);
+    let contractDetail = await getContract(context, contract.id);
     expect(contractDetail?.status).toBe("AWAITING_SIGNATURE");
     unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });
     expect(unit.status).toBe("AWAITING_SIGNATURE");
 
     // 8. Assinatura confirmada — gera a carteira de recebíveis automaticamente
     await confirmSignature(context, contract.id);
-    contractDetail = await getContract(org.id, contract.id);
+    contractDetail = await getContract(context, contract.id);
     expect(contractDetail?.status).toBe("SIGNED");
     expect(contractDetail?.signedAt).not.toBeNull();
     unit = await prisma.unit.findUniqueOrThrow({ where: { id: unitId } });

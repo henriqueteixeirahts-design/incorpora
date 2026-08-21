@@ -16,7 +16,7 @@ export default async function InvestorReportPage({
 
   let report;
   try {
-    report = await getInvestorReport(context.organizationId, id);
+    report = await getInvestorReport(context, id);
   } catch {
     notFound();
   }

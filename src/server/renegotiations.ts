@@ -8,6 +8,7 @@ import { calculateRenegotiationSettlement, round2 } from "@/lib/renegotiation-se
 import { getInstallmentLivePosition } from "@/server/receivables";
 import { getEffectiveRenegotiationRule } from "@/server/renegotiation-rules";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { ApprovalDecision, ApprovalLevel, Prisma } from "@/generated/prisma/client";
 
 /**
@@ -50,7 +51,7 @@ export async function createRenegotiationAgreement(context: AccessContext, contr
         portfolio: { include: { installments: true } },
       },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "SIGNED") throw new Error("Só é possível renegociar contrato assinado.");
     if (!contract.portfolio) throw new Error("Contrato sem carteira — nada a renegociar.");
 
@@ -173,7 +174,7 @@ export async function decideRenegotiationApproval(
       where: { id: agreementId, organizationId: context.organizationId },
       include: { approvals: true, contract: true },
     });
-    if (!agreement) throw new Error("Acordo inválido.");
+    if (!agreement || !canAccessDevelopment(context, agreement.contract.developmentId)) throw new Error("Acordo inválido.");
     if (agreement.status !== "PENDING_APPROVAL") throw new Error("Acordo não está em aprovação.");
 
     const approval = agreement.approvals.find((a) => a.level === level);
@@ -223,7 +224,7 @@ export async function signRenegotiationAgreement(context: AccessContext, agreeme
       where: { id: agreementId, organizationId: context.organizationId },
       include: { contract: { include: { portfolio: true } }, originInstallments: true },
     });
-    if (!agreement) throw new Error("Acordo inválido.");
+    if (!agreement || !canAccessDevelopment(context, agreement.contract.developmentId)) throw new Error("Acordo inválido.");
     if (agreement.status !== "DRAFT") {
       throw new Error(
         agreement.status === "PENDING_APPROVAL"
@@ -370,17 +371,21 @@ export async function checkAndUpdateBrokenAgreementsForCustomer(organizationId: 
   return { checked: agreements.length, brokenCount };
 }
 
-export function listRenegotiations(organizationId: string, contractId: string) {
+export function listRenegotiations(context: AccessContext, contractId: string) {
+  const developmentFilter =
+    context.developmentAccess === "ALL" ? {} : { contract: { developmentId: { in: [...context.developmentAccess] } } };
   return prisma.renegotiationAgreement.findMany({
-    where: { organizationId, contractId },
+    where: { organizationId: context.organizationId, contractId, ...developmentFilter },
     include: { approvals: true, originInstallments: true, destinationInstallments: true },
     orderBy: { sequenceNumber: "asc" },
   });
 }
 
-export function getRenegotiation(organizationId: string, agreementId: string) {
-  return prisma.renegotiationAgreement.findFirst({
-    where: { id: agreementId, organizationId },
+export async function getRenegotiation(context: AccessContext, agreementId: string) {
+  const agreement = await prisma.renegotiationAgreement.findFirst({
+    where: { id: agreementId, organizationId: context.organizationId },
     include: { contract: true, approvals: true, originInstallments: true, destinationInstallments: true },
   });
+  if (!agreement || !canAccessDevelopment(context, agreement.contract.developmentId)) return null;
+  return agreement;
 }

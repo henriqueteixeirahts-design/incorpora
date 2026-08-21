@@ -27,8 +27,8 @@ beforeAll(async () => {
   userB = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "auditoria-b@teste.local", fullName: "Usuário B" },
   });
-  contextA = { userId: userA.id, organizationId: org.id, roleNames: [], permissions: new Set() };
-  contextB = { userId: userB.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  contextA = { userId: userA.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
+  contextB = { userId: userB.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
 afterAll(async () => {

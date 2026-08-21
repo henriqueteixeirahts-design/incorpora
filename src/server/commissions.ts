@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { getEffectiveCommissionReleaseRule } from "@/server/commission-release-rules";
+import type { AccessContext } from "@/server/auth-context";
 import type { CommissionSplit, Prisma } from "@/generated/prisma/client";
 
 const BENEFICIARY_LABELS: Record<string, string> = {
@@ -90,6 +91,12 @@ async function ensurePayableForReleasedSplit(
  * mudado não faz nada (só splits ainda PENDING são considerados).
  * `actorUserId` nulo é aceito (chamado a partir de fluxos automáticos como
  * o registro de recebimento, sem um usuário "decidindo" nada aqui).
+ *
+ * Não valida escopo de empreendimento sozinha (não recebe `AccessContext` —
+ * é chamada em cascata por `confirmSignature` (contracts.ts) e
+ * `registerInstallmentPayment` (receivables.ts), sempre dentro da mesma
+ * transação em que o CALLER já validou `canAccessDevelopment` pro contrato
+ * em questão). Mesma convenção de `changeUnitStatusTx` em `units.ts`.
  */
 export async function tryReleaseCommissions(
   tx: Prisma.TransactionClient,
@@ -176,9 +183,12 @@ export type CommissionStatementFilters = {
   dateTo?: Date;
 };
 
-export async function getCommissionStatement(organizationId: string, filters: CommissionStatementFilters) {
+export async function getCommissionStatement(context: AccessContext, filters: CommissionStatementFilters) {
   const where: Prisma.CommissionSplitWhereInput = {
-    sale: { organizationId },
+    sale: {
+      organizationId: context.organizationId,
+      ...(context.developmentAccess === "ALL" ? {} : { developmentId: { in: [...context.developmentAccess] } }),
+    },
     ...(filters.brokerId ? { brokerId: filters.brokerId } : {}),
     ...(filters.agencyId ? { agencyId: filters.agencyId } : {}),
     ...(filters.dateFrom || filters.dateTo

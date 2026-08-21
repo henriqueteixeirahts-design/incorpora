@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent, getAuditSummaries } from "@/lib/audit";
+import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -129,16 +130,27 @@ export async function deleteSupplier(context: AccessContext, supplierId: string)
 
 export type CostCenterSortField = "name" | "createdAt";
 
-export function listCostCenters(organizationId: string) {
+/**
+ * Centro de custo tem `developmentId` opcional (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
+ * Parte 2.5): os "da organização" (`developmentId: null`) não são
+ * restringíveis por empreendimento — só os vinculados a um empreendimento
+ * específico, e só quando fora do `developmentAccess` do usuário.
+ */
+function costCenterDevelopmentScope(context: AccessContext): Prisma.CostCenterWhereInput {
+  if (context.developmentAccess === "ALL") return {};
+  return { OR: [{ developmentId: null }, { developmentId: { in: [...context.developmentAccess] } }] };
+}
+
+export function listCostCenters(context: AccessContext) {
   return prisma.costCenter.findMany({
-    where: { organizationId },
+    where: { organizationId: context.organizationId, ...costCenterDevelopmentScope(context) },
     include: { development: true },
     orderBy: { name: "asc" },
   });
 }
 
 export async function listCostCentersPaged(
-  organizationId: string,
+  context: AccessContext,
   params: { search?: string; sortBy?: CostCenterSortField; sortDir?: "asc" | "desc"; page?: number; pageSize?: number },
 ) {
   const page = Math.max(1, params.page ?? 1);
@@ -148,7 +160,8 @@ export async function listCostCentersPaged(
   const search = params.search?.trim();
 
   const where: Prisma.CostCenterWhereInput = {
-    organizationId,
+    organizationId: context.organizationId,
+    ...costCenterDevelopmentScope(context),
     ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
   };
 
@@ -164,7 +177,7 @@ export async function listCostCentersPaged(
   ]);
 
   const audit = await getAuditSummaries(
-    organizationId,
+    context.organizationId,
     "CostCenter",
     items.map((i) => i.id),
     new Map(items.map((i) => [i.id, { createdAt: i.createdAt, updatedAt: i.createdAt }])),
@@ -183,7 +196,9 @@ async function assertDevelopmentOwned(tx: Prisma.TransactionClient, context: Acc
   const development = await tx.development.findFirst({
     where: { id: developmentId, organizationId: context.organizationId },
   });
-  if (!development) throw new Error("Empreendimento inválido.");
+  if (!development || !canAccessDevelopment(context, developmentId)) {
+    throw new Error("Empreendimento inválido.");
+  }
 }
 
 export async function createCostCenter(context: AccessContext, input: CreateCostCenterInput) {
@@ -214,7 +229,9 @@ export async function updateCostCenter(
     const before = await tx.costCenter.findFirst({
       where: { id: costCenterId, organizationId: context.organizationId },
     });
-    if (!before) throw new Error("Centro de custo não encontrado.");
+    if (!before || !canAccessDevelopment(context, before.developmentId)) {
+      throw new Error("Centro de custo não encontrado.");
+    }
 
     await assertDevelopmentOwned(tx, context, input.developmentId);
 
@@ -237,7 +254,9 @@ export async function deleteCostCenter(context: AccessContext, costCenterId: str
   const costCenter = await prisma.costCenter.findFirst({
     where: { id: costCenterId, organizationId: context.organizationId },
   });
-  if (!costCenter) throw new Error("Centro de custo não encontrado.");
+  if (!costCenter || !canAccessDevelopment(context, costCenter.developmentId)) {
+    throw new Error("Centro de custo não encontrado.");
+  }
 
   const payablesCount = await prisma.payable.count({ where: { costCenterId } });
   if (payablesCount > 0) {

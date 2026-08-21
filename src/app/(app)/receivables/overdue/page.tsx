@@ -32,9 +32,9 @@ export default async function OverdueInstallmentsPage({
     : undefined;
 
   const [aging, stages, developments, spes] = await Promise.all([
-    getPortfolioAging(context.organizationId, { developmentId, speId, minValue, maxValue }),
-    getOverdueCustomerStages(context.organizationId),
-    listDevelopments(context.organizationId),
+    getPortfolioAging(context, { developmentId, speId, minValue, maxValue }),
+    getOverdueCustomerStages(context),
+    listDevelopments(context),
     listSpes(context.organizationId),
   ]);
 

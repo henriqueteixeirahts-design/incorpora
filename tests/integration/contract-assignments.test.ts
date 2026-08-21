@@ -71,7 +71,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "cessoes@teste.local", fullName: "Usuário Cessões" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Cessões",
@@ -130,7 +130,7 @@ describe("Numeração vinculada", () => {
     expect(second.assignmentNumber).toBe(`${contract.contractNumber}-CS02`);
     expect(second.sequenceNumber).toBe(2);
 
-    const list = await listAssignments(org.id, contract.id);
+    const list = await listAssignments(context, contract.id);
     expect(list.map((a) => a.assignmentNumber)).toEqual([first.assignmentNumber, second.assignmentNumber]);
   });
 
@@ -281,7 +281,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-cessoes@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const { contract } = await setUpSignedContract("CS401");
@@ -290,7 +290,7 @@ describe("Isolamento entre organizações", () => {
 
       await expect(signAssignment(contextB, assignment.id)).rejects.toThrow();
 
-      const listB = await listAssignments(orgB.id, contract.id);
+      const listB = await listAssignments(contextB, contract.id);
       expect(listB).toHaveLength(0);
     } finally {
       await prisma.auditEvent.deleteMany({ where: { organizationId: orgB.id } });

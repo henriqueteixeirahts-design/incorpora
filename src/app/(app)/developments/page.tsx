@@ -20,7 +20,7 @@ export default async function DevelopmentsPage({
   const page = Math.max(1, Number(params.page) || 1);
 
   const [{ items, total }, spes] = await Promise.all([
-    listDevelopmentsPaged(context.organizationId, {
+    listDevelopmentsPaged(context, {
       search,
       sortBy,
       sortDir,

@@ -44,7 +44,7 @@ export default async function CommissionsPage({
   const dateTo = params.dateTo ?? "";
 
   const [{ splits, totals }, brokers, agencies] = await Promise.all([
-    getCommissionStatement(context.organizationId, {
+    getCommissionStatement(context, {
       brokerId: brokerId || undefined,
       agencyId: agencyId || undefined,
       dateFrom: dateFrom ? new Date(dateFrom) : undefined,

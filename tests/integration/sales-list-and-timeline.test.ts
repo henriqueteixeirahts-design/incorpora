@@ -34,7 +34,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "vendas-lista@teste.local", fullName: "Usuário Vendas Lista" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Vendas Lista",
@@ -136,22 +136,22 @@ describe("Lista de vendas — filtros", () => {
     await submitProposalForApproval(context, proposal.id);
     const sale = await convertProposalToSale(context, proposal.id);
 
-    const byBroker = await listSalesPaged(org.id, { brokerId: broker.id });
+    const byBroker = await listSalesPaged(context, { brokerId: broker.id });
     expect(byBroker.items.map((s) => s.id)).toContain(sale.id);
 
-    const noContract = await listSalesPaged(org.id, { contractStatus: "NONE" });
+    const noContract = await listSalesPaged(context, { contractStatus: "NONE" });
     expect(noContract.items.map((s) => s.id)).toContain(sale.id);
 
     const contract = await createContract(context, sale.id);
-    const draftFilter = await listSalesPaged(org.id, { contractStatus: "DRAFT" });
+    const draftFilter = await listSalesPaged(context, { contractStatus: "DRAFT" });
     expect(draftFilter.items.map((s) => s.id)).toContain(sale.id);
-    const noContractAfter = await listSalesPaged(org.id, { contractStatus: "NONE" });
+    const noContractAfter = await listSalesPaged(context, { contractStatus: "NONE" });
     expect(noContractAfter.items.map((s) => s.id)).not.toContain(sale.id);
 
     await markAwaitingSignature(context, contract.id);
     await confirmSignature(context, contract.id);
 
-    const emDia = await listSalesPaged(org.id, { walletStatus: "EM_DIA" });
+    const emDia = await listSalesPaged(context, { walletStatus: "EM_DIA" });
     expect(emDia.items.map((s) => s.id)).toContain(sale.id);
 
     // Força uma parcela vencida no passado direto no banco pra simular inadimplência
@@ -163,9 +163,9 @@ describe("Lista de vendas — filtros", () => {
       data: { status: "OVERDUE", dueDate: new Date(Date.now() - 5 * 86400000) },
     });
 
-    const inadimplente = await listSalesPaged(org.id, { walletStatus: "INADIMPLENTE" });
+    const inadimplente = await listSalesPaged(context, { walletStatus: "INADIMPLENTE" });
     expect(inadimplente.items.map((s) => s.id)).toContain(sale.id);
-    const emDiaAfter = await listSalesPaged(org.id, { walletStatus: "EM_DIA" });
+    const emDiaAfter = await listSalesPaged(context, { walletStatus: "EM_DIA" });
     expect(emDiaAfter.items.map((s) => s.id)).not.toContain(sale.id);
   });
 });
@@ -278,7 +278,8 @@ describe("Isolamento entre organizações", () => {
       await submitProposalForApproval(context, proposal.id);
       const sale = await convertProposalToSale(context, proposal.id);
 
-      const orgBSales = await listSalesPaged(orgB.id, {});
+      const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
+      const orgBSales = await listSalesPaged(contextB, {});
       expect(orgBSales.items.map((s) => s.id)).not.toContain(sale.id);
 
       const orgBTimeline = await listSaleTimeline(orgB.id, { id: sale.id, proposalId: sale.proposalId, reservationId: sale.reservationId }, null);

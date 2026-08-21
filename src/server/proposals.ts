@@ -7,23 +7,23 @@ import { changeUnitStatusTx } from "@/server/units";
 import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
 import { evaluateProposal, type ProposalEvaluationRuleValues } from "@/lib/proposal-evaluation";
 import { getEffectiveProposalEvaluationRule } from "@/server/proposal-evaluation-rules";
-import { developmentOwnedScope } from "@/server/scope";
+import { developmentOwnedScope, developmentAccessScope, canAccessDevelopment } from "@/server/scope";
 import { ValidationError } from "@/lib/errors";
 import type { AccessContext } from "@/server/auth-context";
 import type { ApprovalDecision, ApprovalLevel, Prisma } from "@/generated/prisma/client";
 import type { CorrectionPhaseConfig } from "@/lib/index-correction";
 
-export function listProposals(organizationId: string) {
+export function listProposals(context: AccessContext) {
   return prisma.proposal.findMany({
-    where: { organizationId },
+    where: { organizationId: context.organizationId, ...developmentAccessScope(context) },
     include: { unit: true, customer: true, development: true, approvals: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export function getProposal(organizationId: string, proposalId: string) {
-  return prisma.proposal.findFirst({
-    where: { id: proposalId, organizationId },
+export async function getProposal(context: AccessContext, proposalId: string) {
+  const proposal = await prisma.proposal.findFirst({
+    where: { id: proposalId, organizationId: context.organizationId },
     include: {
       unit: true,
       customer: true,
@@ -35,6 +35,8 @@ export function getProposal(organizationId: string, proposalId: string) {
       sale: true,
     },
   });
+  if (!proposal || !canAccessDevelopment(context, proposal.developmentId)) return null;
+  return proposal;
 }
 
 /** Fases de correção pra projetar o fluxo NOMINAL da proposta — vêm da tabela de vendas (obra) e do empreendimento (pós-Habite-se), já que ainda não existe Contract nesta etapa. */
@@ -152,7 +154,7 @@ export async function createProposal(context: AccessContext, input: CreatePropos
     const unit = await tx.unit.findFirst({
       where: { id: input.unitId, developmentId: input.developmentId, ...developmentOwnedScope(context) },
     });
-    if (!unit) throw new ValidationError("Unidade inválida.");
+    if (!unit || !canAccessDevelopment(context, input.developmentId)) throw new ValidationError("Unidade inválida.");
     if (unit.status !== "AVAILABLE" && unit.status !== "RESERVED") {
       throw new ValidationError("Unidade não está disponível nem reservada.");
     }
@@ -314,7 +316,7 @@ export async function getProposalReferenceData(
   const unit = await prisma.unit.findFirst({
     where: { id: input.unitId, developmentId: input.developmentId, ...developmentOwnedScope(context) },
   });
-  if (!unit) throw new ValidationError("Unidade inválida.");
+  if (!unit || !canAccessDevelopment(context, input.developmentId)) throw new ValidationError("Unidade inválida.");
 
   const salesTable = input.salesTableId
     ? await prisma.salesTable.findFirst({
@@ -366,7 +368,7 @@ export async function submitProposalForApproval(context: AccessContext, proposal
       where: { id: proposalId, organizationId: context.organizationId },
       include: { unit: true },
     });
-    if (!proposal) throw new ValidationError("Proposta inválida.");
+    if (!proposal || !canAccessDevelopment(context, proposal.developmentId)) throw new ValidationError("Proposta inválida.");
     if (proposal.status !== "DRAFT") throw new ValidationError("Proposta já foi enviada para aprovação.");
 
     if (proposal.evaluationStatus === "REJECTED_AUTO") {
@@ -476,7 +478,7 @@ export async function decideProposalApproval(
       where: { id: proposalId, organizationId: context.organizationId },
       include: { unit: true, approvals: true },
     });
-    if (!proposal) throw new ValidationError("Proposta inválida.");
+    if (!proposal || !canAccessDevelopment(context, proposal.developmentId)) throw new ValidationError("Proposta inválida.");
     if (proposal.status !== "PENDING_APPROVAL") throw new ValidationError("Proposta não está em aprovação.");
 
     const approval = proposal.approvals.find((item) => item.level === level);

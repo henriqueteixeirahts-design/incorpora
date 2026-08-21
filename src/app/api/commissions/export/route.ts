@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const context = await requireAccessContext();
   const params = request.nextUrl.searchParams;
 
-  const { splits } = await getCommissionStatement(context.organizationId, {
+  const { splits } = await getCommissionStatement(context, {
     brokerId: params.get("brokerId") ?? undefined,
     agencyId: params.get("agencyId") ?? undefined,
     dateFrom: params.get("dateFrom") ? new Date(params.get("dateFrom")!) : undefined,

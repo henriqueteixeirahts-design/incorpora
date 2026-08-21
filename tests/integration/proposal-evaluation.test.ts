@@ -38,7 +38,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "avaliacao-propostas@teste.local", fullName: "Usuário Avaliação" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Avaliação de Propostas",
@@ -177,11 +177,11 @@ describe("Avaliação automática — 3 status", () => {
     expect(approvals.map((a) => a.level).sort()).toEqual(["DIRECTOR", "SALES_MANAGER"]);
 
     await decideProposalApproval(context, proposal.id, "SALES_MANAGER", "APPROVED");
-    let afterFirst = await getProposal(org.id, proposal.id);
+    let afterFirst = await getProposal(context, proposal.id);
     expect(afterFirst?.status).toBe("PENDING_APPROVAL");
 
     await decideProposalApproval(context, proposal.id, "DIRECTOR", "APPROVED");
-    afterFirst = await getProposal(org.id, proposal.id);
+    afterFirst = await getProposal(context, proposal.id);
     expect(afterFirst?.status).toBe("APPROVED");
 
     const unitAfter = await prisma.unit.findUniqueOrThrow({ where: { id: unit.id } });
@@ -339,7 +339,7 @@ describe("Destino da entrada (Parte 4.2)", () => {
     await markAwaitingSignature(context, contract.id);
     await confirmSignature(context, contract.id);
 
-    const full = await getContract(org.id, contract.id);
+    const full = await getContract(context, contract.id);
     expect(full?.portfolio?.installments.some((i) => i.label === "Entrada")).toBe(true);
     expect(Number(full?.portfolio?.totalValue)).toBe(100000);
   });
@@ -384,7 +384,7 @@ describe("Destino da entrada (Parte 4.2)", () => {
     await markAwaitingSignature(context, contract.id);
     await confirmSignature(context, contract.id);
 
-    const full = await getContract(org.id, contract.id);
+    const full = await getContract(context, contract.id);
     expect(full?.portfolio?.installments.some((i) => i.label === "Entrada")).toBe(false);
     expect(Number(full?.portfolio?.totalValue)).toBe(90000); // 100000 - 10000 de entrada
 
@@ -402,7 +402,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-avaliacao@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       await expect(

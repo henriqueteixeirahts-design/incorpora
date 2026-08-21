@@ -7,6 +7,7 @@ import { changeUnitStatusTx } from "@/server/units";
 import { getEffectiveDistratoRule } from "@/server/distrato-rules";
 import { calculateDistratoSettlement } from "@/lib/distrato-settlement";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { Prisma } from "@/generated/prisma/client";
 
 async function getOrCreateSupplierForCustomer(tx: Prisma.TransactionClient, organizationId: string, customerId: string) {
@@ -45,7 +46,7 @@ export async function createDistrato(context: AccessContext, contractId: string,
       where: { id: contractId, organizationId: context.organizationId },
       include: { portfolio: { include: { installments: true } }, distrato: true },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "SIGNED") throw new Error("Só é possível distratar contrato assinado.");
     if (contract.distrato) throw new Error("Este contrato já tem um distrato — rescisão é terminal, não é possível criar outro.");
 
@@ -132,7 +133,7 @@ export async function signDistrato(context: AccessContext, distratoId: string, s
         },
       },
     });
-    if (!distrato) throw new Error("Distrato inválido.");
+    if (!distrato || !canAccessDevelopment(context, distrato.contract.developmentId)) throw new Error("Distrato inválido.");
     if (distrato.status === "SIGNED") throw new Error("Distrato já assinado.");
     if (distrato.contract.status !== "SIGNED") throw new Error("Contrato não está mais assinado/vigente.");
 
@@ -252,16 +253,20 @@ export async function signDistrato(context: AccessContext, distratoId: string, s
   });
 }
 
-export function getDistratoByContract(organizationId: string, contractId: string) {
-  return prisma.contractDistrato.findFirst({
-    where: { organizationId, contractId },
-    include: { refundPayable: true },
+export async function getDistratoByContract(context: AccessContext, contractId: string) {
+  const distrato = await prisma.contractDistrato.findFirst({
+    where: { organizationId: context.organizationId, contractId },
+    include: { refundPayable: true, contract: { select: { developmentId: true } } },
   });
+  if (!distrato || !canAccessDevelopment(context, distrato.contract.developmentId)) return null;
+  return distrato;
 }
 
-export function getDistrato(organizationId: string, distratoId: string) {
-  return prisma.contractDistrato.findFirst({
-    where: { id: distratoId, organizationId },
+export async function getDistrato(context: AccessContext, distratoId: string) {
+  const distrato = await prisma.contractDistrato.findFirst({
+    where: { id: distratoId, organizationId: context.organizationId },
     include: { contract: true, refundPayable: true },
   });
+  if (!distrato || !canAccessDevelopment(context, distrato.contract.developmentId)) return null;
+  return distrato;
 }

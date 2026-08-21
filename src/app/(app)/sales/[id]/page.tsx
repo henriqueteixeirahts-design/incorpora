@@ -31,10 +31,10 @@ export default async function SaleDetailPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const sale = await getSale(context.organizationId, id);
+  const sale = await getSale(context, id);
   if (!sale) notFound();
 
-  const contract = await getContractBySale(context.organizationId, id);
+  const contract = await getContractBySale(context, id);
   const indexRules = contract ? await listIndexRules(context.organizationId) : [];
   const signedDocumentUrl = contract?.signedDocumentPath
     ? await getSignedContractUrl(contract.signedDocumentPath).catch(() => null)
@@ -65,13 +65,13 @@ export default async function SaleDetailPage({
   );
 
   const amendments =
-    contract && contract.status === "SIGNED" ? await listAmendments(context.organizationId, contract.id) : [];
+    contract && contract.status === "SIGNED" ? await listAmendments(context, contract.id) : [];
   const amendmentTemplates =
     contract && contract.status === "SIGNED"
       ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "AMENDMENT")
       : [];
   const remainingBalance =
-    contract && contract.status === "SIGNED" ? await getRemainingBalance(context.organizationId, contract.id) : 0;
+    contract && contract.status === "SIGNED" ? await getRemainingBalance(context, contract.id) : 0;
 
   const amendmentDocuments = await Promise.all(
     amendments.map((amendment) => listAmendmentGeneratedDocuments(context.organizationId, amendment.id)),
@@ -81,7 +81,7 @@ export default async function SaleDetailPage({
   );
 
   const assignments =
-    contract && contract.status === "SIGNED" ? await listAssignments(context.organizationId, contract.id) : [];
+    contract && contract.status === "SIGNED" ? await listAssignments(context, contract.id) : [];
   const assignmentTemplates =
     contract && contract.status === "SIGNED"
       ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "ASSIGNMENT")
@@ -95,7 +95,7 @@ export default async function SaleDetailPage({
     assignmentDocuments.map((docs) => Promise.all(docs.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)))),
   );
 
-  const distrato = contract ? await getDistratoByContract(context.organizationId, contract.id) : null;
+  const distrato = contract ? await getDistratoByContract(context, contract.id) : null;
   const distratoTemplates = contract
     ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "RESCISSION")
     : [];

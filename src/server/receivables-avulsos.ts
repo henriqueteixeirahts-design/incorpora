@@ -4,7 +4,20 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { ReceivableCategory, ReceivableStatus, Prisma } from "@/generated/prisma/client";
+
+/**
+ * Escopo por empreendimento pra Receivable (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
+ * Parte 2.5) — `developmentId` é opcional (recebível "da organização"), então
+ * não dá pra usar `developmentAccessScope` genérico (ele excluiria os
+ * registros sem empreendimento). Visível se sem `developmentId` (nível
+ * organização, sempre visível) OU se o `developmentId` está no escopo.
+ */
+function receivableDevelopmentAccessWhere(context: AccessContext): Prisma.ReceivableWhereInput {
+  if (context.developmentAccess === "ALL") return {};
+  return { OR: [{ developmentId: null }, { developmentId: { in: [...context.developmentAccess] } }] };
+}
 
 const ENTITY_TYPE = "Receivable";
 
@@ -31,10 +44,11 @@ export type ListReceivablesFilters = {
   maxAmount?: number;
 };
 
-function receivablesWhere(organizationId: string, params: ListReceivablesFilters): Prisma.ReceivableWhereInput {
+function receivablesWhere(context: AccessContext, params: ListReceivablesFilters): Prisma.ReceivableWhereInput {
   const search = params.search?.trim();
   return {
-    organizationId,
+    organizationId: context.organizationId,
+    ...receivableDevelopmentAccessWhere(context),
     ...(search ? { origin: { contains: search, mode: "insensitive" } } : {}),
     ...(params.developmentId ? { developmentId: params.developmentId } : {}),
     ...(params.speId ? { speId: params.speId } : {}),
@@ -62,12 +76,12 @@ function receivablesWhere(organizationId: string, params: ListReceivablesFilters
 
 const INCLUDE = { development: true, spe: true, customer: true } satisfies Prisma.ReceivableInclude;
 
-export async function listReceivablesPaged(organizationId: string, params: ListReceivablesFilters) {
+export async function listReceivablesPaged(context: AccessContext, params: ListReceivablesFilters) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = params.pageSize ?? 20;
   const sortBy = params.sortBy ?? "dueDate";
   const sortDir = params.sortDir ?? "asc";
-  const where = receivablesWhere(organizationId, params);
+  const where = receivablesWhere(context, params);
 
   const [items, total] = await Promise.all([
     prisma.receivable.findMany({
@@ -83,15 +97,20 @@ export async function listReceivablesPaged(organizationId: string, params: ListR
   return { items, total, page, pageSize };
 }
 
-export function listReceivablesForExport(organizationId: string, params: ListReceivablesFilters) {
-  const where = receivablesWhere(organizationId, params);
+export function listReceivablesForExport(context: AccessContext, params: ListReceivablesFilters) {
+  const where = receivablesWhere(context, params);
   const sortBy = params.sortBy ?? "dueDate";
   const sortDir = params.sortDir ?? "asc";
   return prisma.receivable.findMany({ where, include: INCLUDE, orderBy: { [sortBy]: sortDir } });
 }
 
-export function getReceivableDetail(organizationId: string, receivableId: string) {
-  return prisma.receivable.findFirst({ where: { id: receivableId, organizationId }, include: INCLUDE });
+export async function getReceivableDetail(context: AccessContext, receivableId: string) {
+  const receivable = await prisma.receivable.findFirst({
+    where: { id: receivableId, organizationId: context.organizationId },
+    include: INCLUDE,
+  });
+  if (!receivable || !canAccessDevelopment(context, receivable.developmentId)) return null;
+  return receivable;
 }
 
 export type CreateReceivableInput = {
@@ -114,7 +133,9 @@ async function assertReceivableRelationsOwned(
     const development = await tx.development.findFirst({
       where: { id: input.developmentId, organizationId: context.organizationId },
     });
-    if (!development) throw new Error("Empreendimento inválido.");
+    if (!development || !canAccessDevelopment(context, development.id)) {
+      throw new Error("Empreendimento inválido.");
+    }
   }
   if (input.speId) {
     const spe = await tx.specialPurposeEntity.findFirst({
@@ -171,7 +192,7 @@ export async function updateReceivable(context: AccessContext, receivableId: str
     const before = await tx.receivable.findFirst({
       where: { id: receivableId, organizationId: context.organizationId },
     });
-    if (!before) throw new Error("Recebível não encontrado.");
+    if (!before || !canAccessDevelopment(context, before.developmentId)) throw new Error("Recebível não encontrado.");
     if (before.status !== "PENDING") throw new Error("Só é possível editar recebíveis pendentes.");
 
     await assertReceivableRelationsOwned(tx, context, input);
@@ -201,7 +222,7 @@ export async function registerReceivableReceipt(
     const receivable = await tx.receivable.findFirst({
       where: { id: receivableId, organizationId: context.organizationId },
     });
-    if (!receivable) throw new Error("Recebível não encontrado.");
+    if (!receivable || !canAccessDevelopment(context, receivable.developmentId)) throw new Error("Recebível não encontrado.");
     if (receivable.status !== "PENDING") throw new Error("Este recebível já foi baixado ou cancelado.");
 
     const receivedAt = input.receivedAt ?? new Date();
@@ -231,7 +252,7 @@ export async function cancelReceivable(context: AccessContext, receivableId: str
     const receivable = await tx.receivable.findFirst({
       where: { id: receivableId, organizationId: context.organizationId },
     });
-    if (!receivable) throw new Error("Recebível não encontrado.");
+    if (!receivable || !canAccessDevelopment(context, receivable.developmentId)) throw new Error("Recebível não encontrado.");
     if (receivable.status === "RECEIVED") throw new Error("Não é possível cancelar um recebível já baixado.");
 
     const updated = await tx.receivable.update({ where: { id: receivableId }, data: { status: "CANCELLED" } });

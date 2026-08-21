@@ -2,6 +2,8 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { bucketUnitStatus, type UnitStatusBucket } from "@/lib/unit-status-bucket";
+import type { AccessContext } from "@/server/auth-context";
+import { developmentAccessScope, developmentIdAccessScope } from "@/server/scope";
 
 const BUCKET_LABEL: Record<UnitStatusBucket, string> = {
   disponivel: "Disponível",
@@ -27,10 +29,14 @@ export type MirrorSummary = {
  * Espelho de vendas resumido do dashboard: pega o empreendimento com mais
  * unidades (o mais representativo da carteira) e mostra só os pavimentos
  * mais altos — a legenda soma todas as unidades, não só as exibidas.
+ * `developmentIdAccessScope` garante que o empreendimento escolhido está no
+ * escopo do usuário (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5) — um
+ * usuário restrito a um empreendimento nunca vê o espelho de outro só
+ * porque ele tem mais unidades na organização inteira.
  */
-export async function getDashboardMirrorSummary(organizationId: string): Promise<MirrorSummary | null> {
+export async function getDashboardMirrorSummary(context: AccessContext): Promise<MirrorSummary | null> {
   const development = await prisma.development.findFirst({
-    where: { organizationId, buildings: { some: { floors: { some: {} } } } },
+    where: { organizationId: context.organizationId, buildings: { some: { floors: { some: {} } } }, ...developmentIdAccessScope(context) },
     orderBy: { units: { _count: "desc" } },
     include: { buildings: { include: { floors: true } } },
   });
@@ -83,9 +89,9 @@ export async function getDashboardMirrorSummary(organizationId: string): Promise
   return { developmentName: development.name, maxCols, floors, legend };
 }
 
-export async function getRecentSales(organizationId: string, limit = 5) {
+export async function getRecentSales(context: AccessContext, limit = 5) {
   const sales = await prisma.sale.findMany({
-    where: { organizationId, status: "ACTIVE" },
+    where: { organizationId: context.organizationId, status: "ACTIVE", ...developmentAccessScope(context) },
     orderBy: { saleDate: "desc" },
     take: limit,
     include: { customer: true, development: true, unit: true },

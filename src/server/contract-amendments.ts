@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
 import type { AccessContext } from "@/server/auth-context";
+import { canAccessDevelopment } from "@/server/scope";
 import type { ContractAmendmentType, Prisma } from "@/generated/prisma/client";
 
 /**
@@ -47,12 +48,12 @@ export type CreateAmendmentInput = {
  * entram porque já foram (ao menos parcialmente) recebidas e ficam
  * intocadas (spec: "recebidas permanecem intactas").
  */
-export async function getRemainingBalance(organizationId: string, contractId: string) {
+export async function getRemainingBalance(context: AccessContext, contractId: string) {
   const portfolio = await prisma.receivablePortfolio.findFirst({
-    where: { contractId, organizationId },
-    include: { installments: true },
+    where: { contractId, organizationId: context.organizationId },
+    include: { installments: true, contract: { select: { developmentId: true } } },
   });
-  if (!portfolio) return 0;
+  if (!portfolio || !canAccessDevelopment(context, portfolio.contract.developmentId)) return 0;
   return round2(
     portfolio.installments
       .filter((i) => i.status === "PENDING" || i.status === "OVERDUE")
@@ -66,7 +67,7 @@ export async function createAmendment(context: AccessContext, contractId: string
       where: { id: contractId, organizationId: context.organizationId },
       include: { portfolio: { include: { installments: true } } },
     });
-    if (!contract) throw new Error("Contrato inválido.");
+    if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "SIGNED") throw new Error("Só é possível criar aditivo em contrato assinado.");
 
     let proposedPaymentFlow: PaymentFlowResult | undefined;
@@ -185,7 +186,7 @@ export async function signAmendment(context: AccessContext, amendmentId: string,
       where: { id: amendmentId, organizationId: context.organizationId },
       include: { contract: true },
     });
-    if (!amendment) throw new Error("Aditivo inválido.");
+    if (!amendment || !canAccessDevelopment(context, amendment.contract.developmentId)) throw new Error("Aditivo inválido.");
     if (amendment.status === "SIGNED") throw new Error("Aditivo já assinado.");
 
     const signedAt = new Date();
@@ -229,16 +230,20 @@ export async function signAmendment(context: AccessContext, amendmentId: string,
   });
 }
 
-export function listAmendments(organizationId: string, contractId: string) {
+export function listAmendments(context: AccessContext, contractId: string) {
+  const developmentFilter =
+    context.developmentAccess === "ALL" ? {} : { contract: { developmentId: { in: [...context.developmentAccess] } } };
   return prisma.contractAmendment.findMany({
-    where: { organizationId, contractId },
+    where: { organizationId: context.organizationId, contractId, ...developmentFilter },
     orderBy: { sequenceNumber: "asc" },
   });
 }
 
-export function getAmendment(organizationId: string, amendmentId: string) {
-  return prisma.contractAmendment.findFirst({
-    where: { id: amendmentId, organizationId },
+export async function getAmendment(context: AccessContext, amendmentId: string) {
+  const amendment = await prisma.contractAmendment.findFirst({
+    where: { id: amendmentId, organizationId: context.organizationId },
     include: { contract: true },
   });
+  if (!amendment || !canAccessDevelopment(context, amendment.contract.developmentId)) return null;
+  return amendment;
 }

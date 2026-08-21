@@ -79,7 +79,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "renegociacoes@teste.local", fullName: "Usuário Renegociações" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Renegociações",
@@ -336,7 +336,7 @@ describe("Acordo quebrado", () => {
     const result = await checkAndUpdateBrokenAgreementsForCustomer(org.id, customer.id);
     expect(result.brokenCount).toBe(1);
 
-    const broken = await getRenegotiation(org.id, agreement.id);
+    const broken = await getRenegotiation(context, agreement.id);
     expect(broken!.status).toBe("BROKEN");
     expect(broken!.reactivatedOriginal).toBe(false);
 
@@ -380,7 +380,7 @@ describe("Acordo quebrado", () => {
 
     await checkAndUpdateBrokenAgreementsForCustomer(org.id, customer.id);
 
-    const broken = await getRenegotiation(org.id, agreement.id);
+    const broken = await getRenegotiation(context, agreement.id);
     expect(broken!.status).toBe("BROKEN");
     expect(broken!.reactivatedOriginal).toBe(true);
 
@@ -398,7 +398,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-renegociacoes@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const { contract } = await setUpSignedContract("RN601");
@@ -413,7 +413,7 @@ describe("Isolamento entre organizações", () => {
       });
 
       await expect(signRenegotiationAgreement(contextB, agreement.id)).rejects.toThrow();
-      expect(await getRenegotiation(orgB.id, agreement.id)).toBeNull();
+      expect(await getRenegotiation(contextB, agreement.id)).toBeNull();
     } finally {
       await prisma.auditEvent.deleteMany({ where: { organizationId: orgB.id } });
       await prisma.user.deleteMany({ where: { id: userB.id } });

@@ -39,7 +39,7 @@ export default async function PayablesPage({
 
   const [{ items, total }, suppliers, costCenters, developments, spes, pendingCount, allocationTemplates] =
     await Promise.all([
-      listPayablesPaged(context.organizationId, {
+      listPayablesPaged(context, {
         search,
         sortBy,
         sortDir,
@@ -48,11 +48,11 @@ export default async function PayablesPage({
         ...filters,
       }),
       listSuppliers(context.organizationId),
-      listCostCenters(context.organizationId),
-      listDevelopments(context.organizationId),
+      listCostCenters(context),
+      listDevelopments(context),
       listSpes(context.organizationId),
       countPendingApproval(context.organizationId),
-      listAllocationTemplates(context.organizationId),
+      listAllocationTemplates(context),
     ]);
 
   const canCreate = hasPermission(context, "payable", "CREATE");

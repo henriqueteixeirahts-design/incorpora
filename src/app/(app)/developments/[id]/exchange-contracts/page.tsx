@@ -15,7 +15,7 @@ export default async function ExchangeContractsPage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   const [contracts, permutantes, lands] = await Promise.all([

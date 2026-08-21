@@ -32,7 +32,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "cashflow-refinado@teste.local", fullName: "Usuário Fluxo" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const speA = await createSpe(context, {
     name: "SPE Fluxo A",
@@ -76,14 +76,14 @@ describe("Granularidade semanal e diária", () => {
       developmentId: devAId,
     });
 
-    const buckets = await getCashFlow(org.id, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const buckets = await getCashFlow(context, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
     expect(buckets).toHaveLength(1);
     expect(buckets[0].period).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(buckets[0].payablesForecast).toBeGreaterThanOrEqual(321);
   });
 
   it("gera buckets semanais com a chave YYYY-Www", async () => {
-    const buckets = await getCashFlow(org.id, { developmentId: devAId, granularity: "weekly", daysBack: 7, daysForward: 7 });
+    const buckets = await getCashFlow(context, { developmentId: devAId, granularity: "weekly", daysBack: 7, daysForward: 7 });
     expect(buckets.length).toBeGreaterThan(0);
     for (const bucket of buckets) {
       expect(bucket.period).toMatch(/^\d{4}-W\d{2}$/);
@@ -119,8 +119,8 @@ describe("Filtro por SPE", () => {
       developmentId: devCId,
     });
 
-    const bySpeA = await getCashFlow(org.id, { speId: speAId, granularity: "daily", daysBack: 0, daysForward: 0 });
-    const bySpeB = await getCashFlow(org.id, { speId: speBId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const bySpeA = await getCashFlow(context, { speId: speAId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const bySpeB = await getCashFlow(context, { speId: speBId, granularity: "daily", daysBack: 0, daysForward: 0 });
 
     // SPE A vê a soma de devA + devB (1000 + 2000), nunca a despesa de devC (SPE B).
     expect(bySpeA[0].payablesForecast).toBeGreaterThanOrEqual(3000);
@@ -148,7 +148,7 @@ describe("Saldo inicial bancário alimenta o saldo acumulado projetado", () => {
     });
     await linkSpeBankAccount(context, spe.id, bankAccount.id, true);
 
-    const buckets = await getCashFlow(org.id, { speId: spe.id, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const buckets = await getCashFlow(context, { speId: spe.id, granularity: "daily", daysBack: 0, daysForward: 0 });
     // Sem nenhum lançamento pra essa SPE, o saldo acumulado (previsto e
     // realizado) do único bucket tem que ser exatamente o saldo inicial.
     expect(buckets[0].cumulativeForecast).toBe(50000);
@@ -156,8 +156,8 @@ describe("Saldo inicial bancário alimenta o saldo acumulado projetado", () => {
   });
 
   it("sem escopo (organização) soma o saldo inicial de todas as contas ativas — desligar o saldo inicial muda o acumulado em exatamente esse valor", async () => {
-    const withOpening = await getCashFlow(org.id, { granularity: "daily", daysBack: 0, daysForward: 0 });
-    const withoutOpening = await getCashFlow(org.id, {
+    const withOpening = await getCashFlow(context, { granularity: "daily", daysBack: 0, daysForward: 0 });
+    const withoutOpening = await getCashFlow(context, {
       granularity: "daily",
       daysBack: 0,
       daysForward: 0,
@@ -174,8 +174,8 @@ describe("Saldo inicial bancário alimenta o saldo acumulado projetado", () => {
 describe("Regressão central: as três fontes somam sem duplicar, e o rateio aparece fracionado", () => {
   it("carteira + recebível avulso + conta a pagar rateada aparecem exatos no mesmo bucket, sem duplicação entre empreendimentos", async () => {
     const dueDate = new Date();
-    const before = await getCashFlow(org.id, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
-    const beforeB = await getCashFlow(org.id, { developmentId: devBId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const before = await getCashFlow(context, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const beforeB = await getCashFlow(context, { developmentId: devBId, granularity: "daily", daysBack: 0, daysForward: 0 });
 
     // Conta a pagar rateada 70/30 entre devA e devB.
     const payable = await createPayable(context, {
@@ -201,8 +201,8 @@ describe("Regressão central: as três fontes somam sem duplicar, e o rateio apa
     });
     await registerReceivableReceipt(context, receivable.id, { receivedAt: dueDate, receivedAmount: 4000 });
 
-    const afterA = await getCashFlow(org.id, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
-    const afterB = await getCashFlow(org.id, { developmentId: devBId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const afterA = await getCashFlow(context, { developmentId: devAId, granularity: "daily", daysBack: 0, daysForward: 0 });
+    const afterB = await getCashFlow(context, { developmentId: devBId, granularity: "daily", daysBack: 0, daysForward: 0 });
 
     // devA: só a fração dele do rateio (7000), nunca os 10000 inteiros.
     expect(afterA[0].payablesForecast - before[0].payablesForecast).toBe(7000);
@@ -226,7 +226,14 @@ describe("Isolamento entre organizações", () => {
       data: { id: crypto.randomUUID(), email: "org-b-cashflow@teste.local", fullName: "Usuário Org B" },
     });
 
-    const buckets = await getCashFlow(orgB.id, { granularity: "daily", daysBack: 0, daysForward: 0 });
+    const contextB: AccessContext = {
+      userId: userB.id,
+      organizationId: orgB.id,
+      roleNames: [],
+      permissions: new Set(),
+      developmentAccess: "ALL",
+    };
+    const buckets = await getCashFlow(contextB, { granularity: "daily", daysBack: 0, daysForward: 0 });
     expect(buckets[0].payablesForecast).toBe(0);
     expect(buckets[0].receivablesForecast).toBe(0);
     expect(buckets[0].cumulativeForecast).toBe(0);

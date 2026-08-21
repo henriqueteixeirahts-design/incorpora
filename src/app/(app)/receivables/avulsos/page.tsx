@@ -34,8 +34,8 @@ export default async function ReceivablesAvulsosPage({
   };
 
   const [{ items, total }, developments, spes, customers] = await Promise.all([
-    listReceivablesPaged(context.organizationId, { search, sortBy, sortDir, page, pageSize: PAGE_SIZE, ...filters }),
-    listDevelopments(context.organizationId),
+    listReceivablesPaged(context, { search, sortBy, sortDir, page, pageSize: PAGE_SIZE, ...filters }),
+    listDevelopments(context),
     listSpes(context.organizationId),
     listCustomers(context.organizationId),
   ]);

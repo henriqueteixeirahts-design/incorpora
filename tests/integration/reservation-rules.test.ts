@@ -50,8 +50,8 @@ beforeAll(async () => {
     data: { id: crypto.randomUUID(), email: "org-b-reservas@teste.local", fullName: "Usuário Org B" },
   });
 
-  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: ["Corretor"], permissions: new Set() };
-  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: ["Corretor"], permissions: new Set(), developmentAccess: "ALL" };
+  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(contextA, {
     name: "SPE Regras de Reserva",

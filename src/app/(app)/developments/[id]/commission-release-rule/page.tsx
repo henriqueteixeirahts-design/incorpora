@@ -13,7 +13,7 @@ export default async function CommissionReleaseRulePage({
   const { id } = await params;
   const context = await requireAccessContext();
 
-  const development = await getDevelopment(context.organizationId, id);
+  const development = await getDevelopment(context, id);
   if (!development) notFound();
 
   const [rule, ownRule] = await Promise.all([

@@ -80,7 +80,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "aging@teste.local", fullName: "Usuário Aging" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Aging",
@@ -137,7 +137,7 @@ describe("Aging da carteira — faixas de atraso", () => {
     // Parcela 4: vencida há 100 dias -> D90_PLUS.
     await prisma.installment.update({ where: { id: parcelas[3].id }, data: { dueDate: daysAgo(100) } });
 
-    const aging = await getPortfolioAging(org.id, {});
+    const aging = await getPortfolioAging(context, {});
     const byBucket = Object.fromEntries(aging.summaries.map((s) => [s.bucket, s]));
 
     expect(byBucket.A_VENCER_30D.installmentCount).toBe(1);
@@ -163,13 +163,13 @@ describe("Aging da carteira — faixas de atraso", () => {
     const otherOverdue = otherPortfolio.installments.find((i) => !i.isDownPayment)!;
     await prisma.installment.update({ where: { id: otherOverdue.id }, data: { dueDate: daysAgo(5) } });
 
-    const agingFiltered = await getPortfolioAging(org.id, { developmentId: otherDevelopment.id });
+    const agingFiltered = await getPortfolioAging(context, { developmentId: otherDevelopment.id });
     expect(agingFiltered.rows.every((r) => r.developmentId === otherDevelopment.id)).toBe(true);
     expect(agingFiltered.rows.some((r) => r.installmentId === otherOverdue.id)).toBe(true);
   });
 
   it("filtro por faixa de valor exclui parcelas fora do intervalo", async () => {
-    const aging = await getPortfolioAging(org.id, { minValue: 1000000 });
+    const aging = await getPortfolioAging(context, { minValue: 1000000 });
     expect(aging.rows).toHaveLength(0);
   });
 });
@@ -184,7 +184,7 @@ describe("Régua de cobrança", () => {
     const parcela = portfolio.installments.find((i) => !i.isDownPayment)!;
     await prisma.installment.update({ where: { id: parcela.id }, data: { dueDate: daysAgo(10) } });
 
-    const stage = await getCustomerCollectionStage(org.id, customer.id);
+    const stage = await getCustomerCollectionStage(context, customer.id);
     expect(stage).not.toBeNull();
     expect(stage!.worstDaysOverdue).toBe(10);
     expect(stage!.currentStep?.actionLabel).toBe("1º contato de atraso"); // D+3 é a última etapa <= 10
@@ -207,7 +207,7 @@ describe("Régua de cobrança", () => {
     const parcela = portfolio.installments.find((i) => !i.isDownPayment)!;
     await prisma.installment.update({ where: { id: parcela.id }, data: { dueDate: daysAgo(25) } });
 
-    const stage = await getCustomerCollectionStage(org.id, customer.id);
+    const stage = await getCustomerCollectionStage(context, customer.id);
     expect(stage!.currentStep?.actionLabel).toBe("Cobrança única aos 20 dias");
     expect(stage!.nextStep).toBeNull();
   });
@@ -219,13 +219,13 @@ describe("Régua de cobrança", () => {
     await prisma.installment.update({ where: { id: parcelas[0].id }, data: { dueDate: daysAgo(5) } });
     await prisma.installment.update({ where: { id: parcelas[1].id }, data: { dueDate: daysAgo(40) } });
 
-    const stage = await getCustomerCollectionStage(org.id, customer.id);
+    const stage = await getCustomerCollectionStage(context, customer.id);
     expect(stage!.worstDaysOverdue).toBe(40);
   });
 
   it("cliente sem parcelas em atraso não aparece na lista de estágios", async () => {
     const { customer } = await setUpSignedContract("AG204");
-    const stages = await getOverdueCustomerStages(org.id);
+    const stages = await getOverdueCustomerStages(context);
     expect(stages.find((s) => s.customerId === customer.id)).toBeUndefined();
   });
 });
@@ -256,7 +256,7 @@ describe("Histórico de cobrança", () => {
     const orgB = await prisma.organization.create({ data: { name: "Org B — Aging" } });
     try {
       const { customer } = await setUpSignedContract("AG302");
-      const contextB: AccessContext = { userId: crypto.randomUUID(), organizationId: orgB.id, roleNames: [], permissions: new Set() };
+      const contextB: AccessContext = { userId: crypto.randomUUID(), organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
       await expect(
         logCollectionContact(contextB, customer.id, { occurredAt: new Date(), channel: "Ligação", summary: "x" }),
       ).rejects.toThrow(/inválido/);

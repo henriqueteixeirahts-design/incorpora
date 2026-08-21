@@ -63,7 +63,7 @@ beforeAll(async () => {
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "aditivos@teste.local", fullName: "Usuário Aditivos" },
   });
-  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   const spe = await createSpe(context, {
     name: "SPE Aditivos",
@@ -113,7 +113,7 @@ describe("Numeração vinculada", () => {
     expect(second.amendmentNumber).toBe(`${contract.contractNumber}-AD02`);
     expect(second.sequenceNumber).toBe(2);
 
-    const list = await listAmendments(org.id, contract.id);
+    const list = await listAmendments(context, contract.id);
     expect(list.map((a) => a.amendmentNumber)).toEqual([first.amendmentNumber, second.amendmentNumber]);
   });
 
@@ -164,7 +164,7 @@ describe("Renegociação de fluxo — reprogramação da carteira (rigor centavo
 
     // Saldo em aberto = só o que está PENDING/OVERDUE (parcela1 NÃO entra —
     // já recebeu algo, fica intocada até quitar por conta própria).
-    const remainingBalance = await getRemainingBalance(org.id, contract.id);
+    const remainingBalance = await getRemainingBalance(context, contract.id);
     expect(remainingBalance).toBe(120000); // parcela2 + parcela3 + parcela4 = 3 x 40000
 
     // Renegocia o saldo em 2 parcelas de 60000 (em vez de 3 de 40000) — muda
@@ -292,7 +292,7 @@ describe("Isolamento entre organizações", () => {
     const userB = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "org-b-aditivos@teste.local", fullName: "Usuário Org B" },
     });
-    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+    const contextB: AccessContext = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
     try {
       const contract = await setUpSignedContract("AD601", "02171922186");
@@ -300,7 +300,7 @@ describe("Isolamento entre organizações", () => {
 
       await expect(signAmendment(contextB, amendment.id)).rejects.toThrow();
 
-      const listB = await listAmendments(orgB.id, contract.id);
+      const listB = await listAmendments(contextB, contract.id);
       expect(listB).toHaveLength(0);
     } finally {
       await prisma.auditEvent.deleteMany({ where: { organizationId: orgB.id } });

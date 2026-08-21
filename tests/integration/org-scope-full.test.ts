@@ -78,8 +78,8 @@ beforeAll(async () => {
     data: { id: crypto.randomUUID(), email: "org-b-plena@teste.local", fullName: "Usuário Org B" },
   });
 
-  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: [], permissions: new Set() };
-  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set() };
+  contextA = { userId: userA.id, organizationId: orgA.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
+  contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 
   speA = await createSpe(contextA, {
     name: "SPE Fronteira Plena A",
@@ -211,7 +211,7 @@ afterAll(async () => {
 
 describe("Development — Org B não acessa o empreendimento da Org A", () => {
   it("bloqueia get/update/delete", async () => {
-    expect(await getDevelopment(orgB.id, developmentA.id)).toBeNull();
+    expect(await getDevelopment(contextB, developmentA.id)).toBeNull();
     await expect(
       updateDevelopment(contextB, developmentA.id, { speId: speA.id, name: "Sequestro", type: "RESIDENTIAL_BUILDING" }),
     ).rejects.toThrow("Empreendimento não encontrado.");
@@ -322,9 +322,9 @@ describe("Reservation — Org B não cria reserva referenciando unidade/cliente/
 
 describe("Proposal / Sale / Contract / Installment — Org B não lê registro da Org A", () => {
   it("bloqueia getProposal/getSale/getContract/registerInstallmentPayment", async () => {
-    expect(await getProposal(orgB.id, proposalA.id)).toBeNull();
-    expect(await getSale(orgB.id, saleA.id)).toBeNull();
-    expect(await getContract(orgB.id, contractA.id)).toBeNull();
+    expect(await getProposal(contextB, proposalA.id)).toBeNull();
+    expect(await getSale(contextB, saleA.id)).toBeNull();
+    expect(await getContract(contextB, contractA.id)).toBeNull();
     await expect(
       registerInstallmentPayment(contextB, installmentA.id, { amount: 500000, paidAt: new Date() }),
     ).rejects.toThrow("Parcela inválida.");
@@ -374,7 +374,7 @@ describe("BankAccount — Org B não acessa conta bancária central da Org A", (
 
 describe("Payable — Org B não acessa, e não cria conta a pagar apontando pra recursos da Org A", () => {
   it("bloqueia get/update/cancel", async () => {
-    expect(await getPayableDetail(orgB.id, payableA.id)).toBeNull();
+    expect(await getPayableDetail(contextB, payableA.id)).toBeNull();
     await expect(
       updatePayable(contextB, payableA.id, {
         category: "ADMINISTRATION",

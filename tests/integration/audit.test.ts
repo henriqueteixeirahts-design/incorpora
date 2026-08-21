@@ -18,7 +18,7 @@ async function makeOrg(name: string) {
   const user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário Auditoria" },
   });
-  const context: AccessContext = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set() };
+  const context: AccessContext = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
   return { org, user, context };
 }
 
