@@ -8,9 +8,191 @@ import {
   cancelContributionForecastAction,
   createContributionAction,
   deleteContributionAction,
+  getCapitalCallsAction,
+  createCapitalCallAction,
+  uploadCapitalCallDocumentAction,
+  getCapitalCallDocumentUrlAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
+
+type CapitalCall = Awaited<ReturnType<typeof getCapitalCallsAction>>[number];
+
+const CAPITAL_CALL_STATUS_LABELS: Record<string, string> = {
+  EMITTED: "Emitida",
+  PARTIALLY_FULFILLED: "Atendida (parcial)",
+  FULFILLED: "Atendida",
+  CANCELLED: "Cancelada",
+  OVERDUE: "Vencida",
+};
+
+const CAPITAL_CALL_STATUS_CHIP: Record<string, string> = {
+  EMITTED: "proposta",
+  PARTIALLY_FULFILLED: "reserva",
+  FULFILLED: "contrato",
+  CANCELLED: "permuta",
+  OVERDUE: "atraso",
+};
+
+const capitalCallFormInitialState: FormState = {};
+
+function CapitalCallForm({ investorId, onSaved, onCancel }: { investorId: string; onSaved: () => void; onCancel: () => void }) {
+  const [state, dispatch, pending] = useActionState(createCapitalCallAction, capitalCallFormInitialState);
+
+  useEffect(() => {
+    if (state.success) onSaved();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form action={dispatch} style={{ marginTop: "0.5rem", marginBottom: "0.75rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Gerar chamada de capital</div>
+      <input type="hidden" name="investorId" value={investorId} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">Valor (R$) *</span>
+          <input name="amount" type="number" step="0.01" min="0.01" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Data prevista do aporte *</span>
+          <input name="expectedDate" type="date" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Prazo de atendimento *</span>
+          <input name="deadlineDate" type="date" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Finalidade</span>
+          <input name="purpose" className="inc-input" placeholder="Ex.: aquisição de terreno" />
+        </label>
+        <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+          <span className="inc-label">Observações</span>
+          <input name="notes" className="inc-input" />
+        </label>
+      </div>
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+        <button type="submit" className="inc-btn inc-btn--primary" disabled={pending}>
+          {pending ? "Salvando..." : "Gerar chamada"}
+        </button>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CapitalCallRow({ investorId, call, onChanged }: { investorId: string; call: CapitalCall; onChanged: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const formData = new FormData();
+    formData.set("file", files[0]);
+    setUploading(true);
+    setError(null);
+    const result = await uploadCapitalCallDocumentAction(investorId, call.id, formData);
+    setUploading(false);
+    if (result.error) setError(result.error);
+    else onChanged();
+  }
+
+  async function handleView() {
+    const result = await getCapitalCallDocumentUrlAction(investorId, call.id);
+    if ("error" in result && result.error) setError(result.error);
+    else if ("url" in result && result.url) window.open(result.url, "_blank");
+  }
+
+  return (
+    <tr>
+      <td className="is-num">{formatCurrency(call.amount)}</td>
+      <td className="is-muted">{formatCalendarDateBR(call.expectedDate)}</td>
+      <td className="is-muted">{formatCalendarDateBR(call.deadlineDate)}</td>
+      <td>{call.purpose ?? "—"}</td>
+      <td>
+        <span className={`inc-chip inc-chip--${CAPITAL_CALL_STATUS_CHIP[call.displayStatus] ?? "permuta"}`}>
+          {CAPITAL_CALL_STATUS_LABELS[call.displayStatus] ?? call.displayStatus}
+        </span>
+      </td>
+      <td>
+        {call.documentPath ? (
+          <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={handleView}>
+            Ver PDF
+          </button>
+        ) : (
+          <label className="inc-btn inc-btn--secondary inc-btn--sm" style={{ cursor: "pointer" }}>
+            {uploading ? "Enviando..." : "Anexar PDF"}
+            <input type="file" accept="application/pdf" style={{ display: "none" }} onChange={(e) => handleUpload(e.target.files)} />
+          </label>
+        )}
+        {error ? <p className="error-text" style={{ marginTop: "4px" }}>{error}</p> : null}
+      </td>
+    </tr>
+  );
+}
+
+function CapitalCallsSection({ investorId, onChanged }: { investorId: string; onChanged: () => void }) {
+  const [calls, setCalls] = useState<CapitalCall[] | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  function load() {
+    getCapitalCallsAction(investorId).then(setCalls);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investorId]);
+
+  return (
+    <div style={{ marginBottom: "1.5rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>
+        Chamadas de capital (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 2.2)
+      </div>
+      {!calls ? (
+        <p className="field-hint">Carregando...</p>
+      ) : calls.length === 0 ? (
+        <p className="field-hint">Nenhuma chamada de capital emitida.</p>
+      ) : (
+        <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
+          <thead>
+            <tr>
+              <th>Valor</th>
+              <th>Data prevista</th>
+              <th>Prazo</th>
+              <th>Finalidade</th>
+              <th>Status</th>
+              <th>Documento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {calls.map((call) => (
+              <CapitalCallRow key={call.id} investorId={investorId} call={call} onChanged={load} />
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {creating ? (
+        <CapitalCallForm
+          investorId={investorId}
+          onSaved={() => {
+            setCreating(false);
+            load();
+            onChanged();
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : (
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setCreating(true)}>
+          + Gerar chamada de capital
+        </button>
+      )}
+    </div>
+  );
+}
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getInvestorContributionsDetailAction>>>;
 type ForecastRow = Detail["forecasts"][number];
@@ -272,6 +454,8 @@ export function InvestorContributionsPanel({
           </strong>
         </div>
       </div>
+
+      <CapitalCallsSection investorId={investorId} onChanged={refresh} />
 
       <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Previsões</div>
       {detail.forecasts.length === 0 ? (

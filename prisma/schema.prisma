@@ -382,8 +382,33 @@ model SpeInvestorContributionForecast {
 
   investor      SpeInvestor               @relation(fields: [investorId], references: [id], onDelete: Cascade)
   contributions SpeInvestorContribution[]
+  capitalCall   SpeCapitalCall?
 
   @@map("spe_investor_contribution_forecasts")
+}
+
+/// Chamada de capital formal (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 2.2)
+/// — sempre nasce de/vinculada 1:1 a uma SpeInvestorContributionForecast
+/// (origin=CAPITAL_CALL), reaproveitando o status já calculado dela em vez
+/// de duplicar uma máquina de estados paralela: PLANNED="Emitida",
+/// PARTIALLY_FULFILLED/FULFILLED/CANCELLED com o mesmo significado.
+/// "Vencida" é computado ao vivo (deadlineDate no passado + status ainda
+/// PLANNED/PARTIALLY_FULFILLED), nunca persistido — mesmo padrão de
+/// "OVERDUE" calculado ao vivo já usado no extrato do cliente.
+/// `documentPath` é opcional (anexo direto do PDF assinado/gerado por fora)
+/// — a spec permite registrar sem PDF quando o motor de templates não se
+/// aplica ainda a este tipo de documento (SPE/investidor, não Contract).
+model SpeCapitalCall {
+  id           String   @id @default(uuid()) @db.Uuid
+  forecastId   String   @unique @db.Uuid
+  deadlineDate DateTime
+  purpose      String?
+  documentPath String?
+  createdAt    DateTime @default(now())
+
+  forecast SpeInvestorContributionForecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+
+  @@map("spe_capital_calls")
 }
 
 /// Aporte realizado (Parte 2.3) — baixa a previsão vinculada (total ou

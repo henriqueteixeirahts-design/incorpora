@@ -60,6 +60,14 @@ import {
   type CreateContributionForecastInput,
   type CreateContributionInput,
 } from "@/server/spe-contributions";
+import {
+  listCapitalCalls,
+  listOverdueCapitalCalls,
+  createCapitalCall,
+  uploadCapitalCallDocument,
+  getCapitalCallDocumentUrl,
+  type CreateCapitalCallInput,
+} from "@/server/spe-capital-calls";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -875,4 +883,94 @@ export async function deleteContributionAction(
   }
   revalidatePath("/spes");
   return { success: true };
+}
+
+export async function getCapitalCallsAction(investorId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return [];
+  try {
+    return await listCapitalCalls(context, investorId);
+  } catch {
+    return [];
+  }
+}
+
+export async function getOverdueCapitalCallsAction() {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return [];
+  return listOverdueCapitalCalls(context);
+}
+
+function parseCapitalCallInput(formData: FormData): CreateCapitalCallInput | { error: string } {
+  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  const expectedDateRaw = String(formData.get("expectedDate") ?? "");
+  const deadlineDateRaw = String(formData.get("deadlineDate") ?? "");
+  const purpose = String(formData.get("purpose") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const amount = Number(amountRaw);
+  if (!amountRaw || Number.isNaN(amount) || amount <= 0) return { error: "Informe um valor válido pra chamada." };
+  if (!expectedDateRaw) return { error: "Informe a data prevista do aporte." };
+  if (!deadlineDateRaw) return { error: "Informe o prazo de atendimento." };
+
+  return {
+    amount,
+    expectedDate: new Date(expectedDateRaw),
+    deadlineDate: new Date(deadlineDateRaw),
+    purpose: purpose || undefined,
+    notes: notes || undefined,
+  };
+}
+
+export async function createCapitalCallAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const investorId = String(formData.get("investorId") ?? "");
+  if (!investorId) return { error: "Investidor inválido." };
+
+  const input = parseCapitalCallInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createCapitalCall(context, investorId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao gerar chamada de capital." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function uploadCapitalCallDocumentAction(
+  investorId: string,
+  capitalCallId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Selecione o arquivo (PDF)." };
+
+  try {
+    await uploadCapitalCallDocument(context, investorId, capitalCallId, file);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao anexar o documento." };
+  }
+  revalidatePath("/spes");
+  return { success: true };
+}
+
+export async function getCapitalCallDocumentUrlAction(investorId: string, capitalCallId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return { error: "Sem permissão." as const };
+  try {
+    const url = await getCapitalCallDocumentUrl(context, investorId, capitalCallId);
+    return { url };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao gerar o link." };
+  }
 }
