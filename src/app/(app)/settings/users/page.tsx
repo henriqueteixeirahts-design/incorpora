@@ -1,5 +1,6 @@
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { listOrganizationUsersPaged, listRoles, type UserSortField } from "@/server/users";
+import { listDevelopments } from "@/server/developments";
 import { UsersManager } from "./users-manager";
 
 const PAGE_SIZE = 20;
@@ -17,15 +18,10 @@ export default async function UsersPage({
   const sortDir = params.dir === "desc" ? "desc" : "asc";
   const page = Math.max(1, Number(params.page) || 1);
 
-  const [{ items, total }, roles] = await Promise.all([
-    listOrganizationUsersPaged(context.organizationId, {
-      search,
-      sortBy,
-      sortDir,
-      page,
-      pageSize: PAGE_SIZE,
-    }),
+  const [{ items, total }, roles, developments] = await Promise.all([
+    listOrganizationUsersPaged(context, { search, sortBy, sortDir, page, pageSize: PAGE_SIZE }),
     listRoles(context.organizationId),
+    listDevelopments(context),
   ]);
 
   const canCreate = hasPermission(context, "user", "CREATE");
@@ -43,15 +39,9 @@ export default async function UsersPage({
       </div>
 
       <UsersManager
-        grants={items.map((g) => ({
-          id: g.id,
-          userId: g.userId,
-          fullName: g.user.fullName,
-          email: g.user.email,
-          roleId: g.roleId,
-          roleName: g.role.name,
-        }))}
+        users={items}
         roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+        developments={developments.map((d) => ({ id: d.id, name: d.name }))}
         currentUserId={context.userId}
         total={total}
         page={page}

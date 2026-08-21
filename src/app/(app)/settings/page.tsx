@@ -76,6 +76,11 @@ export default async function SettingsPage() {
           label: "Usuários",
           visible: hasPermission(context, "user", "VIEW"),
         },
+        {
+          href: "/settings/roles",
+          label: "Perfis de acesso",
+          visible: hasPermission(context, "role", "VIEW"),
+        },
       ],
     },
     {

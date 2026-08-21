@@ -4,26 +4,29 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
+import { formatDateTimeBR } from "@/lib/format";
 import {
   inviteUserAction,
-  updateUserRoleAction,
+  updateUserAccessAction,
   revokeUserAccessAction,
   type InviteUserState,
 } from "./actions";
 import type { UserSortField } from "@/server/users";
 
-export type UserGrantRow = {
-  id: string;
+export type UserRow = {
   userId: string;
   fullName: string;
   email: string;
   roleId: string;
   roleName: string;
+  developmentScope: "ALL" | string[];
+  audit: { createdByName: string | null; createdAt: Date; updatedByName: string | null; updatedAt: Date };
 };
 
 export type RoleOption = { id: string; name: string };
+export type DevelopmentOption = { id: string; name: string };
 
-type ModalState = { mode: "create" } | { mode: "edit"; grant: UserGrantRow } | null;
+type ModalState = { mode: "create" } | { mode: "edit"; user: UserRow } | null;
 
 const initialState: InviteUserState = {};
 
@@ -33,9 +36,17 @@ const SORTABLE_COLUMNS: { field: UserSortField; label: string }[] = [
   { field: "role", label: "Papel" },
 ];
 
+function scopeLabel(scope: "ALL" | string[], developments: DevelopmentOption[]) {
+  if (scope === "ALL") return "Todos os empreendimentos";
+  if (scope.length === 0) return "Nenhum empreendimento";
+  const names = scope.map((id) => developments.find((d) => d.id === id)?.name ?? "?");
+  return names.length <= 2 ? names.join(", ") : `${names[0]} e mais ${names.length - 1}`;
+}
+
 export function UsersManager({
-  grants,
+  users,
   roles,
+  developments,
   currentUserId,
   total,
   page,
@@ -47,8 +58,9 @@ export function UsersManager({
   canEdit,
   canDelete,
 }: {
-  grants: UserGrantRow[];
+  users: UserRow[];
   roles: RoleOption[];
+  developments: DevelopmentOption[];
   currentUserId: string;
   total: number;
   page: number;
@@ -82,11 +94,11 @@ export function UsersManager({
     return `/settings/users?${qs.toString()}`;
   }
 
-  function handleRevoke(grantId: string, name: string) {
+  function handleRevoke(userId: string, name: string) {
     if (!confirm(`Revogar o acesso de "${name}" a esta organização?`)) return;
     setDeleteError(null);
     startTransition(async () => {
-      const result = await revokeUserAccessAction(grantId);
+      const result = await revokeUserAccessAction(userId);
       if (result.error) setDeleteError(result.error);
     });
   }
@@ -133,22 +145,24 @@ export function UsersManager({
                   </Link>
                 </th>
               ))}
+              <th>Empreendimentos</th>
               {canEdit || canDelete ? <th aria-label="Ações" /> : null}
             </tr>
           </thead>
           <tbody>
-            {grants.length === 0 ? (
+            {users.length === 0 ? (
               <tr>
-                <td colSpan={4} className="is-empty">
+                <td colSpan={5} className="is-empty">
                   {search ? "Nenhum usuário encontrado." : "Nenhum usuário com acesso à organização ainda."}
                 </td>
               </tr>
             ) : null}
-            {grants.map((grant) => (
-              <tr key={grant.id}>
-                <td className="is-key">{grant.fullName}</td>
-                <td className="is-muted">{grant.email}</td>
-                <td>{grant.roleName}</td>
+            {users.map((user) => (
+              <tr key={user.userId}>
+                <td className="is-key">{user.fullName}</td>
+                <td className="is-muted">{user.email}</td>
+                <td>{user.roleName}</td>
+                <td className="is-muted">{scopeLabel(user.developmentScope, developments)}</td>
                 {canEdit || canDelete ? (
                   <td>
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
@@ -156,8 +170,8 @@ export function UsersManager({
                         <button
                           type="button"
                           className="inc-btn-icon"
-                          aria-label={`Editar ${grant.fullName}`}
-                          onClick={() => setModal({ mode: "edit", grant })}
+                          aria-label={`Editar ${user.fullName}`}
+                          onClick={() => setModal({ mode: "edit", user })}
                         >
                           <EditIcon />
                         </button>
@@ -166,10 +180,10 @@ export function UsersManager({
                         <button
                           type="button"
                           className="inc-btn-icon"
-                          aria-label={`Revogar acesso de ${grant.fullName}`}
-                          disabled={isPending || grant.userId === currentUserId}
-                          title={grant.userId === currentUserId ? "Você não pode revogar o seu próprio acesso." : undefined}
-                          onClick={() => handleRevoke(grant.id, grant.fullName)}
+                          aria-label={`Revogar acesso de ${user.fullName}`}
+                          disabled={isPending || user.userId === currentUserId}
+                          title={user.userId === currentUserId ? "Você não pode revogar o seu próprio acesso." : undefined}
+                          onClick={() => handleRevoke(user.userId, user.fullName)}
                           style={{ color: "var(--inc-danger)" }}
                         >
                           <TrashIcon />
@@ -203,8 +217,9 @@ export function UsersManager({
       {modal ? (
         <UserModal
           mode={modal.mode}
-          grant={modal.mode === "edit" ? modal.grant : null}
+          user={modal.mode === "edit" ? modal.user : null}
           roles={roles}
+          developments={developments}
           onClose={() => setModal(null)}
         />
       ) : null}
@@ -214,30 +229,46 @@ export function UsersManager({
 
 function UserModal({
   mode,
-  grant,
+  user,
   roles,
+  developments,
   onClose,
 }: {
   mode: "create" | "edit";
-  grant: UserGrantRow | null;
+  user: UserRow | null;
   roles: RoleOption[];
+  developments: DevelopmentOption[];
   onClose: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const formAction = mode === "create" ? inviteUserAction : updateUserRoleAction;
+  const formAction = mode === "create" ? inviteUserAction : updateUserAccessAction;
   const [state, dispatch, pending] = useActionState(formAction, initialState);
+
+  const [allDevelopments, setAllDevelopments] = useState(mode === "create" ? true : user?.developmentScope === "ALL");
+  const [selectedDevelopmentIds, setSelectedDevelopmentIds] = useState<Set<string>>(
+    new Set(mode === "edit" && user?.developmentScope !== "ALL" ? (user?.developmentScope as string[]) : []),
+  );
 
   useEffect(() => {
     if (state.success) onClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
 
+  function toggleDevelopment(id: string) {
+    setSelectedDevelopmentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <Modal
       open
       onClose={onClose}
-      title={mode === "edit" ? `Editar papel — ${grant!.fullName}` : "Convidar usuário"}
-      width={440}
+      title={mode === "edit" ? `Editar acesso — ${user!.fullName}` : "Convidar usuário"}
+      width={520}
       footer={
         <>
           <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>
@@ -255,17 +286,21 @@ function UserModal({
       }
     >
       <form ref={formRef} action={dispatch}>
-        {mode === "edit" && grant ? (
+        {mode === "edit" && user ? (
           <>
-            <input type="hidden" name="grantId" value={grant.id} />
+            <input type="hidden" name="userId" value={user.userId} />
+            <p style={{ marginTop: 0, marginBottom: "12px", fontSize: "12px", color: "var(--inc-text-soft)" }}>
+              Cadastrado por {user.audit.createdByName ?? "—"} em {formatDateTimeBR(user.audit.createdAt)}
+              {" · "}Última alteração por {user.audit.updatedByName ?? "—"} em {formatDateTimeBR(user.audit.updatedAt)}
+            </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
               <label className="inc-field">
                 <span className="inc-label">Nome</span>
-                <input className="inc-input" value={grant.fullName} disabled />
+                <input className="inc-input" value={user.fullName} disabled />
               </label>
               <label className="inc-field">
                 <span className="inc-label">E-mail</span>
-                <input className="inc-input" value={grant.email} disabled />
+                <input className="inc-input" value={user.email} disabled />
               </label>
             </div>
           </>
@@ -282,9 +317,9 @@ function UserModal({
           </div>
         )}
 
-        <label className="inc-field">
+        <label className="inc-field" style={{ marginBottom: "14px" }}>
           <span className="inc-label">Papel *</span>
-          <select id="roleId" name="roleId" className="inc-select" required defaultValue={grant?.roleId ?? ""}>
+          <select id="roleId" name="roleId" className="inc-select" required defaultValue={user?.roleId ?? ""}>
             <option value="" disabled>
               Selecione...
             </option>
@@ -295,6 +330,47 @@ function UserModal({
             ))}
           </select>
         </label>
+
+        <div className="inc-field">
+          <span className="inc-label">Empreendimentos *</span>
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", marginBottom: "8px" }}>
+            <input
+              type="checkbox"
+              name="allDevelopments"
+              checked={allDevelopments}
+              onChange={(e) => setAllDevelopments(e.target.checked)}
+            />
+            Todos os empreendimentos
+          </label>
+          {!allDevelopments ? (
+            <div
+              style={{
+                maxHeight: "180px",
+                overflow: "auto",
+                border: "1px solid var(--inc-border)",
+                borderRadius: "8px",
+                padding: "8px 10px",
+              }}
+            >
+              {developments.length === 0 ? (
+                <p style={{ fontSize: "12.5px", color: "var(--inc-text-soft)", margin: 0 }}>Nenhum empreendimento cadastrado.</p>
+              ) : (
+                developments.map((dev) => (
+                  <label key={dev.id} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", padding: "3px 0" }}>
+                    <input
+                      type="checkbox"
+                      name="developmentIds"
+                      value={dev.id}
+                      checked={selectedDevelopmentIds.has(dev.id)}
+                      onChange={() => toggleDevelopment(dev.id)}
+                    />
+                    {dev.name}
+                  </label>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
 
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>

@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { inviteUser, updateUserRole, revokeUserAccess } from "@/server/users";
+import { inviteUser, updateUserAccess, revokeUserAccess } from "@/server/users";
 
 export type InviteUserState = { error?: string; success?: boolean };
+
+function parseDevelopmentIds(formData: FormData): string[] | null {
+  if (formData.get("allDevelopments") === "on") return null;
+  return formData.getAll("developmentIds").map(String).filter(Boolean);
+}
 
 export async function inviteUserAction(
   _prevState: InviteUserState,
@@ -24,8 +29,13 @@ export async function inviteUserAction(
     return { error: "Preencha nome, e-mail e papel." };
   }
 
+  const developmentIds = parseDevelopmentIds(formData);
+  if (developmentIds && developmentIds.length === 0) {
+    return { error: "Selecione ao menos um empreendimento, ou marque \"Todos os empreendimentos\"." };
+  }
+
   try {
-    await inviteUser(context, { email, fullName, roleId });
+    await inviteUser(context, { email, fullName, roleId, developmentIds });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao convidar usuário." };
   }
@@ -34,7 +44,7 @@ export async function inviteUserAction(
   return { success: true };
 }
 
-export async function updateUserRoleAction(
+export async function updateUserAccessAction(
   _prevState: InviteUserState,
   formData: FormData,
 ): Promise<InviteUserState> {
@@ -43,14 +53,19 @@ export async function updateUserRoleAction(
     return { error: "Você não tem permissão para editar usuários." };
   }
 
-  const grantId = String(formData.get("grantId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
   const roleId = String(formData.get("roleId") ?? "").trim();
-  if (!grantId || !roleId) return { error: "Selecione um papel." };
+  if (!userId || !roleId) return { error: "Selecione um papel." };
+
+  const developmentIds = parseDevelopmentIds(formData);
+  if (developmentIds && developmentIds.length === 0) {
+    return { error: "Selecione ao menos um empreendimento, ou marque \"Todos os empreendimentos\"." };
+  }
 
   try {
-    await updateUserRole(context, grantId, roleId);
+    await updateUserAccess(context, userId, { roleId, developmentIds });
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Falha ao atualizar papel." };
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar acesso." };
   }
 
   revalidatePath("/settings/users");
@@ -58,7 +73,7 @@ export async function updateUserRoleAction(
 }
 
 export async function revokeUserAccessAction(
-  grantId: string,
+  userId: string,
 ): Promise<{ error?: string; success?: boolean }> {
   const context = await requireAccessContext();
   if (!hasPermission(context, "user", "DELETE")) {
@@ -66,7 +81,7 @@ export async function revokeUserAccessAction(
   }
 
   try {
-    await revokeUserAccess(context, grantId);
+    await revokeUserAccess(context, userId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao revogar acesso." };
   }
