@@ -13,6 +13,11 @@ import {
   type CreateBrokerInput,
 } from "@/server/crm";
 import { listSplitTiers, upsertSplitTiers, type SplitTierInput } from "@/server/agency-split-tiers";
+import {
+  getOrCreateDraftPartnershipAgreement,
+  signPartnershipAgreement,
+  revokePartnershipAgreement,
+} from "@/server/partnership-agreements";
 import type { BrokerRole, CustomerType, SplitTierKind } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
@@ -212,6 +217,62 @@ export async function upsertSplitTiersAction(
     await upsertSplitTiers(context, agencyId, tiers);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao salvar o split." };
+  }
+  revalidatePath("/partners");
+  return { success: true };
+}
+
+export async function getPartnershipStatusAction(
+  partnerType: "AGENCY" | "AUTONOMOUS_BROKER",
+  id: string,
+): Promise<{ error: string } | { status: "DRAFT" | "SIGNED"; agreementId: string; signedAt: Date | null }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, partnerType === "AGENCY" ? "agency" : "broker", "VIEW")) {
+    return { error: "Sem permissão." };
+  }
+
+  try {
+    const agreement = await getOrCreateDraftPartnershipAgreement(
+      context,
+      partnerType === "AGENCY" ? { partnerType, agencyId: id } : { partnerType, brokerId: id },
+    );
+    return { status: agreement.status, agreementId: agreement.id, signedAt: agreement.signedAt };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao buscar a parceria." };
+  }
+}
+
+export async function signPartnershipAction(
+  agreementId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "agency", "EDIT") && !hasPermission(context, "broker", "EDIT")) {
+    return { error: "Sem permissão." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Selecione o arquivo assinado (PDF)." };
+
+  try {
+    await signPartnershipAgreement(context, agreementId, file);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao registrar a parceria assinada." };
+  }
+  revalidatePath("/partners");
+  return { success: true };
+}
+
+export async function revokePartnershipAction(agreementId: string): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "agency", "EDIT") && !hasPermission(context, "broker", "EDIT")) {
+    return { error: "Sem permissão." };
+  }
+
+  try {
+    await revokePartnershipAgreement(context, agreementId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao reverter a parceria." };
   }
   revalidatePath("/partners");
   return { success: true };

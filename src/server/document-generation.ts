@@ -9,6 +9,7 @@ import {
 } from "@/lib/document-variables";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { getLatestDocumentTemplateVersion } from "@/server/document-templates";
+import { checkPartnershipBlocksContractGeneration } from "@/server/partnership-agreements";
 import { resolveUnitArea } from "@/lib/unit-area";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 import type { AccessContext } from "@/server/auth-context";
@@ -304,6 +305,29 @@ export async function previewDocumentGeneration(
     throw new Error("Esse modelo está inativo.");
   }
 
+  // TRAVA (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 5) — só o
+  // documento BASE de compra-e-venda é bloqueado; aditivos/cessões/
+  // distratos/renegociações do mesmo contrato não são (a venda já fechou).
+  if (template.type === "SALES_CONTRACT" && !amendmentId && !assignmentId && !distratoId && !renegotiationId) {
+    const contractForSale = await prisma.contract.findFirstOrThrow({
+      where: { id: contractId, organizationId },
+      select: {
+        sale: {
+          select: {
+            proposal: { select: { brokerId: true, agencyId: true } },
+            externalCommissionSplits: { select: { id: true } },
+          },
+        },
+      },
+    });
+    const blockReason = await checkPartnershipBlocksContractGeneration(
+      organizationId,
+      { brokerId: contractForSale.sale.proposal.brokerId, agencyId: contractForSale.sale.proposal.agencyId },
+      contractForSale.sale.externalCommissionSplits.length > 0,
+    );
+    if (blockReason) throw new Error(blockReason);
+  }
+
   let amendmentOverride: { number: string; type: string; proposedPaymentFlow: PaymentFlowResult | null } | undefined;
   if (amendmentId) {
     const amendment = await prisma.contractAmendment.findFirst({
@@ -445,6 +469,32 @@ export async function recordGeneratedDocument(
     renegotiationId?: string;
   },
 ) {
+  // Defesa em profundidade — nunca confia só no preview (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 5).
+  if (!params.amendmentId && !params.assignmentId && !params.distratoId && !params.renegotiationId) {
+    const template = await prisma.documentTemplate.findFirst({
+      where: { id: params.documentTemplateId, organizationId: context.organizationId },
+    });
+    if (template?.type === "SALES_CONTRACT") {
+      const contractForSale = await prisma.contract.findFirstOrThrow({
+        where: { id: params.contractId, organizationId: context.organizationId },
+        select: {
+          sale: {
+            select: {
+              proposal: { select: { brokerId: true, agencyId: true } },
+              externalCommissionSplits: { select: { id: true } },
+            },
+          },
+        },
+      });
+      const blockReason = await checkPartnershipBlocksContractGeneration(
+        context.organizationId,
+        { brokerId: contractForSale.sale.proposal.brokerId, agencyId: contractForSale.sale.proposal.agencyId },
+        contractForSale.sale.externalCommissionSplits.length > 0,
+      );
+      if (blockReason) throw new Error(blockReason);
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
     const entityType = params.amendmentId
       ? "ContractAmendment"

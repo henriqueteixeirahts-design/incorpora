@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { AddressFields } from "@/components/AddressFields";
+import { PartnershipStatus } from "./partnership-status";
 import { formatDocument, isValidDocument } from "@/lib/br-validation";
 import {
   createAgencyAction,
@@ -335,6 +336,12 @@ function AgencyModal({
 
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
+
+      {mode === "edit" && agency ? (
+        <div style={{ marginTop: "18px", paddingTop: "18px", borderTop: "1px solid var(--inc-border)" }}>
+          <PartnershipStatus partnerType="AGENCY" id={agency.id} />
+        </div>
+      ) : null}
     </Modal>
   );
 }

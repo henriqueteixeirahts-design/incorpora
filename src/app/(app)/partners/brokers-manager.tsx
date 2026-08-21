@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { AddressFields } from "@/components/AddressFields";
+import { PartnershipStatus } from "./partnership-status";
 import { formatDocument, isValidDocument } from "@/lib/br-validation";
 import { createBrokerAction, updateBrokerAction, deleteBrokerAction, type FormState } from "./actions";
 import type { BrokerSortField } from "@/server/crm";
@@ -414,6 +415,12 @@ function BrokerModal({
 
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
+
+      {mode === "edit" && broker && !broker.agencyId ? (
+        <div style={{ marginTop: "18px", paddingTop: "18px", borderTop: "1px solid var(--inc-border)" }}>
+          <PartnershipStatus partnerType="AUTONOMOUS_BROKER" id={broker.id} />
+        </div>
+      ) : null}
     </Modal>
   );
 }
