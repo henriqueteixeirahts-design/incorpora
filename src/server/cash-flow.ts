@@ -5,14 +5,30 @@ import { resolvePayableDestinations } from "@/server/payable-allocations";
 import { getOpeningBalanceTotal } from "@/server/bank-accounts";
 import { periodKey, type CashFlowGranularity } from "@/lib/cash-flow-period";
 import type { AccessContext } from "@/server/auth-context";
-import { canAccessDevelopment, developmentAccessScope, developmentIdAccessScope } from "@/server/scope";
+import { canAccessDevelopment, developmentAccessScope, developmentIdAccessScope, speOwnedScope } from "@/server/scope";
 
 export type { CashFlowGranularity } from "@/lib/cash-flow-period";
 
+/**
+ * Entrada discriminada por origem (docs/ESPEC_APORTES_INVESTIDORES.md, Parte
+ * 5 — "o fluxo de caixa passa a discriminar as entradas por origem em vez de
+ * um bloco único"). `sales`/`avulso`/`investorContribution` somam exatamente
+ * o total de `receivablesForecast`/`receivablesRealized` do bucket — é a
+ * mesma soma, só que quebrada. Aporte é funding, não receita: aparece aqui
+ * (caixa) mas nunca deve ser somado num relatório de resultado.
+ */
+export type CashFlowReceivablesByOrigin = {
+  sales: number;
+  avulso: number;
+  investorContribution: number;
+};
+
 export type CashFlowBucket = {
   period: string; // "YYYY-MM" | "YYYY-Www" | "YYYY-MM-DD", conforme a granularidade
-  receivablesForecast: number; // carteira (corrigida) + recebíveis avulsos, por vencimento
-  receivablesRealized: number; // recebimentos efetivos (carteira + avulsos), por data do recebimento
+  receivablesForecast: number; // carteira (corrigida) + recebíveis avulsos + aportes previstos, por vencimento
+  receivablesRealized: number; // recebimentos efetivos (carteira + avulsos + aportes), por data do recebimento
+  receivablesForecastByOrigin: CashFlowReceivablesByOrigin;
+  receivablesRealizedByOrigin: CashFlowReceivablesByOrigin;
   payablesForecast: number; // contas a pagar (com rateio aplicado), por vencimento
   payablesRealized: number; // pagamentos efetivos, por data do pagamento
   netForecast: number;
@@ -98,7 +114,17 @@ export async function getCashFlow(context: AccessContext, options: CashFlowOptio
 
   const contractScope = developmentIds ? { developmentId: { in: developmentIds } } : developmentAccessScope(context);
 
-  const [installments, payments, payables, receivablesAvulsos, openingBalance] = await Promise.all([
+  // Aportes de investidores (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 5) —
+  // escopados por SPE (organizationId), não por empreendimento (SpeInvestor
+  // não passa pelo developmentAccess do RBAC, mesmo motivo já documentado em
+  // spe-contributions.ts). Um filtro por empreendimento específico não
+  // consegue atribuir capital de SPE a um empreendimento só, então aportes
+  // ficam de fora quando `options.developmentId` está ativo.
+  const investorScope = options.developmentId
+    ? null
+    : { investor: { ...speOwnedScope(context), ...(options.speId ? { speId: options.speId } : {}) } };
+
+  const [installments, payments, payables, receivablesAvulsos, contributionForecasts, contributions, openingBalance] = await Promise.all([
     prisma.installment.findMany({
       where: {
         status: { not: "CANCELLED" },
@@ -147,6 +173,18 @@ export async function getCashFlow(context: AccessContext, options: CashFlowOptio
         speId: true,
       },
     }),
+    investorScope
+      ? prisma.speInvestorContributionForecast.findMany({
+          where: { ...investorScope, status: { in: ["PLANNED", "PARTIALLY_FULFILLED"] }, expectedDate: { gte: rangeStart, lte: rangeEnd } },
+          select: { amount: true, expectedDate: true },
+        })
+      : Promise.resolve([]),
+    investorScope
+      ? prisma.speInvestorContribution.findMany({
+          where: { ...investorScope, creditDate: { gte: rangeStart, lte: rangeEnd } },
+          select: { amount: true, creditDate: true },
+        })
+      : Promise.resolve([]),
     options.includeOpeningBalance === false
       ? Promise.resolve(0)
       : getOpeningBalanceTotal(organizationId, { speId: options.speId, developmentId: options.developmentId }),
@@ -177,6 +215,8 @@ export async function getCashFlow(context: AccessContext, options: CashFlowOptio
         period: key,
         receivablesForecast: 0,
         receivablesRealized: 0,
+        receivablesForecastByOrigin: { sales: 0, avulso: 0, investorContribution: 0 },
+        receivablesRealizedByOrigin: { sales: 0, avulso: 0, investorContribution: 0 },
         payablesForecast: 0,
         payablesRealized: 0,
         netForecast: 0,
@@ -190,20 +230,47 @@ export async function getCashFlow(context: AccessContext, options: CashFlowOptio
 
   for (const installment of installments) {
     const bucket = buckets.get(periodKey(installment.dueDate, granularity));
-    if (bucket) bucket.receivablesForecast += Number(installment.correctedValue ?? installment.originalValue);
+    if (bucket) {
+      const value = Number(installment.correctedValue ?? installment.originalValue);
+      bucket.receivablesForecast += value;
+      bucket.receivablesForecastByOrigin.sales += value;
+    }
   }
   for (const payment of payments) {
     const bucket = buckets.get(periodKey(payment.paidAt, granularity));
-    if (bucket) bucket.receivablesRealized += Number(payment.amount);
+    if (bucket) {
+      bucket.receivablesRealized += Number(payment.amount);
+      bucket.receivablesRealizedByOrigin.sales += Number(payment.amount);
+    }
   }
   for (const receivable of receivablesAvulsos) {
     if (!matchesScope(receivable)) continue;
     const forecastBucket = buckets.get(periodKey(receivable.dueDate, granularity));
-    if (forecastBucket) forecastBucket.receivablesForecast += Number(receivable.amount);
+    if (forecastBucket) {
+      forecastBucket.receivablesForecast += Number(receivable.amount);
+      forecastBucket.receivablesForecastByOrigin.avulso += Number(receivable.amount);
+    }
 
     if (receivable.receivedAt && receivable.receivedAmount) {
       const realizedBucket = buckets.get(periodKey(receivable.receivedAt, granularity));
-      if (realizedBucket) realizedBucket.receivablesRealized += Number(receivable.receivedAmount);
+      if (realizedBucket) {
+        realizedBucket.receivablesRealized += Number(receivable.receivedAmount);
+        realizedBucket.receivablesRealizedByOrigin.avulso += Number(receivable.receivedAmount);
+      }
+    }
+  }
+  for (const forecast of contributionForecasts) {
+    const bucket = buckets.get(periodKey(forecast.expectedDate, granularity));
+    if (bucket) {
+      bucket.receivablesForecast += Number(forecast.amount);
+      bucket.receivablesForecastByOrigin.investorContribution += Number(forecast.amount);
+    }
+  }
+  for (const contribution of contributions) {
+    const bucket = buckets.get(periodKey(contribution.creditDate, granularity));
+    if (bucket) {
+      bucket.receivablesRealized += Number(contribution.amount);
+      bucket.receivablesRealizedByOrigin.investorContribution += Number(contribution.amount);
     }
   }
   for (const payable of payables) {
@@ -230,6 +297,16 @@ export async function getCashFlow(context: AccessContext, options: CashFlowOptio
     bucket.variance = round2(bucket.netRealized - bucket.netForecast);
     bucket.receivablesForecast = round2(bucket.receivablesForecast);
     bucket.receivablesRealized = round2(bucket.receivablesRealized);
+    bucket.receivablesForecastByOrigin = {
+      sales: round2(bucket.receivablesForecastByOrigin.sales),
+      avulso: round2(bucket.receivablesForecastByOrigin.avulso),
+      investorContribution: round2(bucket.receivablesForecastByOrigin.investorContribution),
+    };
+    bucket.receivablesRealizedByOrigin = {
+      sales: round2(bucket.receivablesRealizedByOrigin.sales),
+      avulso: round2(bucket.receivablesRealizedByOrigin.avulso),
+      investorContribution: round2(bucket.receivablesRealizedByOrigin.investorContribution),
+    };
     bucket.payablesForecast = round2(bucket.payablesForecast);
     bucket.payablesRealized = round2(bucket.payablesRealized);
 

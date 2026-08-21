@@ -54,6 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/receivables/overdue", label: "Inadimplência", icon: "ic-inadimplencia" },
       { href: "/payables", label: "Contas a pagar", icon: "ic-pagar" },
       { href: "/receivables/avulsos", label: "Recebíveis avulsos", icon: "ic-receber" },
+      { href: "/receivables/consolidated", label: "Contas a receber consolidado", icon: "ic-receber" },
       { href: "/cash-flow", label: "Fluxo de caixa", icon: "ic-fluxo" },
     ],
   },
