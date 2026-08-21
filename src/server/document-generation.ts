@@ -127,6 +127,7 @@ export async function buildGenerationContext(
         include: {
           proposal: true,
           commissionSplits: true,
+          externalCommissionSplits: true,
         },
       },
     },
@@ -147,15 +148,50 @@ export async function buildGenerationContext(
     ? round2(items.reduce((sum, item) => sum + item.amount, 0))
     : Number(contract.sale.salePrice);
 
-  const commissionSplits = contract.sale.commissionSplits;
+  // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 6 — "Comissão de
+  // corretagem" no quadro-resumo é a INTERMEDIAÇÃO EXTERNA (o que a Lei
+  // 13.786 exige divulgar), não a interna (despesa da incorporadora, não é
+  // intermediação). Vendas no modelo novo têm ExternalCommissionSplit;
+  // vendas legadas caem no CommissionSplit de sempre (100% corretor/
+  // imobiliária, sem distinção de natureza).
+  const externalSplits = contract.sale.externalCommissionSplits;
+  const legacySplits = contract.sale.commissionSplits.filter((s) => s.beneficiaryType !== "MANAGER");
   const commissionPercent =
-    commissionSplits.length > 0
-      ? commissionSplits.reduce((sum, s) => sum + Number(s.percent), 0)
-      : null;
+    externalSplits.length > 0
+      ? externalSplits.reduce((sum, s) => sum + Number(s.percent), 0)
+      : legacySplits.length > 0
+        ? legacySplits.reduce((sum, s) => sum + Number(s.percent), 0)
+        : null;
   const commissionTotalValue =
-    commissionSplits.length > 0
-      ? commissionSplits.reduce((sum, s) => sum + Number(s.value), 0)
-      : null;
+    externalSplits.length > 0
+      ? externalSplits.reduce((sum, s) => sum + Number(s.value), 0)
+      : legacySplits.length > 0
+        ? legacySplits.reduce((sum, s) => sum + Number(s.value), 0)
+        : null;
+
+  const externalBrokerIds = externalSplits.map((s) => s.brokerId).filter((id): id is string => !!id);
+  const externalAgencyIds = externalSplits.map((s) => s.agencyId).filter((id): id is string => !!id);
+  const [commissionBrokers, commissionAgencies] = await Promise.all([
+    externalBrokerIds.length
+      ? prisma.broker.findMany({ where: { id: { in: externalBrokerIds } }, select: { id: true, name: true, document: true, creci: true } })
+      : Promise.resolve([]),
+    externalAgencyIds.length
+      ? prisma.realEstateAgency.findMany({ where: { id: { in: externalAgencyIds } }, select: { id: true, name: true, document: true } })
+      : Promise.resolve([]),
+  ]);
+  const brokerById = new Map(commissionBrokers.map((b) => [b.id, b]));
+  const agencyById = new Map(commissionAgencies.map((a) => [a.id, a]));
+  const commissionTable = externalSplits.map((split) => {
+    const broker = split.brokerId ? brokerById.get(split.brokerId) : null;
+    const agency = split.agencyId ? agencyById.get(split.agencyId) : null;
+    return {
+      creci: broker?.creci ?? null,
+      intermediaryName: broker?.name ?? agency?.name ?? split.label ?? "—",
+      document: broker?.document ?? agency?.document ?? null,
+      valueLabel: formatCurrency(Number(split.value)),
+      formLabel: "Conforme parcelas recebidas do comprador",
+    };
+  });
 
   const parkingSpaces = contract.unit.linksAsPrincipal
     .map((link) => link.accessoryUnit)
@@ -250,6 +286,7 @@ export async function buildGenerationContext(
       postHabiteSeIndexName: contract.development.postHabiteSeIndexRule?.name ?? null,
     },
     commission: { percent: commissionPercent, totalValue: commissionTotalValue },
+    commissionTable,
     penalties: {
       finePercent: Number(contract.latePaymentFinePercent),
       monthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent),

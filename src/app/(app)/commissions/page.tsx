@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getCommissionStatement, listUnsettledInternalCommissions } from "@/server/commissions";
+import { getCommissionRanking } from "@/server/commission-ranking";
 import { listBrokers, listAgencies } from "@/server/crm";
 import { formatCurrencyBRL } from "@/lib/format";
 import { InternalCommissionSettlement } from "./internal-commission-settlement";
@@ -44,7 +45,7 @@ export default async function CommissionsPage({
   const dateFrom = params.dateFrom ?? "";
   const dateTo = params.dateTo ?? "";
 
-  const [{ splits, totals }, brokers, agencies, unsettledInternal] = await Promise.all([
+  const [{ splits, totals }, brokers, agencies, unsettledInternal, ranking] = await Promise.all([
     getCommissionStatement(context, {
       brokerId: brokerId || undefined,
       agencyId: agencyId || undefined,
@@ -54,6 +55,7 @@ export default async function CommissionsPage({
     listBrokers(context.organizationId),
     listAgencies(context.organizationId),
     listUnsettledInternalCommissions(context),
+    getCommissionRanking(context),
   ]);
 
   const canSettleInternal = hasPermission(context, "payable", "CREATE");
@@ -128,6 +130,38 @@ export default async function CommissionsPage({
           <div className="inc-kpi__value">{formatCurrency(totals.paid)}</div>
         </div>
       </div>
+
+      <div className="inc-eyebrow" style={{ marginTop: "28px", marginBottom: "8px" }}>
+        Ranking — comissão externa (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4)
+      </div>
+      {ranking.length === 0 ? (
+        <p style={{ fontSize: "13px", color: "var(--inc-text-soft)" }}>Nenhuma comissão externa resolvida ainda.</p>
+      ) : (
+        <div className="inc-card">
+          <table className="inc-table" style={{ border: 0 }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Corretor/Imobiliária</th>
+                <th className="is-num">Vendas</th>
+                <th className="is-num">Total (bolo)</th>
+                <th className="is-num">Recebido até agora</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranking.slice(0, 10).map((row, index) => (
+                <tr key={row.key}>
+                  <td className="is-muted">{index + 1}</td>
+                  <td className="is-key">{row.name} {row.kind === "AGENCY" ? "(imobiliária)" : ""}</td>
+                  <td className="is-num">{row.saleCount}</td>
+                  <td className="is-num">{formatCurrency(row.totalEarned)}</td>
+                  <td className="is-num">{formatCurrency(row.totalPaid)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="inc-eyebrow" style={{ marginTop: "28px", marginBottom: "8px" }}>
         Comissão interna — liquidação consolidada (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4)

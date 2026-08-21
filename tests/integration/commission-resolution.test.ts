@@ -12,6 +12,8 @@ import { convertProposalToSale, setSaleInternalManager } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature } from "@/server/contracts";
 import { upsertCommissionRule } from "@/server/commission-rules";
 import { upsertSplitTiers } from "@/server/agency-split-tiers";
+import { getCommissionRanking } from "@/server/commission-ranking";
+import { registerInstallmentPayment } from "@/server/receivables";
 
 /**
  * docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Etapa 4 — resolução das duas
@@ -274,5 +276,31 @@ describe("Caso 5 — comissão interna (Natureza 2), ALL_SALES vs PARTICIPATED_O
     const splits = await prisma.commissionSplit.findMany({ where: { saleId: sale.id, beneficiaryType: "MANAGER" } });
     expect(splits).toHaveLength(1);
     expect(splits[0].brokerId).toBe(manager.id);
+  });
+});
+
+describe("Ranking — comissão externa por corretor/imobiliária", () => {
+  it("ordena por recebido até agora (regime caixa), não pelo total do bolo", async () => {
+    await upsertCommissionRule(context, developmentId, {
+      externalCommissionPercent: 6, internalCommissionPercent: null, internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null,
+    });
+    const brokerA = await createBroker(context, { name: "Corretor Ranking A" });
+    const brokerB = await createBroker(context, { name: "Corretor Ranking B" });
+
+    const { contract: contractA } = await setUpSale({ downPaymentPercent: 20, monthlyInstallments: 5, brokerId: brokerA.id });
+    const { contract: contractB } = await setUpSale({ downPaymentPercent: 20, monthlyInstallments: 5, brokerId: brokerB.id });
+    await confirmSignature(context, contractA.id);
+    await confirmSignature(context, contractB.id);
+
+    const portfolioA = (await prisma.receivablePortfolio.findUnique({ where: { contractId: contractA.id }, include: { installments: true } }))!;
+    // A recebe pagamento (comissão realizada); B só tem o bolo resolvido, nada pago ainda.
+    await registerInstallmentPayment(context, portfolioA.installments[0].id, { amount: Number(portfolioA.installments[0].originalValue), paidAt: new Date() });
+
+    const ranking = await getCommissionRanking(context);
+    const rowA = ranking.find((r) => r.name === "Corretor Ranking A")!;
+    const rowB = ranking.find((r) => r.name === "Corretor Ranking B")!;
+    expect(rowA.totalPaid).toBeGreaterThan(0);
+    expect(rowB.totalPaid).toBe(0);
+    expect(ranking.indexOf(rowA)).toBeLessThan(ranking.indexOf(rowB)); // A recebeu, sobe no ranking
   });
 });

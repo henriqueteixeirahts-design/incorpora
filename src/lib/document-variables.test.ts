@@ -53,6 +53,9 @@ const BASE_CTX: DocumentVariableContext = {
   },
   correction: { preHabiteSeIndexName: "INCC-M", postHabiteSeIndexName: "IGP-M" },
   commission: { percent: 6, totalValue: 30000 },
+  commissionTable: [
+    { creci: "GO-12345", intermediaryName: "Corretor Teste", document: "02654427102", valueLabel: brl(30000), formLabel: "Conforme parcelas recebidas do comprador" },
+  ],
   penalties: { finePercent: 2, monthlyInterestPercent: 1 },
   amendment: null,
   assignment: null,
@@ -122,6 +125,18 @@ describe("resolveDocumentVariables", () => {
     expect(resumo).toContain("tolerância legal de 180 dias");
     expect(resumo).toContain("multa de 2%");
     expect(resumo).toContain("juros de 1% ao mês");
+  });
+
+  it("bloco quadro_comissao lista CRECI/intermediador/documento/valor/forma por beneficiário externo", () => {
+    const { blocks } = resolveDocumentVariables(BASE_CTX);
+    expect(blocks.quadro_comissao).toContain("CRECI | Intermediador | CNPJ/CPF | Valor | Forma");
+    expect(blocks.quadro_comissao).toContain(`GO-12345 | Corretor Teste | 02654427102 | ${brl(30000)} | Conforme parcelas recebidas do comprador`);
+  });
+
+  it("sem intermediação (commissionTable vazia), o bloco avisa que não há", () => {
+    const ctx: DocumentVariableContext = { ...BASE_CTX, commissionTable: [] };
+    const { blocks } = resolveDocumentVariables(ctx);
+    expect(blocks.quadro_comissao).toBe("Não há intermediação nesta venda.");
   });
 
   it("prazo de entrega soma exatamente 180 dias corridos — conferido à mão", () => {

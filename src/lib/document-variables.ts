@@ -68,6 +68,15 @@ export const DOCUMENT_VARIABLE_CATALOG: { group: string; tokens: { key: string; 
     ],
   },
   {
+    group: "Comissão de intermediação",
+    tokens: [
+      {
+        key: "quadro_comissao",
+        label: "Bloco pronto (Lei 13.786/18, art. 33) — CRECI | Intermediador | CNPJ/CPF | Valor | Forma, por beneficiário",
+      },
+    ],
+  },
+  {
     group: "Aditivo",
     tokens: [
       { key: "aditivo.numero", label: "Número do aditivo (ex.: CT-2026-0001-AD01)" },
@@ -164,6 +173,20 @@ export type DocumentVariableContext = {
     postHabiteSeIndexName: string | null;
   };
   commission: { percent: number | null; totalValue: number | null };
+  /**
+   * Quadro de intermediação (Lei 13.786/18, art. 33 — docs/ESPEC_CORRETOR_
+   * COMISSIONAMENTO.md, Parte 6): um item por beneficiário da comissão
+   * EXTERNA (nunca a interna — essa não é intermediação, é despesa da
+   * incorporadora). Vazio quando a venda não tem intermediação (autônomo
+   * sem comissão configurada, ou modelo legado sem ExternalCommissionSplit).
+   */
+  commissionTable: {
+    creci: string | null;
+    intermediaryName: string;
+    document: string | null;
+    valueLabel: string;
+    formLabel: string;
+  }[];
   penalties: { finePercent: number; monthlyInterestPercent: number };
   /** Só presente quando o documento é gerado a partir de um aditivo (Fase A, Parte 2.2). */
   amendment: { number: string; typeLabel: string } | null;
@@ -256,6 +279,21 @@ function buildQuadroResumo(ctx: DocumentVariableContext): string {
   ].join("\n\n");
 }
 
+/**
+ * Quadro de intermediação (Lei 13.786/18, art. 33 —
+ * docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 6): CRECI | Intermediador |
+ * CNPJ/CPF | Valor | Forma, um item por beneficiário da comissão EXTERNA.
+ */
+function buildQuadroComissao(ctx: DocumentVariableContext): string {
+  if (ctx.commissionTable.length === 0) return "Não há intermediação nesta venda.";
+
+  const header = "CRECI | Intermediador | CNPJ/CPF | Valor | Forma";
+  const rows = ctx.commissionTable.map(
+    (row) => `${row.creci ?? "—"} | ${row.intermediaryName} | ${row.document ?? "—"} | ${row.valueLabel} | ${row.formLabel}`,
+  );
+  return [header, ...rows].join("\n");
+}
+
 /** Constrói o catálogo de variáveis escalares + blocos a partir do contexto já buscado do banco. */
 export function resolveDocumentVariables(ctx: DocumentVariableContext): ResolvedVariables {
   const scalars: Record<string, string> = {
@@ -328,6 +366,7 @@ export function resolveDocumentVariables(ctx: DocumentVariableContext): Resolved
   const blocks: Record<string, string> = {
     "fluxo.parcelas_tabela": formatFlowTable(ctx.flow.items),
     quadro_resumo: buildQuadroResumo(ctx),
+    quadro_comissao: buildQuadroComissao(ctx),
   };
 
   return { scalars, blocks };
