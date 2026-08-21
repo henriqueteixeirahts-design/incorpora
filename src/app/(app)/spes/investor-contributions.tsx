@@ -12,11 +12,148 @@ import {
   createCapitalCallAction,
   uploadCapitalCallDocumentAction,
   getCapitalCallDocumentUrlAction,
+  getInvestorReturnsAction,
+  createInvestorReturnAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 type CapitalCall = Awaited<ReturnType<typeof getCapitalCallsAction>>[number];
+type InvestorReturn = Awaited<ReturnType<typeof getInvestorReturnsAction>>[number];
+
+const RETURN_TYPE_LABELS: Record<string, string> = {
+  RESULT_DISTRIBUTION: "Distribuição de resultado",
+  LOAN_AMORTIZATION: "Amortização de mútuo",
+};
+
+const PAYABLE_STATUS_LABELS: Record<string, string> = {
+  ENTERED: "Lançada",
+  REVIEWED: "Conferida",
+  APPROVED: "Aprovada",
+  SCHEDULED: "Programada",
+  PAID: "Paga",
+  RECONCILED: "Conciliada",
+  CANCELLED: "Cancelada",
+};
+
+const returnFormInitialState: FormState = {};
+
+function InvestorReturnForm({ investorId, onSaved, onCancel }: { investorId: string; onSaved: () => void; onCancel: () => void }) {
+  const [state, dispatch, pending] = useActionState(createInvestorReturnAction, returnFormInitialState);
+
+  useEffect(() => {
+    if (state.success) onSaved();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form action={dispatch} style={{ marginTop: "0.5rem", marginBottom: "0.75rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Registrar devolução/distribuição</div>
+      <input type="hidden" name="investorId" value={investorId} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
+        <label className="inc-field">
+          <span className="inc-label">Tipo *</span>
+          <select name="type" className="inc-select" required defaultValue="RESULT_DISTRIBUTION">
+            <option value="RESULT_DISTRIBUTION">Distribuição de resultado (equity)</option>
+            <option value="LOAN_AMORTIZATION">Amortização de mútuo</option>
+          </select>
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Valor (R$) *</span>
+          <input name="amount" type="number" step="0.01" min="0.01" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Competência/período de referência *</span>
+          <input name="referenceDate" type="date" className="inc-input" required />
+        </label>
+        <label className="inc-field">
+          <span className="inc-label">Vencimento da conta a pagar *</span>
+          <input name="dueDate" type="date" className="inc-input" required />
+        </label>
+        <label className="inc-field" style={{ gridColumn: "1 / -1" }}>
+          <span className="inc-label">Observações</span>
+          <input name="notes" className="inc-input" />
+        </label>
+      </div>
+      <p className="field-hint">
+        Gera uma conta a pagar (fornecedor = investidor) na conta de devolução cadastrada — segue o fluxo de
+        aprovação normal em Contas a pagar.
+      </p>
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+        <button type="submit" className="inc-btn inc-btn--primary" disabled={pending}>
+          {pending ? "Salvando..." : "Registrar"}
+        </button>
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function InvestorReturnsSection({ investorId }: { investorId: string }) {
+  const [returns, setReturns] = useState<InvestorReturn[] | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  function load() {
+    getInvestorReturnsAction(investorId).then(setReturns);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investorId]);
+
+  return (
+    <div style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>
+        Devoluções e distribuições (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 3)
+      </div>
+      {!returns ? (
+        <p className="field-hint">Carregando...</p>
+      ) : returns.length === 0 ? (
+        <p className="field-hint">Nenhuma devolução/distribuição registrada.</p>
+      ) : (
+        <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Valor</th>
+              <th>Referência</th>
+              <th>Status (conta a pagar)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {returns.map((r) => (
+              <tr key={r.id}>
+                <td>{RETURN_TYPE_LABELS[r.type] ?? r.type}</td>
+                <td className="is-num">{formatCurrency(Number(r.amount))}</td>
+                <td className="is-muted">{formatCalendarDateBR(r.referenceDate)}</td>
+                <td>{PAYABLE_STATUS_LABELS[r.payable.status] ?? r.payable.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {creating ? (
+        <InvestorReturnForm
+          investorId={investorId}
+          onSaved={() => {
+            setCreating(false);
+            load();
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : (
+        <button type="button" className="inc-btn inc-btn--secondary" onClick={() => setCreating(true)}>
+          + Registrar devolução/distribuição
+        </button>
+      )}
+    </div>
+  );
+}
 
 const CAPITAL_CALL_STATUS_LABELS: Record<string, string> = {
   EMITTED: "Emitida",
@@ -573,6 +710,8 @@ export function InvestorContributionsPanel({
           + Registrar aporte
         </button>
       )}
+
+      <InvestorReturnsSection investorId={investorId} />
     </div>
   );
 }

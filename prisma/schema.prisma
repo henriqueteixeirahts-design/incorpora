@@ -347,6 +347,8 @@ model SpeInvestor {
   loanIndexRule         IndexRule?                        @relation(fields: [loanIndexRuleId], references: [id])
   contributionForecasts SpeInvestorContributionForecast[]
   contributions         SpeInvestorContribution[]
+  returns               SpeInvestorReturn[]
+  supplier              Supplier?
 
   @@map("spe_investors")
 }
@@ -433,6 +435,33 @@ model SpeInvestorContribution {
   bankAccount BankAccount                      @relation(fields: [bankAccountId], references: [id])
 
   @@map("spe_investor_contributions")
+}
+
+enum SpeInvestorReturnType {
+  RESULT_DISTRIBUTION // distribuição de resultado (equity) — valor informado manualmente nesta fase
+  LOAN_AMORTIZATION // amortização/quitação de mútuo — valor informado manualmente até a Etapa 5 existir (saldo devedor calculado)
+}
+
+/// Devolução/distribuição ao investidor (docs/ESPEC_APORTES_INVESTIDORES.md,
+/// Parte 3) — gera SEMPRE uma Payable (fornecedor = investidor, find-or-
+/// create, mesmo padrão de comissão/distrato), que passa pelo fluxo de
+/// aprovação normal do financeiro; este registro não tem status próprio —
+/// o ciclo de vida (aprovada/programada/paga) é inteiramente o da Payable
+/// vinculada, pra não duplicar máquina de estados.
+model SpeInvestorReturn {
+  id            String                @id @default(uuid()) @db.Uuid
+  investorId    String                @db.Uuid
+  type          SpeInvestorReturnType
+  amount        Decimal               @db.Decimal(14, 2)
+  referenceDate DateTime // competência/período a que a devolução/distribuição se refere
+  payableId     String                @unique @db.Uuid
+  notes         String?
+  createdAt     DateTime              @default(now())
+
+  investor SpeInvestor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  payable  Payable     @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@map("spe_investor_returns")
 }
 
 enum LandAcquisitionMethod {
@@ -2560,12 +2589,14 @@ model Supplier {
   brokerId       String?  @unique @db.Uuid
   agencyId       String?  @unique @db.Uuid
   customerId     String?  @unique @db.Uuid
+  speInvestorId  String?  @unique @db.Uuid
   createdAt      DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   broker       Broker?           @relation(fields: [brokerId], references: [id], onDelete: SetNull)
   agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  speInvestor  SpeInvestor?      @relation(fields: [speInvestorId], references: [id], onDelete: SetNull)
   payables     Payable[]
 
   @@map("suppliers")
@@ -2611,6 +2642,8 @@ enum PayableCategory {
   UTILITIES // concessionárias
   ADMINISTRATION
   CANCELLATION_REFUND // devoluções de distrato
+  INVESTOR_RETURN // devolução/amortização de mútuo a investidor (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 3)
+  RESULT_DISTRIBUTION // distribuição de resultado a investidor (idem)
   OTHER // despesas diversas
 }
 
@@ -2659,6 +2692,7 @@ model Payable {
   items                   PayableItem[]
   allocations             PayableAllocation[]
   commissionSplitPayables CommissionSplitPayable[]
+  investorReturn          SpeInvestorReturn?
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])

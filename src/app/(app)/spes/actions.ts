@@ -22,6 +22,7 @@ import type {
   SpeInvestorModality,
   SpeInvestorLoanInterestPeriod,
   SpeContributionForecastOrigin,
+  SpeInvestorReturnType,
   DocumentCategory,
   LandAcquisitionMethod,
   TaxRegime,
@@ -68,6 +69,11 @@ import {
   getCapitalCallDocumentUrl,
   type CreateCapitalCallInput,
 } from "@/server/spe-capital-calls";
+import {
+  listInvestorReturns,
+  createInvestorReturn,
+  type CreateInvestorReturnInput,
+} from "@/server/spe-investor-returns";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -973,4 +979,55 @@ export async function getCapitalCallDocumentUrlAction(investorId: string, capita
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao gerar o link." };
   }
+}
+
+export async function getInvestorReturnsAction(investorId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return [];
+  try {
+    return await listInvestorReturns(context, investorId);
+  } catch {
+    return [];
+  }
+}
+
+function parseInvestorReturnInput(formData: FormData): CreateInvestorReturnInput | { error: string } {
+  const type = String(formData.get("type") ?? "") as SpeInvestorReturnType;
+  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  const referenceDateRaw = String(formData.get("referenceDate") ?? "");
+  const dueDateRaw = String(formData.get("dueDate") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!["RESULT_DISTRIBUTION", "LOAN_AMORTIZATION"].includes(type)) return { error: "Informe o tipo (distribuição ou amortização)." };
+  const amount = Number(amountRaw);
+  if (!amountRaw || Number.isNaN(amount) || amount <= 0) return { error: "Informe um valor válido." };
+  if (!referenceDateRaw) return { error: "Informe a competência/período de referência." };
+  if (!dueDateRaw) return { error: "Informe a data de vencimento da conta a pagar." };
+
+  return { type, amount, referenceDate: new Date(referenceDateRaw), dueDate: new Date(dueDateRaw), notes: notes || undefined };
+}
+
+export async function createInvestorReturnAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT") || !hasPermission(context, "payable", "CREATE")) {
+    return { error: "Sem permissão." };
+  }
+
+  const investorId = String(formData.get("investorId") ?? "");
+  if (!investorId) return { error: "Investidor inválido." };
+
+  const input = parseInvestorReturnInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await createInvestorReturn(context, investorId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao registrar a devolução/distribuição." };
+  }
+  revalidatePath("/spes");
+  revalidatePath("/payables");
+  return { success: true };
 }
