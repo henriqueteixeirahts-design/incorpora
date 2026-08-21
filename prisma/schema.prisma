@@ -77,6 +77,8 @@ model Organization {
   reservationRules        ReservationRule[]
   proposalEvaluationRules ProposalEvaluationRule[]
   commissionReleaseRules  CommissionReleaseRule[]
+  commissionRules         CommissionRule[]
+  partnershipAgreements   PartnershipAgreement[]
   distratoRules           DistratoRule[]
   collectionRules         CollectionRule[]
   renegotiationRules      RenegotiationRule[]
@@ -697,6 +699,8 @@ enum DocumentTemplateType {
   RESCISSION // distrato
   AMENDMENT // aditivo contratual
   STATEMENT // extrato/demonstrativo (Fase B, Parte 1)
+  PARTNERSHIP_AGENCY // contrato de parceria com imobiliária (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 5)
+  PARTNERSHIP_BROKER // contrato de parceria com corretor autônomo (idem)
   OTHER // procuração, declaração, livre
 }
 
@@ -728,10 +732,11 @@ model DocumentTemplate {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
-  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                         @relation("DocumentTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  developments DocumentTemplateDevelopment[]
-  documents    Document[]
+  organization          Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy             User?                         @relation("DocumentTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  developments          DocumentTemplateDevelopment[]
+  documents             Document[]
+  partnershipAgreements PartnershipAgreement[]
 
   @@index([organizationId, templateGroupId])
   @@index([organizationId, type, status])
@@ -751,6 +756,44 @@ model DocumentTemplateDevelopment {
 
   @@unique([documentTemplateId, developmentId])
   @@map("document_template_developments")
+}
+
+enum PartnershipPartnerType {
+  AGENCY
+  AUTONOMOUS_BROKER
+}
+
+enum PartnershipAgreementStatus {
+  DRAFT
+  SIGNED
+}
+
+/// Contrato de parceria com corretor autônomo ou imobiliária
+/// (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 5) — trava a GERAÇÃO do
+/// contrato de compra e venda (não o fechamento da venda em si) enquanto
+/// não houver uma parceria SIGNED pro beneficiário da comissão externa da
+/// venda. Um por corretor/imobiliária — unicidade garantida no service
+/// layer (mesmo padrão das demais regras "uma linha geral"), não no schema.
+/// agencyId/brokerId são colunas soltas (sem relation Prisma), mesmo padrão
+/// de CommissionSplit.brokerId/agencyId nesta base.
+model PartnershipAgreement {
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @db.Uuid
+  partnerType    PartnershipPartnerType
+  agencyId       String?                    @db.Uuid
+  brokerId       String?                    @db.Uuid
+  templateId     String?                    @db.Uuid
+  documentPath   String?
+  status         PartnershipAgreementStatus @default(DRAFT)
+  signedAt       DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("partnership_agreements")
 }
 
 enum NotificationChannel {
@@ -962,6 +1005,7 @@ model Development {
   proposalEvaluationRule         ProposalEvaluationRule?
   documentTemplates              DocumentTemplateDevelopment[]
   commissionReleaseRule          CommissionReleaseRule?
+  commissionRule                 CommissionRule?
   distratoRule                   DistratoRule?
   collectionRule                 CollectionRule?
   renegotiationRule              RenegotiationRule?
@@ -1234,13 +1278,29 @@ model CustomerContact {
 }
 
 /// Imobiliária parceira.
+/// Imobiliária parceira (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 2) —
+/// cadastro PJ no mesmo padrão de endereço/auditoria de Customer/Permutante.
+/// regionalManagerBrokerId/productManagerBrokerId são os dois beneficiários
+/// FIXOS do split (Parte 3.2) — apontam pra um Broker (role MANAGER),
+/// guardados como coluna solta (sem relation Prisma), mesmo padrão já usado
+/// por CommissionSplit.brokerId/agencyId nesta base.
 model RealEstateAgency {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  name           String
-  document       String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  id                      String   @id @default(uuid()) @db.Uuid
+  organizationId          String   @db.Uuid
+  name                    String
+  document                String?
+  zipCode                 String?
+  street                  String?
+  number                  String?
+  complement              String?
+  neighborhood            String?
+  city                    String?
+  state                   String?  @db.VarChar(2)
+  regionalManagerBrokerId String?  @db.Uuid
+  productManagerBrokerId  String?  @db.Uuid
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   brokers         Broker[]
@@ -1248,30 +1308,96 @@ model RealEstateAgency {
   waitlistEntries ReservationWaitlistEntry[]
   proposals       Proposal[]
   supplier        Supplier?
+  splitTiers      AgencySplitTier[]
 
+  @@unique([organizationId, document])
   @@map("real_estate_agencies")
 }
 
-/// Corretor de vendas, opcionalmente vinculado a uma imobiliária.
+enum BrokerRole {
+  BROKER
+  MANAGER
+}
+
+/// Corretor de vendas, sempre PF (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md,
+/// Parte 1) — cadastro no mesmo padrão de endereço/auditoria de Customer/
+/// Permutante. AUTÔNOMO vs VINCULADO é derivado de agencyId (nulo =
+/// autônomo), não um campo redundante. managerId (self-FK) é o "gerente
+/// direto" da hierarquia (Parte 1.3) — só faz sentido quando role=MANAGER
+/// no Broker apontado, validado no service layer. billing* é o bloco de
+/// faturamento (Parte 1.1): o pagamento pode ir pro próprio CPF do
+/// corretor ou pra uma PJ que ele indique (billingType=COMPANY).
 model Broker {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  agencyId       String?  @db.Uuid
-  name           String
-  document       String?
-  email          String?
-  phone          String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @db.Uuid
+  agencyId           String?       @db.Uuid
+  managerId          String?       @db.Uuid
+  role               BrokerRole    @default(BROKER)
+  name               String
+  document           String?
+  creci              String?
+  email              String?
+  phone              String?
+  zipCode            String?
+  street             String?
+  number             String?
+  complement         String?
+  neighborhood       String?
+  city               String?
+  state              String?       @db.VarChar(2)
+  billingType        CustomerType?
+  billingDocument    String?
+  billingName        String?
+  billingBankName    String?
+  billingBankAgency  String?
+  billingBankAccount String?
+  billingPixKey      String?
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   agency          RealEstateAgency?          @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  manager         Broker?                    @relation("BrokerManager", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports   Broker[]                   @relation("BrokerManager")
   reservations    Reservation[]
   waitlistEntries ReservationWaitlistEntry[]
   proposals       Proposal[]
   supplier        Supplier?
 
+  @@unique([organizationId, document])
   @@map("brokers")
+}
+
+/// Fatia da regra de split fixa/global de uma imobiliária
+/// (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3.2) — soma das fatias
+/// tem que dar 100%, validado no service layer (upsertAgencySplitTiers), não
+/// no schema. FIXED_AGENCY/FIXED_BROKER recebem sempre (o beneficiário é
+/// fixo); DYNAMIC_* são resolvidos na hora do fechamento da venda (Parte
+/// 3.3): DYNAMIC_BROKER_OF_SALE = quem vendeu; DYNAMIC_MANAGER_OF_BROKER =
+/// o gerente direto do corretor da venda (caso-limite: sem gerente, a
+/// fatia soma na do corretor — resolvido em código, não aqui).
+enum SplitTierKind {
+  FIXED_AGENCY
+  FIXED_BROKER
+  DYNAMIC_BROKER_OF_SALE
+  DYNAMIC_MANAGER_OF_BROKER
+}
+
+model AgencySplitTier {
+  id            String        @id @default(uuid()) @db.Uuid
+  agencyId      String        @db.Uuid
+  label         String
+  percent       Decimal       @db.Decimal(5, 2)
+  kind          SplitTierKind
+  fixedBrokerId String?       @db.Uuid
+  sequence      Int
+  createdAt     DateTime      @default(now())
+
+  agency RealEstateAgency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@map("agency_split_tiers")
 }
 
 /// Tabela de vendas de um empreendimento (PRD seção 5). Um empreendimento
@@ -1603,7 +1729,15 @@ model Sale {
   status                         SaleStatus              @default(ACTIVE)
   // Sobrescreve o destino da entrada definido na tabela de vendas (Parte
   // 4.2) — nulo = usa o da tabela. Alteração gated por permissão na action.
+  // @deprecated — substituído pelo fracionamento de Installment.
+  // externalCommissionPortion (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md);
+  // mantido só pra leitura de vendas já assinadas antes dessa fase.
   downPaymentDestinationOverride DownPaymentDestination?
+  // Gerente comercial interno da TSH creditado por esta venda (Natureza 2 —
+  // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4), quando
+  // CommissionRule.internalCommissionAppliesTo = PARTICIPATED_ONLY. Coluna
+  // solta (sem relation Prisma), mesmo padrão de CommissionSplit.brokerId.
+  internalManagerBrokerId        String?                 @db.Uuid
   createdAt                      DateTime                @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1613,8 +1747,9 @@ model Sale {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   reservation  Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
-  commissionSplits CommissionSplit[]
-  contract         Contract?
+  commissionSplits         CommissionSplit[]
+  externalCommissionSplits ExternalCommissionSplit[]
+  contract                 Contract?
 
   @@unique([organizationId, saleNumber])
   @@map("sales")
@@ -1643,6 +1778,16 @@ enum CommissionStatus {
 /// (via o Payable vinculado sendo pago pelo fluxo normal de Contas a pagar
 /// — não existe uma ação de "pagar comissão" separada, spec 4.2: "sem duplo
 /// lançamento manual").
+/// Split de comissão INTERNA (Natureza 2, gerente comercial TSH —
+/// docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4). accruedAmount/
+/// settledAmount são o novo modelo de regime caixa literal: acumulam
+/// proporcionalmente a cada parcela que o cliente paga (sobre o valor TOTAL
+/// pago, mesmo quando a parcela também tem fatia de comissão externa — ver
+/// Installment.externalCommissionPortion), e são consolidados num Payable
+/// periódico via CommissionSplitPayable (não um Payable por parcela).
+/// payableId/payable seguem existindo intocados pro fluxo antigo (splits
+/// manuais via addCommissionSplit que ainda usam CommissionReleaseRule) —
+/// o novo fluxo de liquidação (Etapa 5) nunca escreve neles.
 model CommissionSplit {
   id              String                    @id @default(uuid()) @db.Uuid
   saleId          String                    @db.Uuid
@@ -1652,6 +1797,8 @@ model CommissionSplit {
   label           String? // nome do coordenador/gerente/campanha, quando não for broker/agency
   percent         Decimal                   @db.Decimal(5, 2)
   value           Decimal                   @db.Decimal(14, 2)
+  accruedAmount   Decimal                   @default(0) @db.Decimal(14, 2)
+  settledAmount   Decimal                   @default(0) @db.Decimal(14, 2)
   dueDate         DateTime?
   status          CommissionStatus          @default(PENDING)
   releasedAt      DateTime?
@@ -1659,10 +1806,63 @@ model CommissionSplit {
   payableId       String?                   @unique @db.Uuid
   createdAt       DateTime                  @default(now())
 
-  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  payable Payable? @relation(fields: [payableId], references: [id], onDelete: SetNull)
+  sale     Sale                     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  payable  Payable?                 @relation(fields: [payableId], references: [id], onDelete: SetNull)
+  payables CommissionSplitPayable[]
 
   @@map("commission_splits")
+}
+
+/// Liga um Payable consolidado (liquidação mensal da comissão interna) às N
+/// CommissionSplit (de N vendas, possivelmente) que o financiam — substitui,
+/// pro novo fluxo, o antigo 1:1 CommissionSplit.payableId (que fica intocado
+/// pro fluxo legado, ver comentário em CommissionSplit).
+model CommissionSplitPayable {
+  id        String   @id @default(uuid()) @db.Uuid
+  splitId   String   @db.Uuid
+  payableId String   @db.Uuid
+  amount    Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+
+  split   CommissionSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  payable Payable         @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([splitId])
+  @@index([payableId])
+  @@map("commission_split_payables")
+}
+
+enum ExternalCommissionStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+/// Split da comissão de INTERMEDIAÇÃO EXTERNA (Natureza 1 —
+/// docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3/4) — paga pelo
+/// comprador, NUNCA vira Payable (só cálculo + exibição + ranking).
+/// paidAmount acumula proporcionalmente conforme o cliente paga as parcelas
+/// destinadas à comissão (Installment.externalCommissionPortion) — ver
+/// src/server/commissions.ts. Resolvido uma vez no fechamento da venda a
+/// partir de AgencySplitTier (ou uma fatia única de 100% se autônomo).
+model ExternalCommissionSplit {
+  id              String                    @id @default(uuid()) @db.Uuid
+  saleId          String                    @db.Uuid
+  beneficiaryType CommissionBeneficiaryType
+  brokerId        String?                   @db.Uuid
+  agencyId        String?                   @db.Uuid
+  label           String?
+  percent         Decimal                   @db.Decimal(5, 2)
+  value           Decimal                   @db.Decimal(14, 2)
+  paidAmount      Decimal                   @default(0) @db.Decimal(14, 2)
+  status          ExternalCommissionStatus  @default(PENDING)
+  createdAt       DateTime                  @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("external_commission_splits")
 }
 
 enum CommissionReleaseTrigger {
@@ -1674,7 +1874,10 @@ enum CommissionReleaseTrigger {
 /// Regra de liberação de comissão — geral (organização) OU por empreendimento
 /// (Fase A, Parte 4.1 — "regra de liberação configurável";
 /// docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 1.3). Mesmo padrão das 6 regras
-/// parametrizáveis — ver comentário completo em `DistratoRule`.
+/// parametrizáveis — ver comentário completo em `DistratoRule`. Modela um
+/// GATILHO de liberação em lote — usado só pelo fluxo legado de splits
+/// manuais (addCommissionSplit); as duas naturezas novas (Etapa 4+) não
+/// usam mais isto, ver CommissionRule.
 model CommissionReleaseRule {
   id                      String                   @id @default(uuid()) @db.Uuid
   organizationId          String                   @db.Uuid
@@ -1688,6 +1891,35 @@ model CommissionReleaseRule {
   development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
 
   @@map("commission_release_rules")
+}
+
+enum InternalCommissionAppliesTo {
+  ALL_SALES // gerente recebe em toda venda do empreendimento
+  PARTICIPATED_ONLY // só nas vendas em que participou (Sale.internalManagerBrokerId setado)
+}
+
+/// Percentuais de comissão das duas naturezas
+/// (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3.1 e Parte 4) — geral
+/// (organização) OU por empreendimento. Mesmo padrão das demais regras
+/// parametrizáveis (ver comentário completo em DistratoRule): no máximo uma
+/// linha geral por organização e uma por empreendimento, garantido em
+/// upsertCommissionRule, não no schema. Deliberadamente separado de
+/// CommissionReleaseRule — aquele modela um GATILHO de liberação em lote,
+/// semântica incompatível com "acumula a cada parcela paga" daqui.
+model CommissionRule {
+  id                          String                      @id @default(uuid()) @db.Uuid
+  organizationId              String                      @db.Uuid
+  developmentId               String?                     @unique @db.Uuid
+  externalCommissionPercent   Decimal?                    @db.Decimal(5, 2)
+  internalCommissionPercent   Decimal?                    @db.Decimal(5, 2)
+  internalCommissionAppliesTo InternalCommissionAppliesTo @default(ALL_SALES)
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@map("commission_rules")
 }
 
 /// Regra de distrato — geral (organização, `developmentId` nulo) OU por
@@ -2114,20 +2346,20 @@ enum InstallmentStatus {
 /// são um cache do último cálculo (Fase 9-10); o histórico completo e
 /// auditável de cada cálculo fica em FinancialCalculation.
 model Installment {
-  id                     String            @id @default(uuid()) @db.Uuid
-  portfolioId            String            @db.Uuid
-  sequence               Int
-  label                  String
-  dueDate                DateTime
-  originalValue          Decimal           @db.Decimal(14, 2)
-  correctedValue         Decimal?          @db.Decimal(14, 2)
-  paidAmount             Decimal           @default(0) @db.Decimal(14, 2)
-  lastCalculatedAt       DateTime?
-  status                 InstallmentStatus @default(PENDING)
+  id                        String            @id @default(uuid()) @db.Uuid
+  portfolioId               String            @db.Uuid
+  sequence                  Int
+  label                     String
+  dueDate                   DateTime
+  originalValue             Decimal           @db.Decimal(14, 2)
+  correctedValue            Decimal?          @db.Decimal(14, 2)
+  paidAmount                Decimal           @default(0) @db.Decimal(14, 2)
+  lastCalculatedAt          DateTime?
+  status                    InstallmentStatus @default(PENDING)
   // Marca a parcela de entrada (Fase A, Parte 4.1 — gatilho de liberação de
   // comissão "no recebimento da entrada"). Sem isso, teria que casar por
   // `label === "Entrada"` (frágil, o label é texto livre do fluxo).
-  isDownPayment          Boolean           @default(false)
+  isDownPayment             Boolean           @default(false)
   // Fase B, Parte 2 (renegociação de parcelas) — quando uma parcela original
   // vira "Renegociada" (CANCELLED aqui, nunca apagada), `originAgreementId`
   // aponta pro acordo que a consumiu; quando uma parcela nova é criada por
@@ -2135,10 +2367,17 @@ model Installment {
   // só é setado nas parcelas de destino quando o acordo escolheu "sem
   // correção futura" — a parcela não aplica índice/juros contratuais na
   // correção ao vivo, mas ainda acumula multa/mora normalmente se vencer.
-  originAgreementId      String?           @db.Uuid
-  destinationAgreementId String?           @db.Uuid
-  correctionExempt       Boolean           @default(false)
-  createdAt              DateTime          @default(now())
+  originAgreementId         String?           @db.Uuid
+  destinationAgreementId    String?           @db.Uuid
+  correctionExempt          Boolean           @default(false)
+  // Fatia de originalValue destinada à comissão de intermediação externa
+  // (Natureza 1 — docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4), nunca
+  // reconhecida como receita da SPE. 0 pra maioria das parcelas; igual a
+  // originalValue nas parcelas totalmente consumidas (invisíveis ao
+  // extrato/portal do cliente); parcial só na parcela-fronteira. Setado uma
+  // vez no fechamento do contrato (src/server/contracts.ts::confirmSignature).
+  externalCommissionPortion Decimal           @default(0) @db.Decimal(14, 2)
+  createdAt                 DateTime          @default(now())
 
   portfolio             ReceivablePortfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   payments              InstallmentPayment[]
@@ -2372,15 +2611,16 @@ model Payable {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  development     Development?          @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  spe             SpecialPurposeEntity? @relation(fields: [speId], references: [id], onDelete: SetNull)
-  supplier        Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  costCenter      CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  commissionSplit CommissionSplit?
-  distrato        ContractDistrato?
-  items           PayableItem[]
-  allocations     PayableAllocation[]
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development             Development?             @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  spe                     SpecialPurposeEntity?    @relation(fields: [speId], references: [id], onDelete: SetNull)
+  supplier                Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  costCenter              CostCenter?              @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  commissionSplit         CommissionSplit?
+  distrato                ContractDistrato?
+  items                   PayableItem[]
+  allocations             PayableAllocation[]
+  commissionSplitPayables CommissionSplitPayable[]
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])
