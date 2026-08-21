@@ -56,6 +56,11 @@ export default async function SettingsPage() {
           label: "Renegociação de parcelas",
           visible: hasPermission(context, "development", "VIEW"),
         },
+        {
+          href: "/settings/rules/commission",
+          label: "Comissão — percentuais gerais",
+          visible: hasPermission(context, "development", "VIEW"),
+        },
       ],
     },
     {

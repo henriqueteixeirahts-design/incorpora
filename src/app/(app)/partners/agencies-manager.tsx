@@ -6,9 +6,25 @@ import { Modal } from "@/components/Modal";
 import { EditIcon, TrashIcon, SortIcon } from "@/components/icons";
 import { AddressFields } from "@/components/AddressFields";
 import { formatDocument, isValidDocument } from "@/lib/br-validation";
-import { createAgencyAction, updateAgencyAction, deleteAgencyAction, type FormState } from "./actions";
+import {
+  createAgencyAction,
+  updateAgencyAction,
+  deleteAgencyAction,
+  getSplitTiersAction,
+  upsertSplitTiersAction,
+  type FormState,
+  type SplitTierFormState,
+} from "./actions";
 import type { AgencySortField } from "@/server/crm";
 import { formatDateTimeBR } from "@/lib/format";
+import type { SplitTierInput } from "@/server/agency-split-tiers";
+
+const SPLIT_TIER_KIND_LABELS: Record<SplitTierInput["kind"], string> = {
+  FIXED_AGENCY: "Fixo — a imobiliária",
+  FIXED_BROKER: "Fixo — corretor/gerente específico",
+  DYNAMIC_BROKER_OF_SALE: "Dinâmico — corretor da venda",
+  DYNAMIC_MANAGER_OF_BROKER: "Dinâmico — gerente direto do corretor",
+};
 
 export type AgencyRow = {
   id: string;
@@ -60,6 +76,7 @@ export function AgenciesManager({
   canDelete: boolean;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
+  const [splitAgency, setSplitAgency] = useState<AgencyRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -146,6 +163,11 @@ export function AgenciesManager({
                   <td>
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
                       {canEdit ? (
+                        <button type="button" className="inc-btn inc-btn--secondary" style={{ padding: "4px 10px", fontSize: "12px" }} onClick={() => setSplitAgency(agency)}>
+                          Split
+                        </button>
+                      ) : null}
+                      {canEdit ? (
                         <button
                           type="button"
                           className="inc-btn-icon"
@@ -199,6 +221,10 @@ export function AgenciesManager({
           managers={managers}
           onClose={() => setModal(null)}
         />
+      ) : null}
+
+      {splitAgency ? (
+        <SplitTierModal agency={splitAgency} managers={managers} onClose={() => setSplitAgency(null)} />
       ) : null}
     </div>
   );
@@ -309,6 +335,156 @@ function AgencyModal({
 
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
+    </Modal>
+  );
+}
+
+type TierRow = SplitTierInput & { key: string };
+
+function newTierRow(): TierRow {
+  return { key: Math.random().toString(36).slice(2), label: "", percent: 0, kind: "DYNAMIC_BROKER_OF_SALE", fixedBrokerId: null };
+}
+
+const splitInitialState: SplitTierFormState = {};
+
+function SplitTierModal({
+  agency,
+  managers,
+  onClose,
+}: {
+  agency: AgencyRow;
+  managers: ManagerOption[];
+  onClose: () => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, dispatch, pending] = useActionState(upsertSplitTiersAction, splitInitialState);
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<TierRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSplitTiersAction(agency.id).then((result) => {
+      if (cancelled) return;
+      const tiers = "tiers" in result ? result.tiers : [];
+      setRows(
+        tiers.length > 0
+          ? tiers.map((t) => ({ ...t, key: Math.random().toString(36).slice(2) }))
+          : [newTierRow()],
+      );
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agency.id]);
+
+  useEffect(() => {
+    if (state.success) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  function updateRow(key: string, patch: Partial<TierRow>) {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function removeRow(key: string) {
+    setRows((prev) => prev.filter((r) => r.key !== key));
+  }
+
+  const sum = rows.reduce((acc, r) => acc + (Number(r.percent) || 0), 0);
+  const sumOk = Math.round(sum * 100) === 10000;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Split de comissão — ${agency.name}`}
+      width={720}
+      footer={
+        <>
+          <button type="button" className="inc-btn inc-btn--secondary" onClick={onClose}>Fechar</button>
+          <button type="button" className="inc-btn inc-btn--primary" disabled={pending || loading || !sumOk} onClick={() => formRef.current?.requestSubmit()}>
+            {pending ? "Salvando..." : "Salvar"}
+          </button>
+        </>
+      }
+    >
+      <p style={{ fontSize: "12px", color: "var(--inc-text-soft)", marginTop: 0 }}>
+        As fatias precisam somar exatamente 100% (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3.2). Fatias
+        dinâmicas resolvem na hora do fechamento da venda; se &quot;Gerente direto&quot; não tiver destinatário, a fatia
+        soma automaticamente na do corretor.
+      </p>
+      {loading ? (
+        <p style={{ fontSize: "13px", color: "var(--inc-text-soft)" }}>Carregando...</p>
+      ) : (
+        <form ref={formRef} action={dispatch}>
+          <input type="hidden" name="agencyId" value={agency.id} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {rows.map((row) => (
+              <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1.4fr 0.7fr 1.4fr 1.2fr auto", gap: "8px", alignItems: "center" }}>
+                <input
+                  className="inc-input"
+                  placeholder="Rótulo (ex.: Corretor)"
+                  name="tierLabel"
+                  value={row.label}
+                  onChange={(e) => updateRow(row.key, { label: e.target.value })}
+                  required
+                />
+                <input
+                  className="inc-input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  name="tierPercent"
+                  value={row.percent}
+                  onChange={(e) => updateRow(row.key, { percent: Number(e.target.value) })}
+                  required
+                />
+                <select
+                  className="inc-select"
+                  name="tierKind"
+                  value={row.kind}
+                  onChange={(e) => updateRow(row.key, { kind: e.target.value as SplitTierInput["kind"], fixedBrokerId: null })}
+                >
+                  {Object.entries(SPLIT_TIER_KIND_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                {row.kind === "FIXED_BROKER" ? (
+                  <select
+                    className="inc-select"
+                    name="tierFixedBrokerId"
+                    value={row.fixedBrokerId ?? ""}
+                    onChange={(e) => updateRow(row.key, { fixedBrokerId: e.target.value || null })}
+                    required
+                  >
+                    <option value="" disabled>Selecione...</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input type="hidden" name="tierFixedBrokerId" value="" />
+                )}
+                <button type="button" className="inc-btn-icon" aria-label="Remover fatia" onClick={() => removeRow(row.key)} style={{ color: "var(--inc-danger)" }}>
+                  <TrashIcon />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button type="button" className="inc-btn inc-btn--secondary" style={{ marginTop: "12px" }} onClick={() => setRows((prev) => [...prev, newTierRow()])}>
+            + Nova fatia
+          </button>
+
+          <p style={{ marginTop: "12px", fontSize: "13px", fontWeight: 600, color: sumOk ? "var(--inc-success-text)" : "var(--inc-danger)" }}>
+            Soma: {sum.toFixed(2)}% {sumOk ? "✓" : "— precisa fechar em 100%"}
+          </p>
+
+          {state.error ? <p className="error-text" style={{ marginTop: "10px" }}>{state.error}</p> : null}
+        </form>
+      )}
     </Modal>
   );
 }

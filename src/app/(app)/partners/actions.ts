@@ -12,7 +12,8 @@ import {
   type CreateAgencyInput,
   type CreateBrokerInput,
 } from "@/server/crm";
-import type { BrokerRole, CustomerType } from "@/generated/prisma/client";
+import { listSplitTiers, upsertSplitTiers, type SplitTierInput } from "@/server/agency-split-tiers";
+import type { BrokerRole, CustomerType, SplitTierKind } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -163,6 +164,54 @@ export async function updateBrokerAction(
     await updateBroker(context, brokerId, input);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao atualizar corretor." };
+  }
+  revalidatePath("/partners");
+  return { success: true };
+}
+
+export async function getSplitTiersAction(agencyId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "agency", "VIEW")) return { error: "Sem permissão.", tiers: [] as SplitTierInput[] };
+
+  const tiers = await listSplitTiers(agencyId);
+  return {
+    tiers: tiers.map((t) => ({
+      label: t.label,
+      percent: Number(t.percent),
+      kind: t.kind,
+      fixedBrokerId: t.fixedBrokerId,
+    })),
+  };
+}
+
+export type SplitTierFormState = { error?: string; success?: boolean };
+
+export async function upsertSplitTiersAction(
+  _prevState: SplitTierFormState,
+  formData: FormData,
+): Promise<SplitTierFormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "agency", "EDIT")) return { error: "Sem permissão." };
+
+  const agencyId = String(formData.get("agencyId") ?? "");
+  if (!agencyId) return { error: "Imobiliária inválida." };
+
+  const labels = formData.getAll("tierLabel").map(String);
+  const percents = formData.getAll("tierPercent").map(Number);
+  const kinds = formData.getAll("tierKind").map(String) as SplitTierKind[];
+  const fixedBrokerIds = formData.getAll("tierFixedBrokerId").map(String);
+
+  const tiers: SplitTierInput[] = labels.map((label, i) => ({
+    label,
+    percent: percents[i],
+    kind: kinds[i],
+    fixedBrokerId: fixedBrokerIds[i] || null,
+  }));
+
+  try {
+    await upsertSplitTiers(context, agencyId, tiers);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar o split." };
   }
   revalidatePath("/partners");
   return { success: true };
