@@ -23,6 +23,7 @@ import type {
   SpeInvestorLoanInterestPeriod,
   SpeContributionForecastOrigin,
   SpeInvestorReturnType,
+  InterestType,
   DocumentCategory,
   LandAcquisitionMethod,
   TaxRegime,
@@ -74,6 +75,7 @@ import {
   createInvestorReturn,
   type CreateInvestorReturnInput,
 } from "@/server/spe-investor-returns";
+import { getInvestorLoanPosition, recordInvestorLoanSnapshot } from "@/server/spe-investor-loan";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -372,6 +374,7 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
   const returnPixKeyValue = String(formData.get("returnPixKeyValue") ?? "").trim();
   const loanInterestRateRaw = String(formData.get("loanInterestRate") ?? "").replace(",", ".");
   const loanInterestPeriod = String(formData.get("loanInterestPeriod") ?? "") as SpeInvestorLoanInterestPeriod | "";
+  const loanInterestType = String(formData.get("loanInterestType") ?? "") as InterestType | "";
   const loanIndexRuleId = String(formData.get("loanIndexRuleId") ?? "").trim();
   const loanGraceMonthsRaw = String(formData.get("loanGraceMonths") ?? "");
   const loanTermMonthsRaw = String(formData.get("loanTermMonths") ?? "");
@@ -409,6 +412,9 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
   if (loanInterestPeriod && !["MONTHLY", "YEARLY"].includes(loanInterestPeriod)) {
     return { error: "Periodicidade da taxa de juros inválida." };
   }
+  if (loanInterestType && !["SIMPLE", "COMPOUND"].includes(loanInterestType)) {
+    return { error: "Tipo de juros do mútuo inválido." };
+  }
   const loanGraceMonths = loanGraceMonthsRaw ? Number(loanGraceMonthsRaw) : undefined;
   if (loanGraceMonths !== undefined && (!Number.isInteger(loanGraceMonths) || loanGraceMonths < 0)) {
     return { error: "Carência do mútuo inválida." };
@@ -437,6 +443,7 @@ function parseSpeInvestorInput(formData: FormData): CreateSpeInvestorInput | { e
     returnPixKeyValue: returnPixKeyValue || undefined,
     loanInterestRate,
     loanInterestPeriod: loanInterestPeriod || undefined,
+    loanInterestType: loanInterestType || undefined,
     loanIndexRuleId: loanIndexRuleId || undefined,
     loanGraceMonths,
     loanTermMonths,
@@ -1029,5 +1036,27 @@ export async function createInvestorReturnAction(
   }
   revalidatePath("/spes");
   revalidatePath("/payables");
+  return { success: true };
+}
+
+export async function getInvestorLoanPositionAction(investorId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return null;
+  try {
+    return await getInvestorLoanPosition(context, investorId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao calcular o saldo devedor do mútuo." };
+  }
+}
+
+export async function recordInvestorLoanSnapshotAction(investorId: string): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "EDIT")) return { error: "Sem permissão." };
+  try {
+    await recordInvestorLoanSnapshot(context, investorId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao recalcular o saldo devedor do mútuo." };
+  }
+  revalidatePath("/spes");
   return { success: true };
 }

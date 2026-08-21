@@ -14,12 +14,16 @@ import {
   getCapitalCallDocumentUrlAction,
   getInvestorReturnsAction,
   createInvestorReturnAction,
+  getInvestorLoanPositionAction,
+  recordInvestorLoanSnapshotAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
 
 type CapitalCall = Awaited<ReturnType<typeof getCapitalCallsAction>>[number];
 type InvestorReturn = Awaited<ReturnType<typeof getInvestorReturnsAction>>[number];
+type LoanPositionResult = Awaited<ReturnType<typeof getInvestorLoanPositionAction>>;
+type LoanPosition = Exclude<LoanPositionResult, null | { error: string }>;
 
 const RETURN_TYPE_LABELS: Record<string, string> = {
   RESULT_DISTRIBUTION: "Distribuição de resultado",
@@ -38,7 +42,17 @@ const PAYABLE_STATUS_LABELS: Record<string, string> = {
 
 const returnFormInitialState: FormState = {};
 
-function InvestorReturnForm({ investorId, onSaved, onCancel }: { investorId: string; onSaved: () => void; onCancel: () => void }) {
+function InvestorReturnForm({
+  investorId,
+  loanNetBalance,
+  onSaved,
+  onCancel,
+}: {
+  investorId: string;
+  loanNetBalance: number | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
   const [state, dispatch, pending] = useActionState(createInvestorReturnAction, returnFormInitialState);
 
   useEffect(() => {
@@ -78,6 +92,9 @@ function InvestorReturnForm({ investorId, onSaved, onCancel }: { investorId: str
       <p className="field-hint">
         Gera uma conta a pagar (fornecedor = investidor) na conta de devolução cadastrada — segue o fluxo de
         aprovação normal em Contas a pagar.
+        {loanNetBalance !== null ? (
+          <> Saldo devedor atual do mútuo: <strong>{formatCurrency(loanNetBalance)}</strong>.</>
+        ) : null}
       </p>
       {state.error ? <p className="error-text">{state.error}</p> : null}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
@@ -92,7 +109,15 @@ function InvestorReturnForm({ investorId, onSaved, onCancel }: { investorId: str
   );
 }
 
-function InvestorReturnsSection({ investorId }: { investorId: string }) {
+function InvestorReturnsSection({
+  investorId,
+  loanNetBalance,
+  onLoanAffectingChange,
+}: {
+  investorId: string;
+  loanNetBalance: number | null;
+  onLoanAffectingChange: () => void;
+}) {
   const [returns, setReturns] = useState<InvestorReturn[] | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -140,9 +165,11 @@ function InvestorReturnsSection({ investorId }: { investorId: string }) {
       {creating ? (
         <InvestorReturnForm
           investorId={investorId}
+          loanNetBalance={loanNetBalance}
           onSaved={() => {
             setCreating(false);
             load();
+            onLoanAffectingChange();
           }}
           onCancel={() => setCreating(false)}
         />
@@ -151,6 +178,99 @@ function InvestorReturnsSection({ investorId }: { investorId: string }) {
           + Registrar devolução/distribuição
         </button>
       )}
+    </div>
+  );
+}
+
+function LoanPositionSection({ investorId, onPosition }: { investorId: string; onPosition: (netBalance: number | null) => void }) {
+  const [position, setPosition] = useState<LoanPositionResult>(null);
+  const [recalculating, setRecalculating] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+
+  function load() {
+    getInvestorLoanPositionAction(investorId).then((result) => {
+      setPosition(result);
+      onPosition(result && !("error" in result) ? result.netBalance : null);
+    });
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investorId]);
+
+  async function handleRecalculate() {
+    setRecalculating(true);
+    await recordInvestorLoanSnapshotAction(investorId);
+    setRecalculating(false);
+    load();
+  }
+
+  if (!position) return <p className="field-hint">Carregando posição do mútuo...</p>;
+  if ("error" in position) {
+    return (
+      <div style={{ marginBottom: "1.5rem" }}>
+        <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Posição do mútuo</div>
+        <p className="field-hint">{position.error}</p>
+      </div>
+    );
+  }
+
+  const loanPosition = position as LoanPosition;
+
+  return (
+    <div style={{ marginBottom: "1.5rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>Posição do mútuo</div>
+      <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Principal aportado</p>
+          <strong>{formatCurrency(loanPosition.totalPrincipal)}</strong>
+        </div>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Juros acumulados (líquido)</p>
+          <strong>{formatCurrency(loanPosition.totalAccruedInterest)}</strong>
+        </div>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Saldo devedor</p>
+          <strong>{formatCurrency(loanPosition.netBalance)}</strong>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={handleRecalculate} disabled={recalculating}>
+          {recalculating ? "Recalculando..." : "Recalcular saldo devedor"}
+        </button>
+        <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setShowDetail((v) => !v)}>
+          {showDetail ? "Ocultar memória de cálculo" : "Ver memória de cálculo"}
+        </button>
+      </div>
+      {showDetail ? (
+        <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
+          <thead>
+            <tr>
+              <th>Tranche (aporte)</th>
+              <th>Principal</th>
+              <th>Juros acumulados</th>
+              <th>Amortizado (juros)</th>
+              <th>Amortizado (principal)</th>
+              <th>Saldo líquido</th>
+              <th>Meses de índice faltando</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loanPosition.tranches.map((t) => (
+              <tr key={t.id}>
+                <td className="is-muted">{t.id.slice(0, 8)}</td>
+                <td className="is-num">{formatCurrency(t.principal)}</td>
+                <td className="is-num">{formatCurrency(t.accruedInterest)}</td>
+                <td className="is-num">{formatCurrency(t.amortizedInterest)}</td>
+                <td className="is-num">{formatCurrency(t.amortizedPrincipal)}</td>
+                <td className="is-num">{formatCurrency(t.netBalance)}</td>
+                <td>{t.segments.flatMap((s) => s.missingMonths).join(", ") || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }
@@ -516,10 +636,12 @@ function ContributionForm({
 
 export function InvestorContributionsPanel({
   investorId,
+  modality,
   bankAccountLinks,
   onChanged,
 }: {
   investorId: string;
+  modality: string;
   bankAccountLinks: BankAccountLink[];
   onChanged: () => void;
 }) {
@@ -527,6 +649,8 @@ export function InvestorContributionsPanel({
   const [editingForecast, setEditingForecast] = useState<ForecastRow | null | "new">(null);
   const [addingContribution, setAddingContribution] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loanNetBalance, setLoanNetBalance] = useState<number | null>(null);
+  const [loanRefreshKey, setLoanRefreshKey] = useState(0);
 
   function load() {
     getInvestorContributionsDetailAction(investorId).then(setDetail);
@@ -591,6 +715,10 @@ export function InvestorContributionsPanel({
           </strong>
         </div>
       </div>
+
+      {modality === "LOAN" ? (
+        <LoanPositionSection key={loanRefreshKey} investorId={investorId} onPosition={setLoanNetBalance} />
+      ) : null}
 
       <CapitalCallsSection investorId={investorId} onChanged={refresh} />
 
@@ -711,7 +839,11 @@ export function InvestorContributionsPanel({
         </button>
       )}
 
-      <InvestorReturnsSection investorId={investorId} />
+      <InvestorReturnsSection
+        investorId={investorId}
+        loanNetBalance={loanNetBalance}
+        onLoanAffectingChange={() => setLoanRefreshKey((k) => k + 1)}
+      />
     </div>
   );
 }

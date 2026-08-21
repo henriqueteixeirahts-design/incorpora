@@ -832,6 +832,14 @@ function SpeInvestorForm({
               </select>
             </label>
             <label className="inc-field">
+              <span className="inc-label">Tipo de juros</span>
+              <select id="investor-loan-interest-type" name="loanInterestType" className="inc-select" defaultValue={investor?.loanInterestType ?? ""}>
+                <option value="">—</option>
+                <option value="SIMPLE">Simples</option>
+                <option value="COMPOUND">Composto</option>
+              </select>
+            </label>
+            <label className="inc-field">
               <span className="inc-label">Correção por índice</span>
               <select id="investor-loan-index" name="loanIndexRuleId" className="inc-select" defaultValue={investor?.loanIndexRuleId ?? ""}>
                 <option value="">Sem correção</option>
@@ -1007,6 +1015,7 @@ function SpeInvestorsTab({ spe, onRefresh }: { spe: SpeDetail; onRefresh: () => 
                     <td colSpan={7}>
                       <InvestorContributionsPanel
                         investorId={investor.id}
+                        modality={investor.modality}
                         bankAccountLinks={spe.bankAccountLinks}
                         onChanged={refreshAll}
                       />

@@ -34,21 +34,32 @@ beforeAll(async () => {
     type: "INDIVIDUAL", name: "Investidor Devoluções", document: "02654427102",
     email: "investidor-devolucoes@teste.local", phone: "62999998803", modality: "LOAN",
     committedCapital: 100000,
+    loanInterestRate: 1, loanInterestPeriod: "MONTHLY", loanInterestType: "COMPOUND",
   });
 
   await prisma.speInvestor.update({
     where: { id: investor.id },
     data: { returnBankName: "341 - Itaú", returnBankAgency: "1234", returnBankAccount: "56789-0" },
   });
+
+  const bankAccount = await prisma.bankAccount.create({
+    data: { organizationId: org.id, bankName: "Itaú", agency: "0001", account: "9999-0", type: "CHECKING", status: "ACTIVE" },
+  });
+  await prisma.speInvestorContribution.create({
+    data: { investorId: investor.id, amount: 100000, creditDate: new Date(), bankAccountId: bankAccount.id },
+  });
 });
 
 afterAll(async () => {
   const orgIds = [org.id, otherOrg.id];
+  await prisma.speInvestorLoanCalculation.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
   await prisma.speInvestorReturn.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
   await prisma.payable.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.supplier.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
   await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
   await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.user.deleteMany({ where: { id: user.id } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
@@ -71,6 +82,10 @@ describe("createInvestorReturn — gera Payable com fornecedor find-or-create", 
     expect(payable?.supplier?.speInvestorId).toBe(investor.id);
     expect(payable?.bankAccount).toContain("341 - Itaú");
     expect(payable?.status).toBe("ENTERED"); // segue o fluxo normal, não pula aprovação
+
+    // etapa 5: sem juros acumulados ainda (aporte e amortização no mesmo dia) — abate 100% do principal.
+    expect(Number(ret.amortizedInterest)).toBe(0);
+    expect(Number(ret.amortizedPrincipal)).toBe(15000);
   });
 
   it("distribuição de resultado: cria Payable categoria RESULT_DISTRIBUTION", async () => {
@@ -83,6 +98,8 @@ describe("createInvestorReturn — gera Payable com fornecedor find-or-create", 
 
     const payable = await prisma.payable.findUnique({ where: { id: ret.payableId } });
     expect(payable?.category).toBe("RESULT_DISTRIBUTION");
+    expect(ret.amortizedInterest).toBeNull();
+    expect(ret.amortizedPrincipal).toBeNull();
   });
 
   it("reaproveita o mesmo fornecedor (find-or-create) numa segunda devolução", async () => {
@@ -99,5 +116,16 @@ describe("createInvestorReturn — gera Payable com fornecedor find-or-create", 
 
     const otherContext: AccessContext = { ...context, organizationId: otherOrg.id };
     await expect(listInvestorReturns(otherContext, investor.id)).rejects.toThrow("Investidor não encontrado.");
+  });
+
+  it("etapa 5: amortização acima do saldo devedor do mútuo é rejeitada", async () => {
+    await expect(
+      createInvestorReturn(context, investor.id, {
+        type: "LOAN_AMORTIZATION",
+        amount: 999999999,
+        referenceDate: new Date(),
+        dueDate: new Date(Date.now() + 86400000),
+      }),
+    ).rejects.toThrow(/excede o saldo devedor/);
   });
 });

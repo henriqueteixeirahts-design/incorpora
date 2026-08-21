@@ -336,6 +336,7 @@ model SpeInvestor {
   // especificação; aqui só se registram as condições contratadas.
   loanInterestRate   Decimal?                       @db.Decimal(6, 3)
   loanInterestPeriod SpeInvestorLoanInterestPeriod?
+  loanInterestType   InterestType? // simples/composto — configurável por investidor, sem padrão (etapa 5)
   loanIndexRuleId    String?                        @db.Uuid
   loanGraceMonths    Int?
   loanTermMonths     Int?
@@ -348,6 +349,7 @@ model SpeInvestor {
   contributionForecasts SpeInvestorContributionForecast[]
   contributions         SpeInvestorContribution[]
   returns               SpeInvestorReturn[]
+  loanCalculations      SpeInvestorLoanCalculation[]
   supplier              Supplier?
 
   @@map("spe_investors")
@@ -439,7 +441,7 @@ model SpeInvestorContribution {
 
 enum SpeInvestorReturnType {
   RESULT_DISTRIBUTION // distribuição de resultado (equity) — valor informado manualmente nesta fase
-  LOAN_AMORTIZATION // amortização/quitação de mútuo — valor informado manualmente até a Etapa 5 existir (saldo devedor calculado)
+  LOAN_AMORTIZATION // amortização/quitação de mútuo — valor validado contra o saldo devedor calculado (etapa 5, src/lib/loan-balance.ts)
 }
 
 /// Devolução/distribuição ao investidor (docs/ESPEC_APORTES_INVESTIDORES.md,
@@ -458,10 +460,37 @@ model SpeInvestorReturn {
   notes         String?
   createdAt     DateTime              @default(now())
 
+  // Composição da amortização (etapa 5) — só preenchidos quando type =
+  // LOAN_AMORTIZATION; memória de que parte abateu juros vs. principal.
+  amortizedInterest  Decimal? @db.Decimal(14, 2)
+  amortizedPrincipal Decimal? @db.Decimal(14, 2)
+
   investor SpeInvestor @relation(fields: [investorId], references: [id], onDelete: Cascade)
   payable  Payable     @relation(fields: [payableId], references: [id], onDelete: Cascade)
 
   @@map("spe_investor_returns")
+}
+
+/// Snapshot auditável do saldo devedor de mútuo de um investidor numa data
+/// (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 1.2 — "memória de cálculo
+/// auditável, mesma filosofia da carteira"). Append-only, mesmo princípio de
+/// FinancialCalculation — nunca atualizado, cada recálculo gera um registro
+/// novo. `details` guarda a memória completa por tranche (src/lib/loan-balance.ts).
+model SpeInvestorLoanCalculation {
+  id                   String   @id @default(uuid()) @db.Uuid
+  investorId           String   @db.Uuid
+  asOfDate             DateTime
+  totalPrincipal       Decimal  @db.Decimal(14, 2)
+  totalAccruedInterest Decimal  @db.Decimal(14, 2)
+  totalAmortized       Decimal  @db.Decimal(14, 2)
+  netBalance           Decimal  @db.Decimal(14, 2)
+  details              Json
+  createdAt            DateTime @default(now())
+
+  investor SpeInvestor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@index([investorId])
+  @@map("spe_investor_loan_calculations")
 }
 
 enum LandAcquisitionMethod {

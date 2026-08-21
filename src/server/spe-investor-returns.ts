@@ -3,6 +3,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { speOwnedScope } from "@/server/scope";
+import { getInvestorLoanPosition } from "@/server/spe-investor-loan";
+import { round2 } from "@/lib/loan-balance";
 import type { AccessContext } from "@/server/auth-context";
 import type { Prisma, SpeInvestorReturnType } from "@/generated/prisma/client";
 
@@ -87,6 +89,28 @@ export type CreateInvestorReturnInput = {
 export async function createInvestorReturn(context: AccessContext, investorId: string, input: CreateInvestorReturnInput) {
   const investor = await getInvestorScoped(context, investorId);
 
+  // Amortização de mútuo (etapa 5): calcula o saldo devedor atual, bloqueia
+  // valor acima do disponível, e apura a composição juros/principal desta
+  // amortização (before/after do motor) pra registrar a memória de cálculo.
+  let amortizedInterest: number | null = null;
+  let amortizedPrincipal: number | null = null;
+  let loanSnapshot: Awaited<ReturnType<typeof getInvestorLoanPosition>> | null = null;
+
+  if (input.type === "LOAN_AMORTIZATION") {
+    const before = await getInvestorLoanPosition(context, investorId, input.referenceDate);
+    if (input.amount > before.netBalance + 0.01) {
+      throw new Error(
+        `Amortização de ${input.amount.toFixed(2)} excede o saldo devedor atual do mútuo (${before.netBalance.toFixed(2)}) na data informada.`,
+      );
+    }
+    const after = await getInvestorLoanPosition(context, investorId, input.referenceDate, [
+      { date: input.referenceDate, amount: input.amount },
+    ]);
+    amortizedInterest = round2(after.totalAmortizedInterest - before.totalAmortizedInterest);
+    amortizedPrincipal = round2(after.totalAmortizedPrincipal - before.totalAmortizedPrincipal);
+    loanSnapshot = after;
+  }
+
   return prisma.$transaction(async (tx) => {
     const supplier = await getOrCreateSupplierForInvestor(tx, context.organizationId, investorId);
 
@@ -112,6 +136,8 @@ export async function createInvestorReturn(context: AccessContext, investorId: s
         referenceDate: input.referenceDate,
         payableId: payable.id,
         notes: input.notes,
+        amortizedInterest,
+        amortizedPrincipal,
       },
     });
 
@@ -123,6 +149,28 @@ export async function createInvestorReturn(context: AccessContext, investorId: s
       entityId: investorReturn.id,
       afterData: { ...investorReturn, payable },
     });
+
+    if (loanSnapshot) {
+      const snapshot = await tx.speInvestorLoanCalculation.create({
+        data: {
+          investorId,
+          asOfDate: input.referenceDate,
+          totalPrincipal: loanSnapshot.totalPrincipal,
+          totalAccruedInterest: loanSnapshot.totalAccruedInterest,
+          totalAmortized: loanSnapshot.totalAmortizedInterest + loanSnapshot.totalAmortizedPrincipal,
+          netBalance: loanSnapshot.netBalance,
+          details: loanSnapshot as unknown as object,
+        },
+      });
+      await recordAuditEvent(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        action: "create",
+        entityType: "SpeInvestorLoanCalculation",
+        entityId: snapshot.id,
+        afterData: snapshot,
+      });
+    }
 
     return investorReturn;
   });

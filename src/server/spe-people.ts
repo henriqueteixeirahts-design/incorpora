@@ -9,6 +9,7 @@ import type {
   SpePartnerRole,
   SpeInvestorModality,
   SpeInvestorLoanInterestPeriod,
+  InterestType,
 } from "@/generated/prisma/client";
 
 export function listSpePartners(context: AccessContext, speId: string) {
@@ -121,6 +122,7 @@ export type CreateSpeInvestorInput = {
   returnPixKeyValue?: string;
   loanInterestRate?: number;
   loanInterestPeriod?: SpeInvestorLoanInterestPeriod;
+  loanInterestType?: InterestType;
   loanIndexRuleId?: string;
   loanGraceMonths?: number;
   loanTermMonths?: number;
