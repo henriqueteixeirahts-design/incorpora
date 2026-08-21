@@ -769,6 +769,24 @@ Fase estrutural de segurança de dinheiro, especificada em `docs/ESPEC_CORRETOR_
 
 ---
 
+### Aportes de Investidores — concluída (etapas 3-7; etapas 1-2 já existiam)
+
+Especificada em `docs/ESPEC_APORTES_INVESTIDORES.md`. Etapas 1-2 (cadastro do investidor + condições de mútuo, aba Investidores da SPE) já existiam antes desta rodada. Etapas 3-4 (chamada de capital; devoluções/distribuições) seguiram autônomas. Etapa 5 (motor de mútuo — juros/correção) envolvia cálculo financeiro, então o plano de arquitetura foi apresentado e aprovado antes de qualquer código, mesmo rigor já usado em RBAC e Comissionamento. Etapas 6-7 voltaram a ser autônomas por não mexerem em cálculo de juros.
+
+**Etapa 3 — chamada de capital**: `SpeCapitalCall` 1:1 com `SpeInvestorContributionForecast` (origin=CAPITAL_CALL), reaproveitando o status já calculado da previsão (PLANNED→"Emitida" etc.) em vez de duplicar uma máquina de estados paralela; "Vencida" computado ao vivo a partir do prazo, nunca persistido. Documento anexado por upload direto — motor de templates ainda hard-wired a `Contract`, não cobre SPE/investidor (mesma limitação já registrada no contrato de parceria do Comissionamento).
+
+**Etapa 4 — devoluções e distribuições**: `SpeInvestorReturn` gera sempre uma `Payable` (fornecedor = investidor, find-or-create, mesmo padrão de corretor/imobiliária/cliente), seguindo o fluxo normal de aprovação financeira — sem status próprio, o ciclo de vida é inteiramente o da Payable vinculada.
+
+**Etapa 5 — motor de mútuo (juros/correção com memória)**: `src/lib/loan-balance.ts`, função pura que trata cada aporte (`SpeInvestorContribution`) como uma tranche com saldo próprio, acumulando juros/correção mês a mês (fator índice × fator juros, composto ou simples, mesmo padrão do motor de correção de parcelas). Amortização abate juros acumulados primeiro, depois principal, sempre na tranche mais antiga com saldo (FIFO), cascateando pra próxima se sobrar valor. Carência não altera o motor — juros continuam capitalizando durante ela, só a exigibilidade de cobrança muda. Snapshot append-only (`SpeInvestorLoanCalculation`), mesmo princípio de `FinancialCalculation` — nunca sobrescrito. `createInvestorReturn` (etapa 4) passou a validar que uma amortização não excede o saldo devedor e a gravar a composição juros/principal. **Rigor Sprint 6-7 cumprido**: 9 testes unitários da função pura + 1 teste de integração completo com valores conferidos manualmente numa planilha (2 tranches, amortização parcial com cascata).
+
+**Etapa 6 — extrato do investidor + PDF**: `getInvestorStatement` mescla as 4 fontes das etapas 1-5 (previsões, chamadas, aportes, devoluções, saldo devedor do mútuo quando aplicável) numa timeline única ordenada por data — a mesma tela que alimentará o painel do investidor no portal (Fase 2), construída uma vez. PDF gerado sob demanda via rota de export (`@react-pdf/renderer`, mesmo motor do extrato do cliente), sem motor de templates (documento não vinculado a um `Contract`) e sem persistência.
+
+**Etapa 7 — contas a receber consolidado**: nova visão no menu Financeiro reunindo carteira de vendas + recebíveis avulsos + aportes de investidores com origem identificada, filtros (origem/empreendimento/SPE/período/status) e totalizadores. Fluxo de caixa (`getCashFlow`) passou a discriminar as entradas por origem (`receivablesForecast/RealizedByOrigin`) em vez de um bloco único — mesma soma de sempre, só que quebrada. **Regra de ouro** (aporte não é receita) garantida por construção: `getSalesSummary`/`getReceivablesSummary` nunca tocam nenhuma tabela de aporte — teste de regressão confirma que os totais de resultado ficam intocados na presença de aportes reais.
+
+**Testado**: `npx tsc --noEmit`, `npm run lint`, `npm run build` limpos em cada etapa. 22 testes novos de integração/unidade (motor de mútuo, extrato, chamada de capital, devoluções, fluxo de caixa por origem, contas a receber consolidado, regra de ouro). Suíte completa ao final: unitária 169/169 + integração **341/341, zero falhas**.
+
+---
+
 ## 2. Decisões que se afastaram do PRD/arquitetura original
 
 | Decisão | O que diz o PRD/arquitetura | O que foi implementado | Motivo | Precisa revisão? |
