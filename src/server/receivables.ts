@@ -6,6 +6,7 @@ import { recordDevelopmentEvent } from "@/lib/events";
 import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-correction";
 import { simulateAnticipation } from "@/lib/anticipation";
 import { tryReleaseCommissions } from "@/server/commissions";
+import { recognizeCommissionOnPayment } from "@/server/commission-payment-recognition";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
 import type { IndexCode, InterestType, Prisma } from "@/generated/prisma/client";
@@ -312,6 +313,12 @@ export async function registerInstallmentPayment(
       entityType: "Installment",
       entityId: installmentId,
       payload: { amount: input.amount, status },
+    });
+
+    await recognizeCommissionOnPayment(tx, {
+      installmentId,
+      saleId: installment.portfolio.contract.saleId,
+      paymentAmount: input.amount,
     });
 
     await tryReleaseCommissions(tx, context.organizationId, installment.portfolio.contract.id, context.userId);

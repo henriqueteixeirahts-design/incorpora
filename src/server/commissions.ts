@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { getEffectiveCommissionReleaseRule } from "@/server/commission-release-rules";
+import { getEffectiveCommissionRule } from "@/server/commission-rules";
 import type { AccessContext } from "@/server/auth-context";
 import type { CommissionSplit, Prisma } from "@/generated/prisma/client";
 
@@ -113,7 +114,18 @@ export async function tryReleaseCommissions(
   });
   if (!contract) return;
 
-  const pendingSplits = contract.sale.commissionSplits.filter((s) => s.status === "PENDING");
+  // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4 — splits MANAGER (Natureza
+  // 2, comissão interna) do empreendimento que já usa o modelo novo NUNCA
+  // passam por este gatilho de liberação em lote: eles acumulam
+  // proporcionalmente a cada parcela paga (src/server/commission-payment-
+  // recognition.ts) e são consolidados num Payable periódico
+  // (settleInternalCommissions), não liberados de uma vez aqui.
+  const commissionRule = await getEffectiveCommissionRule(organizationId, contract.developmentId);
+  const usesNewInternalModel = commissionRule.internalCommissionPercent !== null;
+
+  const pendingSplits = contract.sale.commissionSplits.filter(
+    (s) => s.status === "PENDING" && !(usesNewInternalModel && s.beneficiaryType === "MANAGER"),
+  );
   if (pendingSplits.length === 0) return;
 
   const rule = await getEffectiveCommissionReleaseRule(organizationId, contract.developmentId);
@@ -169,6 +181,115 @@ export async function tryReleaseCommissions(
     entityId: contract.saleId,
     payload: { count: pendingSplits.length, trigger: rule.trigger },
   });
+}
+
+/**
+ * Comissão interna (Natureza 2) acumulada e ainda não liquidada, agrupada
+ * por gerente — o que a Etapa 5 chama de "a liquidar" (accruedAmount -
+ * settledAmount > 0 em qualquer CommissionSplit MANAGER dele, de qualquer
+ * venda). Filtrado por `developmentAccess`, mesma convenção do resto do app.
+ */
+export async function listUnsettledInternalCommissions(context: AccessContext) {
+  const splits = await prisma.commissionSplit.findMany({
+    where: {
+      beneficiaryType: "MANAGER",
+      sale: {
+        organizationId: context.organizationId,
+        ...(context.developmentAccess === "ALL" ? {} : { developmentId: { in: [...context.developmentAccess] } }),
+      },
+    },
+    include: { sale: { include: { development: true } } },
+  });
+
+  const byManager = new Map<string, { brokerId: string; unsettled: number; splitIds: string[] }>();
+  for (const split of splits) {
+    if (!split.brokerId) continue;
+    const unsettled = round2(Number(split.accruedAmount) - Number(split.settledAmount));
+    if (unsettled <= 0) continue;
+    const entry = byManager.get(split.brokerId) ?? { brokerId: split.brokerId, unsettled: 0, splitIds: [] };
+    entry.unsettled = round2(entry.unsettled + unsettled);
+    entry.splitIds.push(split.id);
+    byManager.set(split.brokerId, entry);
+  }
+
+  const brokerIds = [...byManager.keys()];
+  const brokers = brokerIds.length
+    ? await prisma.broker.findMany({ where: { id: { in: brokerIds } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(brokers.map((b) => [b.id, b.name]));
+
+  return [...byManager.values()]
+    .map((entry) => ({ ...entry, brokerName: nameById.get(entry.brokerId) ?? "?" }))
+    .sort((a, b) => a.brokerName.localeCompare(b.brokerName, "pt-BR"));
+}
+
+/**
+ * Liquidação consolidada da comissão interna (Natureza 2 — regime caixa,
+ * mas SEM um Payable por parcela: consolida tudo que um gerente acumulou e
+ * ainda não foi pra um pagamento, de todas as vendas dele, num Payable só).
+ * Idempotente por delta — rodar duas vezes seguidas sem nada ter acumulado
+ * a mais não cria um segundo Payable (soma dá 0, retorna cedo).
+ */
+export async function settleInternalCommissions(context: AccessContext, brokerId: string) {
+  return prisma.$transaction(async (tx) => {
+    const splits = await tx.commissionSplit.findMany({
+      where: {
+        beneficiaryType: "MANAGER",
+        brokerId,
+        sale: { organizationId: context.organizationId },
+      },
+      include: { sale: true },
+    });
+
+    const toSettle = splits
+      .map((s) => ({ split: s, delta: round2(Number(s.accruedAmount) - Number(s.settledAmount)) }))
+      .filter((s) => s.delta > 0);
+
+    const total = round2(toSettle.reduce((sum, s) => sum + s.delta, 0));
+    if (total <= 0) throw new Error("Não há comissão interna acumulada pra liquidar deste gerente.");
+
+    const supplier = await getOrCreateSupplierForBroker(tx, context.organizationId, brokerId);
+
+    // developmentId da Payable: só faz sentido quando todo o acumulado é do
+    // mesmo empreendimento; gerente com acúmulo em N empreendimentos vira
+    // uma Payable "da organização" (developmentId nulo), consistente com o
+    // padrão já usado pra despesas administrativas.
+    const developmentIds = new Set(toSettle.map((s) => s.split.sale.developmentId));
+    const developmentId = developmentIds.size === 1 ? [...developmentIds][0] : null;
+
+    const payable = await tx.payable.create({
+      data: {
+        organizationId: context.organizationId,
+        developmentId,
+        supplierId: supplier.id,
+        category: "BROKERAGE",
+        description: `Comissão interna — liquidação consolidada (${toSettle.length} venda(s))`,
+        competenceDate: new Date(),
+        dueDate: new Date(),
+        amount: total,
+      },
+    });
+
+    for (const { split, delta } of toSettle) {
+      await tx.commissionSplit.update({ where: { id: split.id }, data: { settledAmount: Number(split.accruedAmount) } });
+      await tx.commissionSplitPayable.create({ data: { splitId: split.id, payableId: payable.id, amount: delta } });
+    }
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "create",
+      entityType: "Payable",
+      entityId: payable.id,
+      afterData: { ...payable, settledSplits: toSettle.length },
+    });
+
+    return payable;
+  });
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 /**

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { requireAccessContext } from "@/server/auth-context";
-import { getCommissionStatement } from "@/server/commissions";
+import { requireAccessContext, hasPermission } from "@/server/auth-context";
+import { getCommissionStatement, listUnsettledInternalCommissions } from "@/server/commissions";
 import { listBrokers, listAgencies } from "@/server/crm";
 import { formatCurrencyBRL } from "@/lib/format";
+import { InternalCommissionSettlement } from "./internal-commission-settlement";
 
 const BENEFICIARY_LABELS: Record<string, string> = {
   BROKER: "Corretor",
@@ -43,7 +44,7 @@ export default async function CommissionsPage({
   const dateFrom = params.dateFrom ?? "";
   const dateTo = params.dateTo ?? "";
 
-  const [{ splits, totals }, brokers, agencies] = await Promise.all([
+  const [{ splits, totals }, brokers, agencies, unsettledInternal] = await Promise.all([
     getCommissionStatement(context, {
       brokerId: brokerId || undefined,
       agencyId: agencyId || undefined,
@@ -52,7 +53,10 @@ export default async function CommissionsPage({
     }),
     listBrokers(context.organizationId),
     listAgencies(context.organizationId),
+    listUnsettledInternalCommissions(context),
   ]);
+
+  const canSettleInternal = hasPermission(context, "payable", "CREATE");
 
   const exportQs = new URLSearchParams();
   if (brokerId) exportQs.set("brokerId", brokerId);
@@ -125,6 +129,14 @@ export default async function CommissionsPage({
         </div>
       </div>
 
+      <div className="inc-eyebrow" style={{ marginTop: "28px", marginBottom: "8px" }}>
+        Comissão interna — liquidação consolidada (docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4)
+      </div>
+      <InternalCommissionSettlement rows={unsettledInternal.map((r) => ({ brokerId: r.brokerId, brokerName: r.brokerName, unsettled: r.unsettled }))} canSettle={canSettleInternal} />
+
+      <div className="inc-eyebrow" style={{ marginTop: "28px", marginBottom: "8px" }}>
+        Extrato — todas as comissões
+      </div>
       <div className="inc-card">
         <table className="inc-table" style={{ border: 0 }}>
           <thead>

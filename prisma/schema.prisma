@@ -2353,20 +2353,20 @@ enum InstallmentStatus {
 /// são um cache do último cálculo (Fase 9-10); o histórico completo e
 /// auditável de cada cálculo fica em FinancialCalculation.
 model Installment {
-  id                        String            @id @default(uuid()) @db.Uuid
-  portfolioId               String            @db.Uuid
-  sequence                  Int
-  label                     String
-  dueDate                   DateTime
-  originalValue             Decimal           @db.Decimal(14, 2)
-  correctedValue            Decimal?          @db.Decimal(14, 2)
-  paidAmount                Decimal           @default(0) @db.Decimal(14, 2)
-  lastCalculatedAt          DateTime?
-  status                    InstallmentStatus @default(PENDING)
+  id                           String            @id @default(uuid()) @db.Uuid
+  portfolioId                  String            @db.Uuid
+  sequence                     Int
+  label                        String
+  dueDate                      DateTime
+  originalValue                Decimal           @db.Decimal(14, 2)
+  correctedValue               Decimal?          @db.Decimal(14, 2)
+  paidAmount                   Decimal           @default(0) @db.Decimal(14, 2)
+  lastCalculatedAt             DateTime?
+  status                       InstallmentStatus @default(PENDING)
   // Marca a parcela de entrada (Fase A, Parte 4.1 — gatilho de liberação de
   // comissão "no recebimento da entrada"). Sem isso, teria que casar por
   // `label === "Entrada"` (frágil, o label é texto livre do fluxo).
-  isDownPayment             Boolean           @default(false)
+  isDownPayment                Boolean           @default(false)
   // Fase B, Parte 2 (renegociação de parcelas) — quando uma parcela original
   // vira "Renegociada" (CANCELLED aqui, nunca apagada), `originAgreementId`
   // aponta pro acordo que a consumiu; quando uma parcela nova é criada por
@@ -2374,17 +2374,23 @@ model Installment {
   // só é setado nas parcelas de destino quando o acordo escolheu "sem
   // correção futura" — a parcela não aplica índice/juros contratuais na
   // correção ao vivo, mas ainda acumula multa/mora normalmente se vencer.
-  originAgreementId         String?           @db.Uuid
-  destinationAgreementId    String?           @db.Uuid
-  correctionExempt          Boolean           @default(false)
+  originAgreementId            String?           @db.Uuid
+  destinationAgreementId       String?           @db.Uuid
+  correctionExempt             Boolean           @default(false)
   // Fatia de originalValue destinada à comissão de intermediação externa
   // (Natureza 1 — docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4), nunca
   // reconhecida como receita da SPE. 0 pra maioria das parcelas; igual a
   // originalValue nas parcelas totalmente consumidas (invisíveis ao
   // extrato/portal do cliente); parcial só na parcela-fronteira. Setado uma
   // vez no fechamento do contrato (src/server/contracts.ts::confirmSignature).
-  externalCommissionPortion Decimal           @default(0) @db.Decimal(14, 2)
-  createdAt                 DateTime          @default(now())
+  externalCommissionPortion    Decimal           @default(0) @db.Decimal(14, 2)
+  // Quanto de externalCommissionPortion já foi reconhecido/distribuído aos
+  // beneficiários (Etapa 5) — necessário porque uma parcela pode ter N
+  // InstallmentPayment parciais; guardar o contador aqui evita reconstruir
+  // "quanto já foi reconhecido" a partir de ExternalCommissionSplit.paidAmount
+  // (que é agregado por beneficiário na venda inteira, não por parcela).
+  externalCommissionRecognized Decimal           @default(0) @db.Decimal(14, 2)
+  createdAt                    DateTime          @default(now())
 
   portfolio             ReceivablePortfolio     @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   payments              InstallmentPayment[]
