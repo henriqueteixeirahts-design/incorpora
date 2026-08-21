@@ -117,7 +117,18 @@ export async function getCustomerFinancialPosition(
   const visibleContracts = customer.contracts.filter((c) => canAccessDevelopment(context, c.developmentId));
 
   const contracts: ContractStatement[] = visibleContracts.map((contract) => {
-    const installments = contract.portfolio?.installments ?? [];
+    // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4 — parcelas totalmente
+    // destinadas à comissão externa (externalCommissionPortion ==
+    // originalValue) são invisíveis ao portal do cliente (nunca foram
+    // receita da SPE). A parcela-fronteira (parcialmente destinada) mostra
+    // só a fatia reconhecida como SPE — originalValue e os pagamentos
+    // exibidos são líquidos da fatia do corretor; a correção/juros
+    // (resultValue) segue calculada sobre a parcela contratual inteira
+    // (não recalculada sobre o valor líquido — aproximação consciente,
+    // display-only, não afeta nenhum valor de fato cobrado/devido).
+    const installments = (contract.portfolio?.installments ?? []).filter(
+      (i) => Number(i.externalCommissionPortion) < Number(i.originalValue),
+    );
 
     const installmentRows: InstallmentStatementRow[] = installments.map((installment) => {
       const position = getInstallmentLivePosition(
@@ -150,7 +161,7 @@ export async function getCustomerFinancialPosition(
         label: installment.label,
         isDownPayment: installment.isDownPayment,
         dueDate: installment.dueDate,
-        originalValue: Number(installment.originalValue),
+        originalValue: round2(Number(installment.originalValue) - Number(installment.externalCommissionPortion)),
         resultValue: position.resultValue,
         fineAmount: position.fineAmount,
         overdueInterestAmount: position.overdueInterestAmount,
@@ -170,11 +181,21 @@ export async function getCustomerFinancialPosition(
       };
     });
 
-    const totalPaid = round2(installmentRows.reduce((sum, i) => sum + i.payments.reduce((s, p) => s + p.amount, 0), 0));
+    // totalPaid usa paidAmount líquido da fatia de comissão externa
+    // (installment.paidAmount - externalCommissionRecognized), não a soma
+    // bruta de `payments` — esse dinheiro nunca foi receita da SPE.
+    const totalPaid = round2(
+      installments.reduce((sum, i) => sum + Number(i.paidAmount) - Number(i.externalCommissionRecognized), 0),
+    );
     const outstandingBalance = round2(
       installmentRows.filter((i) => i.status !== "PAID" && i.status !== "CANCELLED").reduce((sum, i) => sum + i.resultValue, 0),
     );
-    const contractedValue = contract.portfolio ? Number(contract.portfolio.totalValue) : 0;
+    const contractedValue = contract.portfolio
+      ? round2(
+          Number(contract.portfolio.totalValue) -
+            (contract.portfolio.installments ?? []).reduce((sum, i) => sum + Number(i.externalCommissionPortion), 0),
+        )
+      : 0;
     const percentPaid = contractedValue > 0 ? round2(Math.min(100, (totalPaid / contractedValue) * 100)) : 0;
 
     const isDistrato = contract.status === "CANCELLED" && contract.distrato?.status === "SIGNED";

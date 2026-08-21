@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { getEffectiveDistratoRule } from "@/server/distrato-rules";
+import { getEffectiveCommissionRule } from "@/server/commission-rules";
 import { calculateDistratoSettlement } from "@/lib/distrato-settlement";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
@@ -20,8 +21,12 @@ async function getOrCreateSupplierForCustomer(tx: Prisma.TransactionClient, orga
   });
 }
 
-function sumPaid(installments: { paidAmount: unknown }[]) {
-  return installments.reduce((sum, i) => sum + Number(i.paidAmount), 0);
+// docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4/caso de teste 6 — "o que o
+// corretor já recebeu não volta, não entra no acerto": o totalPaid usado no
+// cálculo do distrato precisa excluir a fatia já reconhecida como comissão
+// externa (nunca foi receita da SPE, não pode ser nem devolvida nem retida).
+function sumPaid(installments: { paidAmount: unknown; externalCommissionRecognized: unknown }[]) {
+  return installments.reduce((sum, i) => sum + Number(i.paidAmount) - Number(i.externalCommissionRecognized), 0);
 }
 
 export type CreateDistratoInput = {
@@ -44,7 +49,7 @@ export async function createDistrato(context: AccessContext, contractId: string,
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
       where: { id: contractId, organizationId: context.organizationId },
-      include: { portfolio: { include: { installments: true } }, distrato: true },
+      include: { portfolio: { include: { installments: true } }, distrato: true, sale: { include: { commissionSplits: true } } },
     });
     if (!contract || !canAccessDevelopment(context, contract.developmentId)) throw new Error("Contrato inválido.");
     if (contract.status !== "SIGNED") throw new Error("Só é possível distratar contrato assinado.");
@@ -53,10 +58,18 @@ export async function createDistrato(context: AccessContext, contractId: string,
     const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
     const totalPaid = sumPaid(contract.portfolio?.installments ?? []);
 
+    // Comissão interna (Natureza 2, "integra o preço" —
+    // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4) auto-calculada a
+    // partir do accruedAmount já reconhecido (dinheiro que o cliente já
+    // pagou e que já gerou direito ao gerente) — override manual explícito
+    // (input.brokerageDeductionAmount) sempre tem prioridade.
+    const internalSplit = contract.sale.commissionSplits.find((s) => s.beneficiaryType === "MANAGER");
+    const autoBrokerageDeduction = internalSplit ? Number(internalSplit.accruedAmount) : undefined;
+
     const settlement = calculateDistratoSettlement({
       totalPaid,
       retentionPercent: rule.retentionPercent,
-      brokerageDeductionAmount: input.brokerageDeductionAmount,
+      brokerageDeductionAmount: input.brokerageDeductionAmount ?? autoBrokerageDeduction,
       occupancyFeeAmount: input.occupancyFeeAmount,
     });
 
@@ -170,9 +183,20 @@ export async function signDistrato(context: AccessContext, distratoId: string, s
     }
 
     const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
+    // Splits MANAGER (Natureza 2) do modelo novo nunca são estornados aqui —
+    // o que já foi acumulado (accruedAmount) reflete dinheiro que o cliente
+    // já pagou e não volta (mesmo "sem estorno" da comissão externa); o que
+    // ainda não foi pago simplesmente para de acumular sozinho, porque as
+    // parcelas em aberto acabam de virar CANCELLED (não é possível registrar
+    // pagamento nelas — ver registerInstallmentPayment).
+    const commissionRule = await getEffectiveCommissionRule(context.organizationId, contract.developmentId);
+    const usesNewInternalModel = commissionRule.internalCommissionPercent !== null;
+
     let reversedCommissions = 0;
     if (rule.reverseCommissionOnDistrato) {
-      const toReverse = contract.sale.commissionSplits.filter((s) => s.status === "PENDING" || s.status === "RELEASED");
+      const toReverse = contract.sale.commissionSplits.filter(
+        (s) => (s.status === "PENDING" || s.status === "RELEASED") && !(usesNewInternalModel && s.beneficiaryType === "MANAGER"),
+      );
       for (const split of toReverse) {
         await tx.commissionSplit.update({ where: { id: split.id }, data: { status: "CANCELLED" } });
       }
