@@ -18,12 +18,14 @@ export async function upsertCommissionRuleAction(
   const externalRaw = String(formData.get("externalCommissionPercent") ?? "").trim();
   const internalRaw = String(formData.get("internalCommissionPercent") ?? "").trim();
   const appliesTo = String(formData.get("internalCommissionAppliesTo") ?? "ALL_SALES") as InternalCommissionAppliesTo;
+  const internalManagerBrokerId = String(formData.get("internalManagerBrokerId") ?? "").trim() || null;
 
   try {
     await upsertCommissionRule(context, developmentId, {
       externalCommissionPercent: externalRaw ? Number(externalRaw) : null,
       internalCommissionPercent: internalRaw ? Number(internalRaw) : null,
       internalCommissionAppliesTo: appliesTo === "PARTICIPATED_ONLY" ? "PARTICIPATED_ONLY" : "ALL_SALES",
+      internalManagerBrokerId,
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao salvar a regra de comissão." };

@@ -52,7 +52,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
     await upsertCommissionRule(context, null, {
       externalCommissionPercent: 6,
       internalCommissionPercent: 2,
-      internalCommissionAppliesTo: "ALL_SALES",
+      internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null,
     });
 
     const effective = await getEffectiveCommissionRule(org.id, dev.id);
@@ -64,7 +64,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
     await upsertCommissionRule(context, dev.id, {
       externalCommissionPercent: 8,
       internalCommissionPercent: 3,
-      internalCommissionAppliesTo: "PARTICIPATED_ONLY",
+      internalCommissionAppliesTo: "PARTICIPATED_ONLY", internalManagerBrokerId: null,
     });
 
     const effective = await getEffectiveCommissionRule(org.id, dev.id);
@@ -77,7 +77,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
 
   it("rejeita percentual fora de 0-100", async () => {
     await expect(
-      upsertCommissionRule(context, null, { externalCommissionPercent: 150, internalCommissionPercent: null, internalCommissionAppliesTo: "ALL_SALES" }),
+      upsertCommissionRule(context, null, { externalCommissionPercent: 150, internalCommissionPercent: null, internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null }),
     ).rejects.toThrow("inválido");
   });
 
@@ -87,7 +87,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
       upsertCommissionRule({ ...context, organizationId: otherOrg.id }, dev.id, {
         externalCommissionPercent: 5,
         internalCommissionPercent: null,
-        internalCommissionAppliesTo: "ALL_SALES",
+        internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null,
       }),
     ).rejects.toThrow("Empreendimento inválido.");
     await prisma.organization.delete({ where: { id: otherOrg.id } });

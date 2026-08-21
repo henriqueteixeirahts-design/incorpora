@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
+import { resolveExternalSplitsForSale } from "@/server/commission-resolution";
 import type { AccessContext } from "@/server/auth-context";
 import { developmentAccessScope, canAccessDevelopment } from "@/server/scope";
 import type { CommissionBeneficiaryType, DownPaymentDestination, Prisma } from "@/generated/prisma/client";
@@ -181,7 +182,35 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
       },
     });
 
-    if (proposal.commissionPercent && (proposal.brokerId || proposal.agencyId)) {
+    // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 3/4 — quando o
+    // empreendimento tem CommissionRule.externalCommissionPercent
+    // configurado, a comissão externa passa a ser resolvida pelo motor de
+    // split (ExternalCommissionSplit, nunca vira Payable) em vez do split
+    // legado de 100% pro corretor/imobiliária (CommissionSplit, Fase A) —
+    // substitui, não roda em paralelo (ver resolveExternalSplitsForSale).
+    const resolvedExternalSplits = await resolveExternalSplitsForSale({
+      organizationId: context.organizationId,
+      developmentId: proposal.developmentId,
+      salePrice: Number(proposal.salePrice),
+      brokerId: proposal.brokerId,
+      agencyId: proposal.agencyId,
+    });
+
+    if (resolvedExternalSplits) {
+      for (const split of resolvedExternalSplits) {
+        await tx.externalCommissionSplit.create({
+          data: {
+            saleId: sale.id,
+            beneficiaryType: split.beneficiaryType,
+            brokerId: split.brokerId,
+            agencyId: split.agencyId,
+            label: split.label,
+            percent: split.percent,
+            value: split.value,
+          },
+        });
+      }
+    } else if (proposal.commissionPercent && (proposal.brokerId || proposal.agencyId)) {
       const value = round2((Number(proposal.salePrice) * Number(proposal.commissionPercent)) / 100);
       await tx.commissionSplit.create({
         data: {
@@ -313,6 +342,41 @@ export async function setSaleDownPaymentDestinationOverride(
       entityId: saleId,
       beforeData: { downPaymentDestinationOverride: sale.downPaymentDestinationOverride },
       afterData: { downPaymentDestinationOverride: destination },
+    });
+
+    return updated;
+  });
+}
+
+/**
+ * Credita o gerente comercial interno (Natureza 2 —
+ * docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4) por esta venda
+ * específica — obrigatório no modo PARTICIPATED_ONLY, sobrescreve o
+ * gerente padrão (`CommissionRule.internalManagerBrokerId`) no modo
+ * ALL_SALES. Só tem efeito antes da assinatura do contrato — depois disso o
+ * split interno já foi resolvido (ver `confirmSignature`).
+ */
+export async function setSaleInternalManager(context: AccessContext, saleId: string, brokerId: string | null) {
+  return prisma.$transaction(async (tx) => {
+    const sale = await tx.sale.findFirst({ where: { id: saleId, organizationId: context.organizationId } });
+    if (!sale || !canAccessDevelopment(context, sale.developmentId)) throw new Error("Venda inválida.");
+
+    if (brokerId) {
+      const manager = await tx.broker.findFirst({ where: { id: brokerId, organizationId: context.organizationId } });
+      if (!manager) throw new Error("Gerente comercial interno inválido.");
+      if (manager.role !== "MANAGER") throw new Error("O gerente comercial interno precisa ter papel de Gerente.");
+    }
+
+    const updated = await tx.sale.update({ where: { id: saleId }, data: { internalManagerBrokerId: brokerId } });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Sale",
+      entityId: saleId,
+      beforeData: { internalManagerBrokerId: sale.internalManagerBrokerId },
+      afterData: { internalManagerBrokerId: brokerId },
     });
 
     return updated;

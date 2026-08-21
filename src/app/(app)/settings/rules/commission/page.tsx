@@ -2,16 +2,18 @@ import Link from "next/link";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getGeneralCommissionRule, listCommissionRuleOverrides, DEFAULT_COMMISSION_RULE } from "@/server/commission-rules";
 import { listDevelopments } from "@/server/developments";
+import { listManagerBrokers } from "@/server/crm";
 import { CommissionRuleManager } from "./commission-rule-manager";
 
 export default async function CommissionRulePage() {
   const context = await requireAccessContext();
   const canEdit = hasPermission(context, "development", "EDIT");
 
-  const [generalRule, overrides, developments] = await Promise.all([
+  const [generalRule, overrides, developments, managers] = await Promise.all([
     getGeneralCommissionRule(context),
     listCommissionRuleOverrides(context),
     listDevelopments(context),
+    listManagerBrokers(context.organizationId),
   ]);
 
   const rule = generalRule
@@ -19,6 +21,7 @@ export default async function CommissionRulePage() {
         externalCommissionPercent: generalRule.externalCommissionPercent === null ? null : Number(generalRule.externalCommissionPercent),
         internalCommissionPercent: generalRule.internalCommissionPercent === null ? null : Number(generalRule.internalCommissionPercent),
         internalCommissionAppliesTo: generalRule.internalCommissionAppliesTo,
+        internalManagerBrokerId: generalRule.internalManagerBrokerId,
       }
     : DEFAULT_COMMISSION_RULE;
 
@@ -47,10 +50,12 @@ export default async function CommissionRulePage() {
           externalCommissionPercent: o.externalCommissionPercent === null ? null : Number(o.externalCommissionPercent),
           internalCommissionPercent: o.internalCommissionPercent === null ? null : Number(o.internalCommissionPercent),
           internalCommissionAppliesTo: o.internalCommissionAppliesTo,
+          internalManagerBrokerId: o.internalManagerBrokerId,
         }))}
         developments={developments
           .filter((d) => !overrides.some((o) => o.developmentId === d.id))
           .map((d) => ({ id: d.id, name: d.name }))}
+        managers={managers.map((m) => ({ id: m.id, name: m.name }))}
         canEdit={canEdit}
       />
     </>

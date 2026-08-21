@@ -1913,6 +1913,13 @@ model CommissionRule {
   externalCommissionPercent   Decimal?                    @db.Decimal(5, 2)
   internalCommissionPercent   Decimal?                    @db.Decimal(5, 2)
   internalCommissionAppliesTo InternalCommissionAppliesTo @default(ALL_SALES)
+  // Gerente comercial interno padrão pra ALL_SALES (Parte 4, Natureza 2) —
+  // quem recebe em toda venda do empreendimento quando não há um gerente
+  // específico creditado na própria venda (Sale.internalManagerBrokerId,
+  // que sempre tem prioridade — cobre tanto a exceção pontual do modo
+  // ALL_SALES quanto o modo PARTICIPATED_ONLY, onde é a única fonte).
+  // Coluna solta (sem relation Prisma), mesmo padrão de CommissionSplit.brokerId.
+  internalManagerBrokerId     String?                     @db.Uuid
   createdAt                   DateTime                    @default(now())
   updatedAt                   DateTime                    @updatedAt
 

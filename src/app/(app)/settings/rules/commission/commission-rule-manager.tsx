@@ -9,16 +9,18 @@ type RuleValues = {
   externalCommissionPercent: number | null;
   internalCommissionPercent: number | null;
   internalCommissionAppliesTo: "ALL_SALES" | "PARTICIPATED_ONLY";
+  internalManagerBrokerId: string | null;
 };
 
 export type OverrideRow = RuleValues & { id: string; developmentId: string; developmentName: string };
 export type DevelopmentOption = { id: string; name: string };
+export type ManagerOption = { id: string; name: string };
 
 const initialState: CommissionRuleFormState = {};
 
-function RuleFields({ rule }: { rule: RuleValues }) {
+function RuleFields({ rule, managers }: { rule: RuleValues; managers: ManagerOption[] }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "14px" }}>
       <label className="inc-field">
         <span className="inc-label">Comissão externa (%)</span>
         <input
@@ -50,6 +52,15 @@ function RuleFields({ rule }: { rule: RuleValues }) {
           <option value="PARTICIPATED_ONLY">Só nas vendas em que participou</option>
         </select>
       </label>
+      <label className="inc-field">
+        <span className="inc-label">Gerente comercial interno padrão</span>
+        <select name="internalManagerBrokerId" className="inc-select" defaultValue={rule.internalManagerBrokerId ?? ""}>
+          <option value="">Nenhum (ninguém recebe até configurar)</option>
+          {managers.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }
@@ -58,11 +69,13 @@ export function CommissionRuleManager({
   generalRule,
   overrides,
   developments,
+  managers,
   canEdit,
 }: {
   generalRule: RuleValues;
   overrides: OverrideRow[];
   developments: DevelopmentOption[];
+  managers: ManagerOption[];
   canEdit: boolean;
 }) {
   const generalFormRef = useRef<HTMLFormElement>(null);
@@ -73,7 +86,7 @@ export function CommissionRuleManager({
   return (
     <>
       <form ref={generalFormRef} action={generalDispatch} style={{ marginTop: "20px" }}>
-        <RuleFields rule={generalRule} />
+        <RuleFields rule={generalRule} managers={managers} />
         {generalState.error ? <p className="error-text" style={{ marginTop: "10px" }}>{generalState.error}</p> : null}
         {canEdit ? (
           <button type="submit" className="inc-btn inc-btn--primary" style={{ marginTop: "14px" }} disabled={generalPending}>
@@ -132,6 +145,7 @@ export function CommissionRuleManager({
           mode={modal.mode}
           override={modal.mode === "edit" ? modal.override : null}
           developments={developments}
+          managers={managers}
           onClose={() => setModal(null)}
         />
       ) : null}
@@ -143,11 +157,13 @@ function OverrideModal({
   mode,
   override,
   developments,
+  managers,
   onClose,
 }: {
   mode: "create" | "edit";
   override: OverrideRow | null;
   developments: DevelopmentOption[];
+  managers: ManagerOption[];
   onClose: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -158,7 +174,12 @@ function OverrideModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
 
-  const rule: RuleValues = override ?? { externalCommissionPercent: null, internalCommissionPercent: null, internalCommissionAppliesTo: "ALL_SALES" };
+  const rule: RuleValues = override ?? {
+    externalCommissionPercent: null,
+    internalCommissionPercent: null,
+    internalCommissionAppliesTo: "ALL_SALES",
+    internalManagerBrokerId: null,
+  };
 
   return (
     <Modal
@@ -189,7 +210,7 @@ function OverrideModal({
         ) : (
           <input type="hidden" name="developmentId" value={override!.developmentId} />
         )}
-        <RuleFields rule={rule} />
+        <RuleFields rule={rule} managers={managers} />
         {state.error ? <p className="error-text" style={{ marginTop: "14px" }}>{state.error}</p> : null}
       </form>
     </Modal>

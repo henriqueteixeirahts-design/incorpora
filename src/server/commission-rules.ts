@@ -19,23 +19,28 @@ export type CommissionRuleValues = {
   externalCommissionPercent: number | null;
   internalCommissionPercent: number | null;
   internalCommissionAppliesTo: InternalCommissionAppliesTo;
+  /** Gerente comercial interno padrão pra ALL_SALES — ver comentário no schema. */
+  internalManagerBrokerId: string | null;
 };
 
 export const DEFAULT_COMMISSION_RULE: CommissionRuleValues = {
   externalCommissionPercent: null,
   internalCommissionPercent: null,
   internalCommissionAppliesTo: "ALL_SALES",
+  internalManagerBrokerId: null,
 };
 
 function toValues(rule: {
   externalCommissionPercent: unknown;
   internalCommissionPercent: unknown;
   internalCommissionAppliesTo: InternalCommissionAppliesTo;
+  internalManagerBrokerId: string | null;
 }): CommissionRuleValues {
   return {
     externalCommissionPercent: rule.externalCommissionPercent === null ? null : Number(rule.externalCommissionPercent),
     internalCommissionPercent: rule.internalCommissionPercent === null ? null : Number(rule.internalCommissionPercent),
     internalCommissionAppliesTo: rule.internalCommissionAppliesTo,
+    internalManagerBrokerId: rule.internalManagerBrokerId,
   };
 }
 
@@ -95,6 +100,14 @@ export async function upsertCommissionRule(
 ) {
   assertPercentValid(input.externalCommissionPercent, "Percentual de comissão externa");
   assertPercentValid(input.internalCommissionPercent, "Percentual de comissão interna");
+
+  if (input.internalManagerBrokerId) {
+    const manager = await prisma.broker.findFirst({
+      where: { id: input.internalManagerBrokerId, organizationId: context.organizationId },
+    });
+    if (!manager) throw new Error("Gerente comercial interno inválido.");
+    if (manager.role !== "MANAGER") throw new Error("O gerente comercial interno precisa ter papel de Gerente.");
+  }
 
   return prisma.$transaction(async (tx) => {
     if (developmentId) {

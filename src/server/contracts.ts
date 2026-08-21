@@ -5,6 +5,7 @@ import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { tryReleaseCommissions } from "@/server/commissions";
+import { resolveInternalSplitForSale } from "@/server/commission-resolution";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
@@ -170,7 +171,7 @@ export async function confirmSignature(
       where: { id: contractId, organizationId: context.organizationId },
       include: {
         sale: {
-          include: { proposal: { include: { salesTable: true } }, commissionSplits: true },
+          include: { proposal: { include: { salesTable: true } }, commissionSplits: true, externalCommissionSplits: true },
         },
         portfolio: true,
         unit: true,
@@ -207,14 +208,65 @@ export async function confirmSignature(
       const paymentFlow = (proposal.proposedPaymentFlow ?? proposal.paymentFlow) as unknown as PaymentFlowResult | null;
       const items = paymentFlow?.items ?? [];
 
-      // Destino da entrada (Parte 4.2) — override da venda, senão o da
-      // tabela de vendas, senão SPE_ACCOUNT (proposta totalmente fora de
-      // tabela, sem SalesTable pra herdar).
-      const destination = contract.sale.downPaymentDestinationOverride ?? proposal.salesTable?.downPaymentDestination ?? "SPE_ACCOUNT";
+      // docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Parte 4 — o total já resolvido
+      // em ExternalCommissionSplit (Etapa 4, no fechamento da venda) é a fonte
+      // de verdade de quanto fracionar aqui, não um recálculo separado —
+      // evita divergência se a CommissionRule mudar entre a venda e a
+      // assinatura. > 0 = modelo novo (fraciona parcela a parcela, mantém
+      // todas na carteira); 0 = modelo legado (DownPaymentDestination,
+      // exclui a entrada inteira quando é BROKER_COMMISSION).
+      const externalSplitsTotal = round2(
+        contract.sale.externalCommissionSplits.reduce((sum, s) => sum + Number(s.value), 0),
+      );
 
-      const downPaymentItems = items.filter((item) => item.isDownPayment);
-      const collectibleItems =
-        destination === "BROKER_COMMISSION" ? items.filter((item) => !item.isDownPayment) : items;
+      let collectibleItems = items;
+      const externalPortionByIndex = new Map<number, number>();
+
+      if (externalSplitsTotal > 0) {
+        let remaining = externalSplitsTotal;
+        for (let i = 0; i < items.length && remaining > 0; i++) {
+          const portion = round2(Math.min(items[i].amount, remaining));
+          if (portion > 0) externalPortionByIndex.set(i, portion);
+          remaining = round2(remaining - portion);
+        }
+      } else {
+        // Fluxo LEGADO (docs/ESPEC_MODULO_COMERCIAL.md, Parte 4.2) — só
+        // quando o empreendimento não usa o modelo novo de comissão ainda
+        // (sem ExternalCommissionSplit resolvido pra esta venda).
+        const destination = contract.sale.downPaymentDestinationOverride ?? proposal.salesTable?.downPaymentDestination ?? "SPE_ACCOUNT";
+        const downPaymentItems = items.filter((item) => item.isDownPayment);
+        collectibleItems = destination === "BROKER_COMMISSION" ? items.filter((item) => !item.isDownPayment) : items;
+
+        if (destination === "BROKER_COMMISSION" && downPaymentItems.length > 0) {
+          const downPaymentTotal = round2(downPaymentItems.reduce((sum, item) => sum + item.amount, 0));
+          let remaining = downPaymentTotal;
+
+          for (const split of contract.sale.commissionSplits) {
+            if (remaining <= 0) break;
+            const splitValue = Number(split.value);
+            const deducted = Math.min(splitValue, remaining);
+            remaining = round2(remaining - deducted);
+            await tx.commissionSplit.update({
+              where: { id: split.id },
+              data: { value: round2(splitValue - deducted) },
+            });
+          }
+
+          if (remaining > 0) {
+            await tx.contract.update({ where: { id: contractId }, data: { downPaymentCommissionExcess: remaining } });
+          }
+
+          await recordDevelopmentEvent(tx, {
+            organizationId: context.organizationId,
+            developmentId: contract.developmentId,
+            actorUserId: context.userId,
+            eventType: "contract.down_payment_as_commission",
+            entityType: "Contract",
+            entityId: contractId,
+            payload: { downPaymentTotal, commissionExcess: remaining > 0 ? remaining : undefined },
+          });
+        }
+      }
 
       const totalValue = round2(collectibleItems.reduce((sum, item) => sum + item.amount, 0));
 
@@ -235,40 +287,8 @@ export async function confirmSignature(
             dueDate: addMonths(signedAt, item.dueOffsetMonths),
             originalValue: item.amount,
             isDownPayment: item.isDownPayment ?? false,
+            externalCommissionPortion: externalPortionByIndex.get(index) ?? 0,
           })),
-        });
-      }
-
-      // Entrada É a comissão (Parte 4.2): não entra na carteira da SPE —
-      // abate da comissão devida; se sobrar, vira crédito à SPE (registrado
-      // pra visibilidade do Financeiro, sem cobrança automática).
-      if (destination === "BROKER_COMMISSION" && downPaymentItems.length > 0) {
-        const downPaymentTotal = round2(downPaymentItems.reduce((sum, item) => sum + item.amount, 0));
-        let remaining = downPaymentTotal;
-
-        for (const split of contract.sale.commissionSplits) {
-          if (remaining <= 0) break;
-          const splitValue = Number(split.value);
-          const deducted = Math.min(splitValue, remaining);
-          remaining = round2(remaining - deducted);
-          await tx.commissionSplit.update({
-            where: { id: split.id },
-            data: { value: round2(splitValue - deducted) },
-          });
-        }
-
-        if (remaining > 0) {
-          await tx.contract.update({ where: { id: contractId }, data: { downPaymentCommissionExcess: remaining } });
-        }
-
-        await recordDevelopmentEvent(tx, {
-          organizationId: context.organizationId,
-          developmentId: contract.developmentId,
-          actorUserId: context.userId,
-          eventType: "contract.down_payment_as_commission",
-          entityType: "Contract",
-          entityId: contractId,
-          payload: { downPaymentTotal, commissionExcess: remaining > 0 ? remaining : undefined },
         });
       }
 
@@ -281,6 +301,28 @@ export async function confirmSignature(
         entityId: portfolio.id,
         payload: { installments: collectibleItems.length },
       });
+
+      // Natureza 2 (gerente comercial interno) — resolvido só depois do
+      // bloco legado acima, pra nunca aparecer em contract.sale.commissionSplits
+      // (snapshot pré-transação) e ser decrementado por engano pelo abate de
+      // entrada-como-comissão do fluxo legado.
+      const internalSplit = await resolveInternalSplitForSale({
+        organizationId: context.organizationId,
+        developmentId: contract.developmentId,
+        salePrice: Number(contract.sale.salePrice),
+        saleInternalManagerBrokerId: contract.sale.internalManagerBrokerId,
+      });
+      if (internalSplit) {
+        await tx.commissionSplit.create({
+          data: {
+            saleId: contract.sale.id,
+            beneficiaryType: "MANAGER",
+            brokerId: internalSplit.brokerId,
+            percent: internalSplit.percent,
+            value: internalSplit.value,
+          },
+        });
+      }
     }
 
     await recordAuditEvent(tx, {
