@@ -76,6 +76,7 @@ import {
   type CreateInvestorReturnInput,
 } from "@/server/spe-investor-returns";
 import { getInvestorLoanPosition, recordInvestorLoanSnapshot } from "@/server/spe-investor-loan";
+import { getInvestorStatement } from "@/server/spe-investor-statement";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -1046,6 +1047,16 @@ export async function getInvestorLoanPositionAction(investorId: string) {
     return await getInvestorLoanPosition(context, investorId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao calcular o saldo devedor do mútuo." };
+  }
+}
+
+export async function getInvestorStatementAction(investorId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "spe", "VIEW")) return null;
+  try {
+    return await getInvestorStatement(context, investorId);
+  } catch {
+    return null;
   }
 }
 

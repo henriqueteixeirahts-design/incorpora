@@ -166,3 +166,67 @@ export async function renderStatementPdf(params: {
 
   return renderToBuffer(doc);
 }
+
+export type InvestorStatementSummaryRow = { label: string; valueLabel: string };
+export type InvestorStatementEventRow = {
+  dateLabel: string;
+  kindLabel: string;
+  label: string;
+  amountLabel: string;
+  statusLabel: string;
+};
+
+/**
+ * PDF do extrato do investidor (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 4)
+ * — sem motor de templates (esse não é um documento vinculado a um Contract,
+ * mesma limitação já registrada pro contrato de parceria e pra chamada de
+ * capital): título e rótulos fixos em português, sem texto configurável.
+ */
+export async function renderInvestorStatementPdf(params: {
+  title: string;
+  subtitle: string;
+  summary: InvestorStatementSummaryRow[];
+  events: InvestorStatementEventRow[];
+  footer: string;
+}): Promise<Buffer> {
+  const doc = (
+    <Document>
+      <Page size="A4" style={styles.page} wrap>
+        <Text style={styles.title}>{params.title}</Text>
+        <Text style={statementStyles.contractSubtitle}>{params.subtitle}</Text>
+
+        {params.summary.map((row, index) => (
+          <View key={index} style={statementStyles.summaryRow}>
+            <Text style={statementStyles.summaryLabel}>{row.label}</Text>
+            <Text style={statementStyles.summaryValue}>{row.valueLabel}</Text>
+          </View>
+        ))}
+
+        <View style={statementStyles.table}>
+          <View style={statementStyles.tableHeaderRow}>
+            <Text style={[statementStyles.colDate, statementStyles.headerCell]}>Data</Text>
+            <Text style={[statementStyles.colStatus, statementStyles.headerCell]}>Tipo</Text>
+            <Text style={[statementStyles.colLabel, statementStyles.headerCell]}>Descrição</Text>
+            <Text style={[statementStyles.colValue, statementStyles.headerCell]}>Valor</Text>
+            <Text style={[statementStyles.colStatus, statementStyles.headerCell]}>Status</Text>
+          </View>
+          {params.events.map((event, index) => (
+            <View key={index} style={statementStyles.tableRow} wrap={false}>
+              <Text style={statementStyles.colDate}>{event.dateLabel}</Text>
+              <Text style={statementStyles.colStatus}>{event.kindLabel}</Text>
+              <Text style={statementStyles.colLabel}>{event.label}</Text>
+              <Text style={statementStyles.colValue}>{event.amountLabel}</Text>
+              <Text style={statementStyles.colStatus}>{event.statusLabel}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.footer} fixed>
+          {params.footer}
+        </Text>
+      </Page>
+    </Document>
+  );
+
+  return renderToBuffer(doc);
+}

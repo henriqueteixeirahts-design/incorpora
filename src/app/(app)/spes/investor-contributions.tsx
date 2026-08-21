@@ -16,6 +16,7 @@ import {
   createInvestorReturnAction,
   getInvestorLoanPositionAction,
   recordInvestorLoanSnapshotAction,
+  getInvestorStatementAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
@@ -24,6 +25,14 @@ type CapitalCall = Awaited<ReturnType<typeof getCapitalCallsAction>>[number];
 type InvestorReturn = Awaited<ReturnType<typeof getInvestorReturnsAction>>[number];
 type LoanPositionResult = Awaited<ReturnType<typeof getInvestorLoanPositionAction>>;
 type LoanPosition = Exclude<LoanPositionResult, null | { error: string }>;
+type InvestorStatement = NonNullable<Awaited<ReturnType<typeof getInvestorStatementAction>>>;
+
+const STATEMENT_EVENT_KIND_LABELS: Record<string, string> = {
+  FORECAST: "Previsão",
+  CAPITAL_CALL: "Chamada de capital",
+  CONTRIBUTION: "Aporte",
+  RETURN: "Devolução/distribuição",
+};
 
 const RETURN_TYPE_LABELS: Record<string, string> = {
   RESULT_DISTRIBUTION: "Distribuição de resultado",
@@ -634,6 +643,80 @@ function ContributionForm({
   );
 }
 
+function InvestorStatementSection({ investorId }: { investorId: string }) {
+  const [statement, setStatement] = useState<InvestorStatement | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
+
+  useEffect(() => {
+    getInvestorStatementAction(investorId).then(setStatement);
+  }, [investorId]);
+
+  if (!statement) return null;
+
+  return (
+    <div style={{ marginBottom: "1.5rem" }}>
+      <div className="inc-eyebrow" style={{ marginBottom: "8px" }}>
+        Extrato do investidor (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 4)
+      </div>
+      <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Total aportado</p>
+          <strong>{formatCurrency(statement.summary.totalContributed)}</strong>
+        </div>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Total devolvido/distribuído</p>
+          <strong>{formatCurrency(statement.summary.totalReturned)}</strong>
+        </div>
+        <div>
+          <p className="field-hint" style={{ padding: 0 }}>Posição líquida</p>
+          <strong>{formatCurrency(statement.summary.netPosition)}</strong>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <a
+          className="inc-btn inc-btn--secondary inc-btn--sm"
+          href={`/api/spes/investor-statement?investorId=${investorId}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Baixar extrato (PDF)
+        </a>
+        <button type="button" className="inc-btn inc-btn--secondary inc-btn--sm" onClick={() => setShowTimeline((v) => !v)}>
+          {showTimeline ? "Ocultar linha do tempo" : "Ver linha do tempo"}
+        </button>
+      </div>
+      {showTimeline ? (
+        statement.events.length === 0 ? (
+          <p className="field-hint">Nenhum evento registrado.</p>
+        ) : (
+          <table className="inc-table" style={{ marginBottom: "0.5rem" }}>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Descrição</th>
+                <th>Valor</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statement.events.map((e, i) => (
+                <tr key={i}>
+                  <td className="is-muted">{formatCalendarDateBR(e.date)}</td>
+                  <td>{STATEMENT_EVENT_KIND_LABELS[e.kind] ?? e.kind}</td>
+                  <td>{e.label}</td>
+                  <td className="is-num">{formatCurrency(e.amount)}</td>
+                  <td>{e.statusLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 export function InvestorContributionsPanel({
   investorId,
   modality,
@@ -715,6 +798,8 @@ export function InvestorContributionsPanel({
           </strong>
         </div>
       </div>
+
+      <InvestorStatementSection investorId={investorId} />
 
       {modality === "LOAN" ? (
         <LoanPositionSection key={loanRefreshKey} investorId={investorId} onPosition={setLoanNetBalance} />
