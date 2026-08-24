@@ -12,6 +12,7 @@ import {
   upsertExchangeFinancialTermsAction,
   getApurationPeriodsAction,
   closeApurationPeriodAction,
+  getExchangeStatementAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
@@ -586,6 +587,61 @@ function ExchangeFinancialSection({ developmentId, contractId }: { developmentId
   );
 }
 
+function ExchangeStatementSection({ contractId }: { contractId: string }) {
+  const [statement, setStatement] = useState<Awaited<ReturnType<typeof getExchangeStatementAction>>>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
+
+  useEffect(() => {
+    getExchangeStatementAction(contractId).then(setStatement);
+  }, [contractId]);
+
+  if (!statement) return null;
+
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      <p style={{ fontSize: "0.85rem", fontWeight: 600 }}>Extrato do permutante</p>
+      <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+        Total repassado: {formatCurrency(statement.summary.totalRepassed)} · Saldo retido: {formatCurrency(statement.summary.retentionBalance)}
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.35rem" }}>
+        <a
+          className="secondary"
+          href={`/api/exchange-contracts/statement?exchangeContractId=${contractId}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Baixar extrato (PDF)
+        </a>
+        <button type="button" className="secondary" onClick={() => setShowTimeline((v) => !v)}>
+          {showTimeline ? "Ocultar linha do tempo" : "Ver linha do tempo"}
+        </button>
+      </div>
+      {showTimeline ? (
+        <table className="inc-table" style={{ marginTop: "0.5rem" }}>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Evento</th>
+              <th>Valor</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statement.events.map((e, i) => (
+              <tr key={i}>
+                <td className="is-muted">{formatCalendarDateBR(e.date)}</td>
+                <td>{e.label}</td>
+                <td className="is-num">{formatCurrency(e.amount)}</td>
+                <td>{e.statusLabel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </div>
+  );
+}
+
 export function ExchangeContractsManager({
   developmentId,
   contracts,
@@ -673,6 +729,8 @@ export function ExchangeContractsManager({
             {contract.type !== "PHYSICAL" && canEdit ? (
               <ExchangeFinancialSection developmentId={developmentId} contractId={contract.id} />
             ) : null}
+
+            <ExchangeStatementSection contractId={contract.id} />
 
             {editing !== "new" && editing?.id === contract.id ? (
               <ExchangeContractForm

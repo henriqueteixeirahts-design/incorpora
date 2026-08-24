@@ -23,6 +23,7 @@ import {
   upsertExchangeFinancialTerms,
   type UpsertExchangeFinancialTermsInput,
 } from "@/server/exchange-financial-terms";
+import { getExchangeStatement } from "@/server/exchange-statement";
 import type {
   ExchangeContractType,
   ExchangeContractStatus,
@@ -365,6 +366,16 @@ export async function closeApurationPeriodAction(_prevState: FormState, formData
   }
   revalidateAll(developmentId);
   return { success: true };
+}
+
+export async function getExchangeStatementAction(contractId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "VIEW")) return null;
+  try {
+    return await getExchangeStatement(context, contractId);
+  } catch {
+    return null;
+  }
 }
 
 export async function removerDestaqueAction(
