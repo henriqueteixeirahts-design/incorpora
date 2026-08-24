@@ -11,7 +11,12 @@ import {
   removerDestaque,
   type CreateExchangeContractInput,
 } from "@/server/exchange-contracts";
-import type { ExchangeContractType, ExchangeContractStatus } from "@/generated/prisma/client";
+import {
+  listExchangeRepasses,
+  getExchangeRetentionBalance,
+  releaseExchangeRetention,
+} from "@/server/exchange-repasse";
+import type { ExchangeContractType, ExchangeContractStatus, ExchangeRetentionReleaseTrigger } from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -31,6 +36,9 @@ function parseExchangeContractInput(
   const status = String(formData.get("status") ?? "ACTIVE") as ExchangeContractStatus;
   const managedBySystemRaw = String(formData.get("managedBySystem") ?? "");
   const administrationFeePctRaw = String(formData.get("administrationFeePct") ?? "").replace(",", ".");
+  const retentionPctRaw = String(formData.get("retentionPct") ?? "").replace(",", ".");
+  const retentionReleaseTriggerRaw = String(formData.get("retentionReleaseTrigger") ?? "") as ExchangeRetentionReleaseTrigger | "";
+  const retentionReleaseDateRaw = String(formData.get("retentionReleaseDate") ?? "");
   const landIds = formData.getAll("landIds").map(String).filter(Boolean);
 
   if (!permutanteId) return { error: "Selecione o permutante." };
@@ -48,6 +56,13 @@ function parseExchangeContractInput(
   ) {
     return { error: "Taxa de administração inválida." };
   }
+  const retentionPct = retentionPctRaw ? Number(retentionPctRaw) : undefined;
+  if (retentionPct !== undefined && (Number.isNaN(retentionPct) || retentionPct < 0 || retentionPct > 100)) {
+    return { error: "Percentual de retenção inválido." };
+  }
+  if (retentionReleaseTriggerRaw && !["HABITE_SE", "DELIVERY", "FIXED_DATE", "CONSTRUCTION_PROGRESS"].includes(retentionReleaseTriggerRaw)) {
+    return { error: "Gatilho de liberação da retenção inválido." };
+  }
 
   return {
     permutanteId,
@@ -58,6 +73,9 @@ function parseExchangeContractInput(
     status,
     managedBySystem: type === "FINANCIAL" ? undefined : managedBySystemRaw === "true",
     administrationFeePct,
+    retentionPct,
+    retentionReleaseTrigger: retentionReleaseTriggerRaw || undefined,
+    retentionReleaseDate: retentionReleaseDateRaw ? new Date(retentionReleaseDateRaw) : undefined,
     landIds,
   };
 }
@@ -149,6 +167,61 @@ export async function destacarUnidadeAction(
     await destacarUnidade(context, contractId, unitId);
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao destacar unidade." };
+  }
+  revalidateAll(developmentId);
+  return { success: true };
+}
+
+export async function getExchangeRepasseSummaryAction(contractId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "VIEW")) return null;
+  try {
+    const [repasses, retentionBalance] = await Promise.all([
+      listExchangeRepasses(context, contractId),
+      getExchangeRetentionBalance(context, contractId),
+    ]);
+    return {
+      repasses: repasses.map((r) => ({
+        id: r.id,
+        grossBase: Number(r.grossBase),
+        administrationFeeAmount: Number(r.administrationFeeAmount),
+        externalCommissionAmount: Number(r.externalCommissionAmount),
+        internalCommissionAmount: Number(r.internalCommissionAmount),
+        share: Number(r.share),
+        referenceDate: r.referenceDate,
+      })),
+      retentionBalance,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function releaseExchangeRetentionAction(_prevState: FormState, formData: FormData): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "EDIT") || !hasPermission(context, "payable", "CREATE")) {
+    return { error: "Sem permissão." };
+  }
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!developmentId || !contractId) return { error: "Contrato inválido." };
+
+  const amountRaw = String(formData.get("amount") ?? "").replace(",", ".");
+  const amount = Number(amountRaw);
+  if (!amountRaw || Number.isNaN(amount) || amount <= 0) return { error: "Informe um valor válido." };
+  const releaseDateRaw = String(formData.get("releaseDate") ?? "");
+  if (!releaseDateRaw) return { error: "Informe a data de liberação." };
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  try {
+    await releaseExchangeRetention(context, contractId, {
+      amount,
+      releaseDate: new Date(releaseDateRaw),
+      notes: notes || undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao liberar retenção." };
   }
   revalidateAll(developmentId);
   return { success: true };

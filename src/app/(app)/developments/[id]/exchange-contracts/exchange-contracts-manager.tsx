@@ -6,6 +6,8 @@ import {
   updateExchangeContractAction,
   deleteExchangeContractAction,
   uploadExchangeContractDocumentAction,
+  getExchangeRepasseSummaryAction,
+  releaseExchangeRetentionAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
@@ -21,6 +23,9 @@ export type ExchangeContractRow = {
   status: string;
   managedBySystem: boolean | null;
   administrationFeePct: number | null;
+  retentionPct: number | null;
+  retentionReleaseTrigger: string | null;
+  retentionReleaseDate: Date | null;
   landIds: string[];
   landLabels: string[];
   unitCount: number;
@@ -149,18 +154,51 @@ function ExchangeContractForm({
               </select>
             </div>
             {managedBySystem ? (
-              <div className="field">
-                <label htmlFor="ec-fee">Taxa de administração (%)</label>
-                <input
-                  id="ec-fee"
-                  name="administrationFeePct"
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  max="100"
-                  defaultValue={contract?.administrationFeePct ?? ""}
-                />
-              </div>
+              <>
+                <div className="field">
+                  <label htmlFor="ec-fee">Taxa de administração (%)</label>
+                  <input
+                    id="ec-fee"
+                    name="administrationFeePct"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    max="100"
+                    defaultValue={contract?.administrationFeePct ?? ""}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="ec-retention-pct">Retenção sobre o repasse (%)</label>
+                  <input
+                    id="ec-retention-pct"
+                    name="retentionPct"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    max="100"
+                    defaultValue={contract?.retentionPct ?? ""}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="ec-retention-trigger">Gatilho de liberação da retenção</label>
+                  <select id="ec-retention-trigger" name="retentionReleaseTrigger" defaultValue={contract?.retentionReleaseTrigger ?? ""}>
+                    <option value="">—</option>
+                    <option value="HABITE_SE">Habite-se</option>
+                    <option value="DELIVERY">Entrega das unidades</option>
+                    <option value="FIXED_DATE">Data fixa</option>
+                    <option value="CONSTRUCTION_PROGRESS">Medição de obra</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="ec-retention-date">Data fixa de liberação</label>
+                  <input
+                    id="ec-retention-date"
+                    name="retentionReleaseDate"
+                    type="date"
+                    defaultValue={contract?.retentionReleaseDate ? new Date(contract.retentionReleaseDate).toISOString().slice(0, 10) : ""}
+                  />
+                </div>
+              </>
             ) : null}
           </>
         ) : null}
@@ -231,6 +269,91 @@ function DocumentUpload({ developmentId, contractId }: { developmentId: string; 
         {busy ? "Enviando..." : "Enviar"}
       </button>
       {error ? <span className="error-text">{error}</span> : null}
+    </div>
+  );
+}
+
+const releaseRetentionInitialState: FormState = {};
+
+function ReleaseRetentionForm({
+  developmentId,
+  contractId,
+  available,
+  onDone,
+}: {
+  developmentId: string;
+  contractId: string;
+  available: number;
+  onDone: () => void;
+}) {
+  const [state, dispatch, pending] = useActionState(releaseExchangeRetentionAction, releaseRetentionInitialState);
+
+  useEffect(() => {
+    if (state.success) onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form action={dispatch} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap", marginTop: "0.5rem" }}>
+      <input type="hidden" name="developmentId" value={developmentId} />
+      <input type="hidden" name="contractId" value={contractId} />
+      <div className="field">
+        <label htmlFor={`release-amount-${contractId}`}>Valor a liberar (R$)</label>
+        <input id={`release-amount-${contractId}`} name="amount" type="number" step="0.01" min="0.01" max={available} defaultValue={available} />
+      </div>
+      <div className="field">
+        <label htmlFor={`release-date-${contractId}`}>Data</label>
+        <input id={`release-date-${contractId}`} name="releaseDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
+      </div>
+      <div className="field">
+        <label htmlFor={`release-notes-${contractId}`}>Observações</label>
+        <input id={`release-notes-${contractId}`} name="notes" />
+      </div>
+      <button type="submit" className="secondary" disabled={pending}>
+        {pending ? "Liberando..." : "Liberar retenção"}
+      </button>
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+    </form>
+  );
+}
+
+function RepasseSummarySection({ developmentId, contractId }: { developmentId: string; contractId: string }) {
+  const [summary, setSummary] = useState<Awaited<ReturnType<typeof getExchangeRepasseSummaryAction>>>(null);
+  const [releasing, setReleasing] = useState(false);
+
+  function load() {
+    getExchangeRepasseSummaryAction(contractId).then(setSummary);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId]);
+
+  if (!summary) return null;
+
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      <p style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+        {summary.repasses.length} repasse(s) registrado(s) · saldo retido disponível: {formatCurrency(summary.retentionBalance)}
+      </p>
+      {summary.retentionBalance > 0 ? (
+        releasing ? (
+          <ReleaseRetentionForm
+            developmentId={developmentId}
+            contractId={contractId}
+            available={summary.retentionBalance}
+            onDone={() => {
+              setReleasing(false);
+              load();
+            }}
+          />
+        ) : (
+          <button type="button" className="secondary" onClick={() => setReleasing(true)}>
+            Liberar retenção
+          </button>
+        )
+      ) : null}
     </div>
   );
 }
@@ -313,6 +436,10 @@ export function ExchangeContractsManager({
               <div style={{ marginTop: "0.75rem" }}>
                 <DocumentUpload developmentId={developmentId} contractId={contract.id} />
               </div>
+            ) : null}
+
+            {contract.type !== "FINANCIAL" && contract.managedBySystem ? (
+              <RepasseSummarySection developmentId={developmentId} contractId={contract.id} />
             ) : null}
 
             {editing !== "new" && editing?.id === contract.id ? (

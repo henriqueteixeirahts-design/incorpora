@@ -7,7 +7,7 @@ import { developmentOwnedScope, orgScope, canAccessDevelopment } from "@/server/
 import { changeUnitStatusTx } from "@/server/units";
 import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
-import type { ExchangeContractType, ExchangeContractStatus } from "@/generated/prisma/client";
+import type { ExchangeContractType, ExchangeContractStatus, ExchangeRetentionReleaseTrigger } from "@/generated/prisma/client";
 
 const ENTITY_TYPE = "ExchangeContract";
 
@@ -53,6 +53,9 @@ export type CreateExchangeContractInput = {
   status?: ExchangeContractStatus;
   managedBySystem?: boolean;
   administrationFeePct?: number;
+  retentionPct?: number;
+  retentionReleaseTrigger?: ExchangeRetentionReleaseTrigger;
+  retentionReleaseDate?: Date;
   landIds: string[];
 };
 
@@ -90,6 +93,9 @@ export async function createExchangeContract(context: AccessContext, input: Crea
         status: input.status ?? "ACTIVE",
         managedBySystem: input.type === "FINANCIAL" ? null : (input.managedBySystem ?? true),
         administrationFeePct: input.administrationFeePct,
+        retentionPct: input.retentionPct,
+        retentionReleaseTrigger: input.retentionReleaseTrigger,
+        retentionReleaseDate: input.retentionReleaseDate,
         lands: { create: input.landIds.map((landId) => ({ landId })) },
       },
     });
@@ -147,6 +153,9 @@ export async function updateExchangeContract(
         status: input.status ?? before.status,
         managedBySystem: nextManagedBySystem,
         administrationFeePct: input.administrationFeePct,
+        retentionPct: input.retentionPct,
+        retentionReleaseTrigger: input.retentionReleaseTrigger,
+        retentionReleaseDate: input.retentionReleaseDate,
         lands: { create: input.landIds.map((landId) => ({ landId })) },
       },
     });
