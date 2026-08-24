@@ -563,6 +563,7 @@ model Permutante {
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   exchangeContracts ExchangeContract[]
+  supplier          Supplier?
 
   @@unique([organizationId, document])
   @@map("permutantes")
@@ -578,6 +579,35 @@ enum ExchangeContractStatus {
   ACTIVE
   SETTLED // quitado
   TERMINATED // encerrado
+}
+
+enum ExchangeRetentionReleaseTrigger {
+  HABITE_SE
+  DELIVERY
+  FIXED_DATE
+  CONSTRUCTION_PROGRESS // medição de obra — sem campo estruturado no sistema, liberação sempre por julgamento humano
+}
+
+enum ExchangeIncidenceScope {
+  ALL_UNITS
+  SPECIFIC_UNITS
+  VALUE_CAP
+}
+
+enum ExchangePayoutFlow {
+  ON_RECEIPT
+  MONTHLY_CONSOLIDATED
+  MILESTONES
+}
+
+enum ExchangeDeductionBase {
+  GROSS
+  NET
+}
+
+enum ExchangeApurationPeriodStatus {
+  OPEN
+  CLOSED
 }
 
 /// Contrato de permuta (docs/ESPEC_PERMUTANTES.md, Parte 1). Etapas 1-2:
@@ -598,16 +628,162 @@ model ExchangeContract {
   notes                String?
   status               ExchangeContractStatus @default(ACTIVE)
   managedBySystem      Boolean? // só relevante se type = PHYSICAL/MIXED
-  administrationFeePct Decimal?               @db.Decimal(6, 3) // captado agora; repasse (etapa 3) ainda não calcula sobre isso
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  administrationFeePct Decimal?               @db.Decimal(6, 3)
 
-  development Development            @relation(fields: [developmentId], references: [id], onDelete: Restrict)
-  permutante  Permutante             @relation(fields: [permutanteId], references: [id], onDelete: Restrict)
-  lands       ExchangeContractLand[]
-  units       Unit[]
+  // Retenção da física sob gestão (Etapa 3) — % de cada repasse retido como
+  // garantia, liberado manualmente quando o gatilho é considerado atingido
+  // (nunca automático — ver ExchangeRetentionRelease).
+  retentionPct            Decimal?                         @db.Decimal(6, 3)
+  retentionReleaseTrigger ExchangeRetentionReleaseTrigger?
+  retentionReleaseDate    DateTime? // só relevante quando retentionReleaseTrigger = FIXED_DATE
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  development       Development                     @relation(fields: [developmentId], references: [id], onDelete: Restrict)
+  permutante        Permutante                      @relation(fields: [permutanteId], references: [id], onDelete: Restrict)
+  lands             ExchangeContractLand[]
+  units             Unit[]
+  financialTerms    ExchangeContractFinancialTerms?
+  apurationPeriods  ExchangeApurationPeriod[]
+  repasses          ExchangeRepasse[]
+  retentionReleases ExchangeRetentionRelease[]
 
   @@map("exchange_contracts")
+}
+
+/// Condições da permuta financeira (Etapa 4) — 1:1 com o contrato, só
+/// preenchido quando `type` inclui FINANCIAL. Base sempre "recebido" (regime
+/// caixa — a TSH não usa base "vendido"; decisão explícita do usuário,
+/// registrada em docs/ESPEC_PERMUTANTES.md como fora de escopo por ora).
+model ExchangeContractFinancialTerms {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  exchangeContractId String                 @unique @db.Uuid
+  percent            Decimal                @db.Decimal(6, 3)
+  incidenceScope     ExchangeIncidenceScope @default(ALL_UNITS)
+  incidenceCapValue  Decimal?               @db.Decimal(14, 2) // só quando incidenceScope = VALUE_CAP
+  payoutFlow         ExchangePayoutFlow
+
+  // "Por marcos" nunca libera sozinho — o Financeiro decide, a tela só
+  // mostra o progresso (ex.: "62% das unidades vendidas · marco: 50%").
+  milestoneDescription        String?
+  milestoneTargetUnitsSoldPct Decimal? @db.Decimal(6, 3)
+
+  deductionBase    ExchangeDeductionBase @default(GROSS)
+  // Taxa de administração já é descontada automaticamente por evento
+  // (mesmo campo administrationFeePct do contrato). Comissão/imposto não
+  // têm rastreamento confiável por pagamento individual ainda — entram
+  // como valor informado manualmente por período (ExchangeApurationPeriod),
+  // com auditoria de quem/quando. Preparado pra virar automático no futuro
+  // sem mudar o modelo.
+  deductCommission Boolean               @default(false)
+  deductTax        Boolean               @default(false)
+
+  retentionPct            Decimal?                         @db.Decimal(6, 3)
+  retentionReleaseTrigger ExchangeRetentionReleaseTrigger?
+  retentionReleaseDate    DateTime?
+
+  correctionIndexRuleId String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  exchangeContract    ExchangeContract                @relation(fields: [exchangeContractId], references: [id], onDelete: Cascade)
+  correctionIndexRule IndexRule?                      @relation(fields: [correctionIndexRuleId], references: [id])
+  units               ExchangeContractFinancialUnit[]
+
+  @@map("exchange_contract_financial_terms")
+}
+
+/// Unidades na incidência quando `incidenceScope = SPECIFIC_UNITS`.
+model ExchangeContractFinancialUnit {
+  id               String @id @default(uuid()) @db.Uuid
+  financialTermsId String @db.Uuid
+  unitId           String @db.Uuid
+
+  financialTerms ExchangeContractFinancialTerms @relation(fields: [financialTermsId], references: [id], onDelete: Cascade)
+  unit           Unit                           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([financialTermsId, unitId])
+  @@map("exchange_contract_financial_units")
+}
+
+/// Período de apuração da permuta financeira (Etapa 4) — só financeira; a
+/// física fecha cada evento na hora (ExchangeRepasse.payableId direto, sem
+/// período). Fechamento é sempre uma ação manual: aplica dedução de
+/// comissão/imposto (se habilitada) e retenção, gera 1 Payable.
+model ExchangeApurationPeriod {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  exchangeContractId String                        @db.Uuid
+  periodStart        DateTime
+  periodEnd          DateTime
+  status             ExchangeApurationPeriodStatus @default(OPEN)
+
+  commissionDeduction        Decimal?  @db.Decimal(14, 2) // informado manualmente
+  taxDeduction               Decimal?  @db.Decimal(14, 2) // informado manualmente
+  deductionsInformedByUserId String?   @db.Uuid
+  deductionsInformedAt       DateTime?
+
+  retainedAmount Decimal? @db.Decimal(14, 2)
+  netAmount      Decimal? @db.Decimal(14, 2)
+  payableId      String?  @unique @db.Uuid
+
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  exchangeContract ExchangeContract  @relation(fields: [exchangeContractId], references: [id], onDelete: Cascade)
+  payable          Payable?          @relation(fields: [payableId], references: [id], onDelete: SetNull)
+  repasses         ExchangeRepasse[]
+
+  @@map("exchange_apuration_periods")
+}
+
+/// Memória auditável do repasse de permuta — 1 linha por pagamento de
+/// parcela, nunca sobrescrita (docs/ESPEC_PERMUTANTES.md, Parte 3.2: "mesma
+/// filosofia da carteira"). Física fecha na hora (payableId preenchido
+/// direto); financeira acumula num ExchangeApurationPeriod até o fechamento.
+model ExchangeRepasse {
+  id                   String  @id @default(uuid()) @db.Uuid
+  exchangeContractId   String  @db.Uuid
+  apurationPeriodId    String? @db.Uuid
+  installmentPaymentId String  @db.Uuid
+
+  grossBase                Decimal @db.Decimal(14, 2)
+  administrationFeeAmount  Decimal @default(0) @db.Decimal(14, 2)
+  externalCommissionAmount Decimal @default(0) @db.Decimal(14, 2) // só física
+  internalCommissionAmount Decimal @default(0) @db.Decimal(14, 2) // só física
+  share                    Decimal @db.Decimal(14, 2) // participação do permutante já com as deduções do evento
+
+  payableId     String?  @unique @db.Uuid // preenchido direto só na física (fecha cada evento na hora)
+  referenceDate DateTime
+  details       Json
+  createdAt     DateTime @default(now())
+
+  exchangeContract ExchangeContract         @relation(fields: [exchangeContractId], references: [id], onDelete: Cascade)
+  apurationPeriod  ExchangeApurationPeriod? @relation(fields: [apurationPeriodId], references: [id], onDelete: SetNull)
+  payable          Payable?                 @relation(fields: [payableId], references: [id], onDelete: SetNull)
+
+  @@index([exchangeContractId])
+  @@map("exchange_repasses")
+}
+
+/// Liberação de saldo retido (física ou financeira) — sempre ação manual,
+/// nunca automática. Saldo disponível = soma de `retainedAmount` gerado −
+/// soma já liberada, calculado ao vivo (mesmo princípio do saldo devedor do
+/// mútuo).
+model ExchangeRetentionRelease {
+  id                 String   @id @default(uuid()) @db.Uuid
+  exchangeContractId String   @db.Uuid
+  amount             Decimal  @db.Decimal(14, 2)
+  releaseDate        DateTime
+  payableId          String   @unique @db.Uuid
+  notes              String?
+  createdAt          DateTime @default(now())
+
+  exchangeContract ExchangeContract @relation(fields: [exchangeContractId], references: [id], onDelete: Cascade)
+  payable          Payable          @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@map("exchange_retention_releases")
 }
 
 /// Vínculo N:N entre contrato de permuta e terreno(s) objeto da permuta (a
@@ -1216,9 +1392,10 @@ model Unit {
   floor            Floor?            @relation(fields: [floorId], references: [id], onDelete: SetNull)
   exchangeContract ExchangeContract? @relation(fields: [exchangeContractId], references: [id])
 
-  statusHistory    UnitStatusHistory[]
-  linksAsPrincipal UnitLink[]          @relation("UnitLinkPrincipal")
-  linksAsAccessory UnitLink[]          @relation("UnitLinkAccessory")
+  statusHistory               UnitStatusHistory[]
+  linksAsPrincipal            UnitLink[]                      @relation("UnitLinkPrincipal")
+  linksAsAccessory            UnitLink[]                      @relation("UnitLinkAccessory")
+  exchangeFinancialIncidences ExchangeContractFinancialUnit[]
 
   salesTableEntries SalesTableUnit[]
   reservations      Reservation[]
@@ -2526,12 +2703,13 @@ model IndexRule {
   // ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md).
   publicationDeadlineDay Int?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  values       IndexValue[]
-  contracts    Contract[] // uso como índice de obra (pré-Habite-se)
-  developments Development[] // uso como índice pós-Habite-se
-  speInvestors SpeInvestor[] // uso como índice de correção de mútuo
-  salesTables  SalesTable[] // uso como índice pré-Habite-se pra projeção de fluxo nominal da proposta
+  organization                   Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  values                         IndexValue[]
+  contracts                      Contract[] // uso como índice de obra (pré-Habite-se)
+  developments                   Development[] // uso como índice pós-Habite-se
+  speInvestors                   SpeInvestor[] // uso como índice de correção de mútuo
+  salesTables                    SalesTable[] // uso como índice pré-Habite-se pra projeção de fluxo nominal da proposta
+  exchangeContractFinancialTerms ExchangeContractFinancialTerms[] // uso como índice de correção do valor retido na permuta financeira
 
   @@unique([organizationId, code, name])
   @@map("index_rules")
@@ -2619,6 +2797,7 @@ model Supplier {
   agencyId       String?  @unique @db.Uuid
   customerId     String?  @unique @db.Uuid
   speInvestorId  String?  @unique @db.Uuid
+  permutanteId   String?  @unique @db.Uuid
   createdAt      DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -2626,6 +2805,7 @@ model Supplier {
   agency       RealEstateAgency? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
   speInvestor  SpeInvestor?      @relation(fields: [speInvestorId], references: [id], onDelete: SetNull)
+  permutante   Permutante?       @relation(fields: [permutanteId], references: [id], onDelete: SetNull)
   payables     Payable[]
 
   @@map("suppliers")
@@ -2673,6 +2853,8 @@ enum PayableCategory {
   CANCELLATION_REFUND // devoluções de distrato
   INVESTOR_RETURN // devolução/amortização de mútuo a investidor (docs/ESPEC_APORTES_INVESTIDORES.md, Parte 3)
   RESULT_DISTRIBUTION // distribuição de resultado a investidor (idem)
+  EXCHANGE_REPASSE // repasse ao permutante (docs/ESPEC_PERMUTANTES.md, Etapas 3-4)
+  EXCHANGE_RETENTION_RELEASE // liberação de retenção ao permutante (idem)
   OTHER // despesas diversas
 }
 
@@ -2711,17 +2893,20 @@ model Payable {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  development             Development?             @relation(fields: [developmentId], references: [id], onDelete: Cascade)
-  spe                     SpecialPurposeEntity?    @relation(fields: [speId], references: [id], onDelete: SetNull)
-  supplier                Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  costCenter              CostCenter?              @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  commissionSplit         CommissionSplit?
-  distrato                ContractDistrato?
-  items                   PayableItem[]
-  allocations             PayableAllocation[]
-  commissionSplitPayables CommissionSplitPayable[]
-  investorReturn          SpeInvestorReturn?
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development              Development?              @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  spe                      SpecialPurposeEntity?     @relation(fields: [speId], references: [id], onDelete: SetNull)
+  supplier                 Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  costCenter               CostCenter?               @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  commissionSplit          CommissionSplit?
+  distrato                 ContractDistrato?
+  items                    PayableItem[]
+  allocations              PayableAllocation[]
+  commissionSplitPayables  CommissionSplitPayable[]
+  investorReturn           SpeInvestorReturn?
+  exchangeRepasse          ExchangeRepasse?
+  exchangeApurationPeriod  ExchangeApurationPeriod?
+  exchangeRetentionRelease ExchangeRetentionRelease?
 
   @@index([organizationId, status])
   @@index([organizationId, developmentId])

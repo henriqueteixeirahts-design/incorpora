@@ -47,13 +47,26 @@ async function distributeExternalRecognition(tx: Prisma.TransactionClient, saleI
  *   caixa é só sobre QUANDO acumula, não sobre quanto) — nunca passa do
  *   `value` total do split.
  */
+/**
+ * Devolve o quanto deste pagamento específico foi reconhecido como comissão
+ * nas duas naturezas — reaproveitado por outros motores que precisam saber
+ * "quanto deste pagamento é corretagem" sem recalcular a mesma conta (ex.:
+ * repasse de permuta física, docs/ESPEC_PERMUTANTES.md, Etapa 3 — "corretagem
+ * daquela venda é custo do permutante").
+ */
+export type CommissionRecognitionResult = {
+  externalRecognized: number;
+  internalAccrued: number;
+};
+
 export async function recognizeCommissionOnPayment(
   tx: Prisma.TransactionClient,
   params: { installmentId: string; saleId: string; paymentAmount: number },
-) {
+): Promise<CommissionRecognitionResult> {
   const installment = await tx.installment.findUniqueOrThrow({ where: { id: params.installmentId } });
   const externalPortion = Number(installment.externalCommissionPortion);
 
+  let externalRecognized = 0;
   if (externalPortion > 0) {
     const originalValue = Number(installment.originalValue);
     const ratio = originalValue > 0 ? externalPortion / originalValue : 0;
@@ -67,9 +80,11 @@ export async function recognizeCommissionOnPayment(
         data: { externalCommissionRecognized: round2(alreadyRecognized + newlyRecognized) },
       });
       await distributeExternalRecognition(tx, params.saleId, newlyRecognized);
+      externalRecognized = newlyRecognized;
     }
   }
 
+  let internalAccrued = 0;
   const internalSplit = await tx.commissionSplit.findFirst({
     where: { saleId: params.saleId, beneficiaryType: "MANAGER" },
   });
@@ -77,9 +92,13 @@ export async function recognizeCommissionOnPayment(
     const value = Number(internalSplit.value);
     const percent = Number(internalSplit.percent);
     const accrualShare = round2(params.paymentAmount * (percent / 100));
-    const newAccrued = round2(Math.min(value, Number(internalSplit.accruedAmount) + accrualShare));
-    if (newAccrued !== Number(internalSplit.accruedAmount)) {
+    const previousAccrued = Number(internalSplit.accruedAmount);
+    const newAccrued = round2(Math.min(value, previousAccrued + accrualShare));
+    if (newAccrued !== previousAccrued) {
       await tx.commissionSplit.update({ where: { id: internalSplit.id }, data: { accruedAmount: newAccrued } });
+      internalAccrued = round2(newAccrued - previousAccrued);
     }
   }
+
+  return { externalRecognized, internalAccrued };
 }
