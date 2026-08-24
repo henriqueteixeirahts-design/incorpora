@@ -15,8 +15,22 @@ import {
   listExchangeRepasses,
   getExchangeRetentionBalance,
   releaseExchangeRetention,
+  listApurationPeriods,
+  closeExchangeApurationPeriod,
 } from "@/server/exchange-repasse";
-import type { ExchangeContractType, ExchangeContractStatus, ExchangeRetentionReleaseTrigger } from "@/generated/prisma/client";
+import {
+  getExchangeFinancialTerms,
+  upsertExchangeFinancialTerms,
+  type UpsertExchangeFinancialTermsInput,
+} from "@/server/exchange-financial-terms";
+import type {
+  ExchangeContractType,
+  ExchangeContractStatus,
+  ExchangeRetentionReleaseTrigger,
+  ExchangeIncidenceScope,
+  ExchangePayoutFlow,
+  ExchangeDeductionBase,
+} from "@/generated/prisma/client";
 
 export type FormState = { error?: string; success?: boolean };
 
@@ -222,6 +236,132 @@ export async function releaseExchangeRetentionAction(_prevState: FormState, form
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao liberar retenção." };
+  }
+  revalidateAll(developmentId);
+  return { success: true };
+}
+
+export async function getExchangeFinancialTermsAction(contractId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "VIEW")) return null;
+  try {
+    const terms = await getExchangeFinancialTerms(context, contractId);
+    if (!terms) return null;
+    return {
+      ...terms,
+      percent: Number(terms.percent),
+      incidenceCapValue: terms.incidenceCapValue === null ? null : Number(terms.incidenceCapValue),
+      milestoneTargetUnitsSoldPct: terms.milestoneTargetUnitsSoldPct === null ? null : Number(terms.milestoneTargetUnitsSoldPct),
+      retentionPct: terms.retentionPct === null ? null : Number(terms.retentionPct),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseFinancialTermsInput(formData: FormData): UpsertExchangeFinancialTermsInput | { error: string } {
+  const percentRaw = String(formData.get("ft-percent") ?? "").replace(",", ".");
+  const incidenceScope = String(formData.get("ft-incidenceScope") ?? "") as ExchangeIncidenceScope;
+  const incidenceCapValueRaw = String(formData.get("ft-incidenceCapValue") ?? "").replace(",", ".");
+  const payoutFlow = String(formData.get("ft-payoutFlow") ?? "") as ExchangePayoutFlow;
+  const milestoneDescription = String(formData.get("ft-milestoneDescription") ?? "").trim();
+  const milestoneTargetRaw = String(formData.get("ft-milestoneTarget") ?? "").replace(",", ".");
+  const deductionBase = String(formData.get("ft-deductionBase") ?? "") as ExchangeDeductionBase;
+  const deductCommission = formData.get("ft-deductCommission") === "on";
+  const deductTax = formData.get("ft-deductTax") === "on";
+  const retentionPctRaw = String(formData.get("ft-retentionPct") ?? "").replace(",", ".");
+
+  const percent = Number(percentRaw);
+  if (!percentRaw || Number.isNaN(percent) || percent <= 0 || percent > 100) return { error: "Informe o percentual do permutante." };
+  if (!["ALL_UNITS", "SPECIFIC_UNITS", "VALUE_CAP"].includes(incidenceScope)) return { error: "Selecione a incidência." };
+  if (!["ON_RECEIPT", "MONTHLY_CONSOLIDATED", "MILESTONES"].includes(payoutFlow)) return { error: "Selecione o fluxo de repasse." };
+  if (!["GROSS", "NET"].includes(deductionBase)) return { error: "Selecione a base de cálculo." };
+
+  const incidenceCapValue = incidenceCapValueRaw ? Number(incidenceCapValueRaw) : undefined;
+  if (incidenceScope === "VALUE_CAP" && (!incidenceCapValue || incidenceCapValue <= 0)) {
+    return { error: "Informe o valor-teto da incidência." };
+  }
+  const milestoneTargetUnitsSoldPct = milestoneTargetRaw ? Number(milestoneTargetRaw) : undefined;
+  const retentionPct = retentionPctRaw ? Number(retentionPctRaw) : undefined;
+  if (retentionPct !== undefined && (Number.isNaN(retentionPct) || retentionPct < 0 || retentionPct > 100)) {
+    return { error: "Percentual de retenção inválido." };
+  }
+
+  return {
+    percent,
+    incidenceScope,
+    incidenceCapValue,
+    payoutFlow,
+    milestoneDescription: milestoneDescription || undefined,
+    milestoneTargetUnitsSoldPct,
+    deductionBase,
+    deductCommission,
+    deductTax,
+    retentionPct,
+  };
+}
+
+export async function upsertExchangeFinancialTermsAction(_prevState: FormState, formData: FormData): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "EDIT")) return { error: "Sem permissão." };
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!developmentId || !contractId) return { error: "Contrato inválido." };
+
+  const input = parseFinancialTermsInput(formData);
+  if ("error" in input) return input;
+
+  try {
+    await upsertExchangeFinancialTerms(context, contractId, input);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar condições financeiras." };
+  }
+  revalidateAll(developmentId);
+  return { success: true };
+}
+
+export async function getApurationPeriodsAction(contractId: string) {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "VIEW")) return [];
+  try {
+    const periods = await listApurationPeriods(context, contractId);
+    return periods.map((p) => ({
+      id: p.id,
+      periodStart: p.periodStart,
+      periodEnd: p.periodEnd,
+      status: p.status,
+      grossAccrued: p.repasses.reduce((sum, r) => sum + Number(r.share), 0),
+      commissionDeduction: p.commissionDeduction === null ? null : Number(p.commissionDeduction),
+      taxDeduction: p.taxDeduction === null ? null : Number(p.taxDeduction),
+      retainedAmount: p.retainedAmount === null ? null : Number(p.retainedAmount),
+      netAmount: p.netAmount === null ? null : Number(p.netAmount),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function closeApurationPeriodAction(_prevState: FormState, formData: FormData): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "exchange_contract", "EDIT") || !hasPermission(context, "payable", "CREATE")) {
+    return { error: "Sem permissão." };
+  }
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const periodId = String(formData.get("periodId") ?? "");
+  if (!developmentId || !periodId) return { error: "Período inválido." };
+
+  const commissionDeductionRaw = String(formData.get("commissionDeduction") ?? "").replace(",", ".");
+  const taxDeductionRaw = String(formData.get("taxDeduction") ?? "").replace(",", ".");
+
+  try {
+    await closeExchangeApurationPeriod(context, periodId, {
+      commissionDeduction: commissionDeductionRaw ? Number(commissionDeductionRaw) : undefined,
+      taxDeduction: taxDeductionRaw ? Number(taxDeductionRaw) : undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao fechar período de apuração." };
   }
   revalidateAll(developmentId);
   return { success: true };

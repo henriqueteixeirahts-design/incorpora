@@ -8,6 +8,10 @@ import {
   uploadExchangeContractDocumentAction,
   getExchangeRepasseSummaryAction,
   releaseExchangeRetentionAction,
+  getExchangeFinancialTermsAction,
+  upsertExchangeFinancialTermsAction,
+  getApurationPeriodsAction,
+  closeApurationPeriodAction,
   type FormState,
 } from "./actions";
 import { formatCurrencyBRL, formatCalendarDateBR } from "@/lib/format";
@@ -358,6 +362,230 @@ function RepasseSummarySection({ developmentId, contractId }: { developmentId: s
   );
 }
 
+const PERIOD_STATUS_LABELS: Record<string, string> = { OPEN: "Aberto", CLOSED: "Fechado" };
+
+const financialTermsInitialState: FormState = {};
+
+function FinancialTermsForm({
+  developmentId,
+  contractId,
+  terms,
+  onSaved,
+}: {
+  developmentId: string;
+  contractId: string;
+  terms: Awaited<ReturnType<typeof getExchangeFinancialTermsAction>>;
+  onSaved: () => void;
+}) {
+  const [state, dispatch, pending] = useActionState(upsertExchangeFinancialTermsAction, financialTermsInitialState);
+  const [incidenceScope, setIncidenceScope] = useState(terms?.incidenceScope ?? "ALL_UNITS");
+  const [payoutFlow, setPayoutFlow] = useState(terms?.payoutFlow ?? "ON_RECEIPT");
+
+  useEffect(() => {
+    if (state.success) onSaved();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form action={dispatch} className="field-section" style={{ marginTop: "0.75rem" }}>
+      <h4>Condições financeiras</h4>
+      <input type="hidden" name="developmentId" value={developmentId} />
+      <input type="hidden" name="contractId" value={contractId} />
+      <div className="field-grid">
+        <div className="field">
+          <label htmlFor={`ft-percent-${contractId}`}>Percentual do permutante (%) *</label>
+          <input id={`ft-percent-${contractId}`} name="ft-percent" type="number" step="0.001" min="0.001" max="100" defaultValue={terms?.percent ?? ""} required />
+        </div>
+        <div className="field">
+          <label htmlFor={`ft-incidence-${contractId}`}>Incidência</label>
+          <select id={`ft-incidence-${contractId}`} name="ft-incidenceScope" value={incidenceScope} onChange={(e) => setIncidenceScope(e.target.value as typeof incidenceScope)}>
+            <option value="ALL_UNITS">Todas as unidades</option>
+            <option value="VALUE_CAP">Até um valor-teto</option>
+          </select>
+        </div>
+        {incidenceScope === "VALUE_CAP" ? (
+          <div className="field">
+            <label htmlFor={`ft-cap-${contractId}`}>Valor-teto (R$) *</label>
+            <input id={`ft-cap-${contractId}`} name="ft-incidenceCapValue" type="number" step="0.01" min="0.01" defaultValue={terms?.incidenceCapValue ?? ""} />
+          </div>
+        ) : null}
+        <div className="field">
+          <label htmlFor={`ft-flow-${contractId}`}>Fluxo de repasse</label>
+          <select id={`ft-flow-${contractId}`} name="ft-payoutFlow" value={payoutFlow} onChange={(e) => setPayoutFlow(e.target.value as typeof payoutFlow)}>
+            <option value="ON_RECEIPT">Conforme recebimento</option>
+            <option value="MONTHLY_CONSOLIDATED">Consolidado mensal</option>
+            <option value="MILESTONES">Por marcos (liberação manual)</option>
+          </select>
+        </div>
+        {payoutFlow === "MILESTONES" ? (
+          <>
+            <div className="field">
+              <label htmlFor={`ft-milestone-desc-${contractId}`}>Descrição do marco</label>
+              <input id={`ft-milestone-desc-${contractId}`} name="ft-milestoneDescription" defaultValue={terms?.milestoneDescription ?? ""} placeholder="Ex.: 50% das unidades vendidas" />
+            </div>
+            <div className="field">
+              <label htmlFor={`ft-milestone-target-${contractId}`}>% de unidades vendidas alvo</label>
+              <input id={`ft-milestone-target-${contractId}`} name="ft-milestoneTarget" type="number" step="0.1" min="0" max="100" defaultValue={terms?.milestoneTargetUnitsSoldPct ?? ""} />
+            </div>
+          </>
+        ) : null}
+        <div className="field">
+          <label htmlFor={`ft-base-${contractId}`}>Base de cálculo</label>
+          <select id={`ft-base-${contractId}`} name="ft-deductionBase" defaultValue={terms?.deductionBase ?? "GROSS"}>
+            <option value="GROSS">Bruta (sobre o valor recebido)</option>
+            <option value="NET">Líquida de taxa de administração</option>
+          </select>
+        </div>
+        <div className="field">
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+            <input type="checkbox" name="ft-deductCommission" defaultChecked={terms?.deductCommission ?? false} />
+            Descontar comissão (informada manualmente no fechamento do período)
+          </label>
+        </div>
+        <div className="field">
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 400 }}>
+            <input type="checkbox" name="ft-deductTax" defaultChecked={terms?.deductTax ?? false} />
+            Descontar imposto (informado manualmente no fechamento do período)
+          </label>
+        </div>
+        <div className="field">
+          <label htmlFor={`ft-retention-${contractId}`}>Retenção (%)</label>
+          <input id={`ft-retention-${contractId}`} name="ft-retentionPct" type="number" step="0.001" min="0" max="100" defaultValue={terms?.retentionPct ?? ""} />
+        </div>
+      </div>
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+      <button type="submit" disabled={pending} style={{ marginTop: "0.5rem" }}>
+        {pending ? "Salvando..." : "Salvar condições financeiras"}
+      </button>
+    </form>
+  );
+}
+
+const closePeriodInitialState: FormState = {};
+
+function CloseApurationPeriodForm({
+  developmentId,
+  period,
+  onDone,
+}: {
+  developmentId: string;
+  period: Awaited<ReturnType<typeof getApurationPeriodsAction>>[number];
+  onDone: () => void;
+}) {
+  const [state, dispatch, pending] = useActionState(closeApurationPeriodAction, closePeriodInitialState);
+
+  useEffect(() => {
+    if (state.success) onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.success]);
+
+  return (
+    <form action={dispatch} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", flexWrap: "wrap", marginTop: "0.35rem" }}>
+      <input type="hidden" name="developmentId" value={developmentId} />
+      <input type="hidden" name="periodId" value={period.id} />
+      <div className="field">
+        <label htmlFor={`close-commission-${period.id}`}>Comissão do período (R$)</label>
+        <input id={`close-commission-${period.id}`} name="commissionDeduction" type="number" step="0.01" min="0" />
+      </div>
+      <div className="field">
+        <label htmlFor={`close-tax-${period.id}`}>Imposto do período (R$)</label>
+        <input id={`close-tax-${period.id}`} name="taxDeduction" type="number" step="0.01" min="0" />
+      </div>
+      <button type="submit" className="secondary" disabled={pending}>
+        {pending ? "Fechando..." : "Fechar período"}
+      </button>
+      {state.error ? <p className="error-text">{state.error}</p> : null}
+    </form>
+  );
+}
+
+function ApurationPeriodsSection({ developmentId, contractId }: { developmentId: string; contractId: string }) {
+  const [periods, setPeriods] = useState<Awaited<ReturnType<typeof getApurationPeriodsAction>> | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
+
+  function load() {
+    getApurationPeriodsAction(contractId).then(setPeriods);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId]);
+
+  if (!periods || periods.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      <p style={{ fontSize: "0.85rem", fontWeight: 600 }}>Períodos de apuração</p>
+      <table className="inc-table">
+        <thead>
+          <tr>
+            <th>Início</th>
+            <th>Status</th>
+            <th>Apurado</th>
+            <th>Valor a repassar</th>
+            <th aria-label="Ações" />
+          </tr>
+        </thead>
+        <tbody>
+          {periods.map((p) => (
+            <tr key={p.id}>
+              <td className="is-muted">{formatCalendarDateBR(p.periodStart)}</td>
+              <td>{PERIOD_STATUS_LABELS[p.status] ?? p.status}</td>
+              <td className="is-num">{formatCurrency(p.grossAccrued)}</td>
+              <td className="is-num">{p.netAmount !== null ? formatCurrency(p.netAmount) : "—"}</td>
+              <td>
+                {p.status === "OPEN" ? (
+                  closingId === p.id ? (
+                    <CloseApurationPeriodForm
+                      developmentId={developmentId}
+                      period={p}
+                      onDone={() => {
+                        setClosingId(null);
+                        load();
+                      }}
+                    />
+                  ) : (
+                    <button type="button" className="secondary" onClick={() => setClosingId(p.id)}>
+                      Fechar
+                    </button>
+                  )
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ExchangeFinancialSection({ developmentId, contractId }: { developmentId: string; contractId: string }) {
+  const [terms, setTerms] = useState<Awaited<ReturnType<typeof getExchangeFinancialTermsAction>>>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  function load() {
+    getExchangeFinancialTermsAction(contractId).then((t) => {
+      setTerms(t);
+      setLoaded(true);
+    });
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractId]);
+
+  if (!loaded) return null;
+
+  return (
+    <div>
+      <FinancialTermsForm developmentId={developmentId} contractId={contractId} terms={terms} onSaved={load} />
+      {terms ? <ApurationPeriodsSection developmentId={developmentId} contractId={contractId} /> : null}
+    </div>
+  );
+}
+
 export function ExchangeContractsManager({
   developmentId,
   contracts,
@@ -440,6 +668,10 @@ export function ExchangeContractsManager({
 
             {contract.type !== "FINANCIAL" && contract.managedBySystem ? (
               <RepasseSummarySection developmentId={developmentId} contractId={contract.id} />
+            ) : null}
+
+            {contract.type !== "PHYSICAL" && canEdit ? (
+              <ExchangeFinancialSection developmentId={developmentId} contractId={contract.id} />
             ) : null}
 
             {editing !== "new" && editing?.id === contract.id ? (

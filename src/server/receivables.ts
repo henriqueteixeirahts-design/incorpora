@@ -7,7 +7,7 @@ import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-co
 import { simulateAnticipation } from "@/lib/anticipation";
 import { tryReleaseCommissions } from "@/server/commissions";
 import { recognizeCommissionOnPayment } from "@/server/commission-payment-recognition";
-import { recognizeExchangePhysicalRepasseOnPayment } from "@/server/exchange-repasse";
+import { recognizeExchangePhysicalRepasseOnPayment, recognizeExchangeFinancialRepasseOnPayment } from "@/server/exchange-repasse";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
 import type { IndexCode, InterestType, Prisma } from "@/generated/prisma/client";
@@ -333,6 +333,16 @@ export async function registerInstallmentPayment(
       referenceDate: input.paidAt,
       externalCommissionAmount: commissionRecognition.externalRecognized,
       internalCommissionAmount: commissionRecognition.internalAccrued,
+    });
+
+    await recognizeExchangeFinancialRepasseOnPayment(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      developmentId: installment.portfolio.contract.developmentId,
+      unitId: installment.portfolio.contract.unitId,
+      installmentPaymentId: payment.id,
+      paymentAmount: input.amount,
+      referenceDate: input.paidAt,
     });
 
     return updated;
