@@ -787,6 +787,22 @@ Especificada em `docs/ESPEC_APORTES_INVESTIDORES.md`. Etapas 1-2 (cadastro do in
 
 ---
 
+### Permutantes — concluída (etapas 3-6; etapas 1-2 já existiam)
+
+Especificada em `docs/ESPEC_PERMUTANTES.md`. Etapas 1-2 (cadastro do contrato de permuta + destaque de unidades da permuta física no espelho de vendas) já existiam antes desta rodada. Etapas 3-4 (repasse físico sob gestão + motor de apuração financeira) mexem em dinheiro real — plano de arquitetura apresentado e aprovado antes de qualquer código, mesmo rigor de RBAC/Comissionamento/Aportes. Durante o planejamento, o usuário fechou 3 simplificações que reduziram bastante o escopo: (1) física ganhou dedução de corretagem (as duas naturezas — externa e interna, reaproveitadas do motor de Comissionamento) além de taxa de administração e retenção; (2) a base de cálculo "vendido" saiu do escopo inteiramente — a TSH só usa regime caixa; (3) sem nenhum evento de estorno em distrato, física ou financeira — a TSH só agencia a venda, não estorna nada, e regime caixa já cobre isso por construção (parcela não paga não gera repasse). Etapas 5-6 seguiram autônomas por não serem cálculo novo.
+
+**Etapa 3 — repasse de permuta física sob gestão**: a unidade destacada continua no funil normal de vendas (`managedBySystem = true`), mas o dinheiro do comprador nunca é receita da SPE. Fórmula: `repasse = recebido − corretagem externa − corretagem interna − taxa de administração − retenção`. `recognizeCommissionOnPayment` (motor de Comissionamento) passou a devolver os valores de comissão reconhecidos em cada pagamento, reaproveitados aqui sem recalcular. Cada pagamento gera 1 `ExchangeRepasse` (memória auditável, nunca sobrescrita) + 1 conta a pagar na hora. Liberação de retenção é sempre ação manual, saldo calculado ao vivo.
+
+**Etapa 4 — motor de apuração da permuta financeira**: o permutante recebe um % sobre o recebido da SPE num empreendimento (base sempre "recebido"), com incidência configurável (todas as unidades / unidades específicas / até um valor-teto — evento de fronteira absorve só o restante) e 3 fluxos de repasse: conforme recebimento (fecha na hora, só com retenção), consolidado mensal e por marcos (ambos acumulam num `ExchangeApurationPeriod`, fechado manualmente pelo Financeiro). Base bruta ou líquida de taxa de administração; comissão/imposto — sem rastreamento confiável por pagamento individual ainda — entram como valor informado manualmente no fechamento do período, com auditoria de quem/quando, estrutura pronta pra virar automático no futuro sem mudar o modelo.
+
+**Etapa 5 — extrato do permutante + PDF**: mesma filosofia do extrato do investidor (Aportes) — junta repasses, fechamentos de período e liberações de retenção numa timeline única, PDF gerado sob demanda sem motor de templates (documento não vinculado a um `Contract`).
+
+**Etapa 6 — integrações restantes**: a maior parte já estava pronta das etapas anteriores (espelho, contas a pagar, carteira, distrato). Único ajuste real: `getSalesSummary` passou a separar VGV vendido (receita própria) de VGV permutante — unidade de permuta física sob gestão gera uma `Sale` normal, mas nunca deve contar como receita da SPE. Indicador exibido no dashboard e no relatório do empreendimento.
+
+**Testado**: `npx tsc --noEmit`, `npm run lint`, `npm run build` limpos em cada etapa. 12 testes novos de integração/unidade (cálculo físico e financeiro com casos conferidos na mão, teto de valor, período de apuração, extrato, split de VGV, isolamento por organização). Suíte completa ao final: unitária 180/180 + integração **353/353, zero falhas**.
+
+---
+
 ## 2. Decisões que se afastaram do PRD/arquitetura original
 
 | Decisão | O que diz o PRD/arquitetura | O que foi implementado | Motivo | Precisa revisão? |
