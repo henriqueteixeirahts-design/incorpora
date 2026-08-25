@@ -47,6 +47,7 @@ model Organization {
   accessGrants            AccessGrant[]
   auditEvents             AuditEvent[]
   developmentEvents       DevelopmentEvent[]
+  scheduledReports        ScheduledReport[]
   documents               Document[]
   notifications           Notification[]
   settings                Setting[]
@@ -1276,6 +1277,7 @@ model Development {
   receivables                    Receivable[]
   constructionPhases             ConstructionPhase[]
   constructionMeasurements       ConstructionMeasurement[]
+  scheduledReports               ScheduledReport[]
 
   @@index([organizationId])
   @@index([speId])
@@ -3100,4 +3102,37 @@ model Receivable {
   @@index([organizationId, status])
   @@index([organizationId, developmentId])
   @@map("receivables")
+}
+
+enum ScheduledReportPeriodicity {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+/// Estrutura de agendamento de relatório (docs/ESPEC_FASE_C_DASHBOARD_
+/// EMPREENDIMENTOS.md, Etapa 6 — preparação Fase 2). Guarda relatório +
+/// filtros + periodicidade + destinatários; o disparo automático por e-mail
+/// só chega com a integração de comunicação da Fase 2 — por ora só geração
+/// manual ("Gerar agora"), que registra `lastGeneratedAt` sem persistir o
+/// arquivo gerado (mesmo botão de exportação da tela do relatório).
+model ScheduledReport {
+  id              String                     @id @default(uuid()) @db.Uuid
+  organizationId  String                     @db.Uuid
+  name            String
+  reportKey       String // chave do relatório (REPORT_GROUPS, src/server/reports-center.ts)
+  developmentId   String?                    @db.Uuid // filtro fixo opcional — nulo = consolidado
+  periodicity     ScheduledReportPeriodicity
+  recipients      String[] // e-mails — sem envio ainda, só cadastro (Fase 2)
+  isActive        Boolean                    @default(true)
+  lastGeneratedAt DateTime?
+  createdByUserId String?                    @db.Uuid
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  development  Development? @relation(fields: [developmentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("scheduled_reports")
 }

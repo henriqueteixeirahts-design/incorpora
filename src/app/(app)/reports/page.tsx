@@ -118,6 +118,7 @@ export default async function ReportsPage() {
           <Link href="/receivables/overdue">Inadimplência (detalhado)</Link>
           <Link href="/payables">Contas a pagar (detalhado)</Link>
           <Link href="/cash-flow">Fluxo de caixa</Link>
+          <Link href="/reports/scheduled">Relatórios agendados</Link>
         </div>
       </div>
 
