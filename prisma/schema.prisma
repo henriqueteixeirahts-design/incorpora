@@ -920,6 +920,8 @@ enum DocumentCategory {
   RET_OPTION_TERM // termo de opção pelo RET (protocolo Receita Federal)
   PERMIT_LICENSE // alvarás e licenças
   FISCAL_DOCUMENT // nota fiscal / boleto / recibo de uma conta a pagar
+  CONDOMINIUM_CONVENTION // convenção de condomínio
+  CONSTRUCTION_INSURANCE // seguro obra
 }
 
 /// Documento genérico, anexável a qualquer entidade via (entityType, entityId).
@@ -1218,6 +1220,7 @@ model Development {
   actualDeliveryDate     DateTime?
   registrationNumber     String? // número do registro da incorporação
   notaryOffice           String? // cartório
+  registrationDate       DateTime? // data do registro da incorporação
   motherPropertyRecord   String? // matrícula-mãe
   taxRegime              String?
   hasPropertyAffectation Boolean         @default(false) // patrimônio de afetação
@@ -1271,10 +1274,75 @@ model Development {
   payableAllocations             PayableAllocation[]
   allocationTemplateDestinations AllocationTemplateDestination[]
   receivables                    Receivable[]
+  constructionPhases             ConstructionPhase[]
+  constructionMeasurements       ConstructionMeasurement[]
 
   @@index([organizationId])
   @@index([speId])
   @@map("developments")
+}
+
+/// Fase configurável da obra (docs/ESPEC_FASE_C_DASHBOARD_EMPREENDIMENTOS.md,
+/// Parte 3, Aba 3) — ex.: Fundação, Estrutura, Alvenaria, Instalações,
+/// Acabamento, Paisagismo. Livre por empreendimento, com peso no total
+/// (validação de soma = 100% no service layer, mesmo padrão de
+/// AgencySplitTier). `isActive = false` remove da % geral sem apagar o
+/// histórico de medições já lançadas contra ela.
+model ConstructionPhase {
+  id            String    @id @default(uuid()) @db.Uuid
+  developmentId String    @db.Uuid
+  name          String
+  sequence      Int
+  weightPct     Decimal   @db.Decimal(5, 2)
+  plannedStart  DateTime?
+  plannedEnd    DateTime?
+  actualStart   DateTime?
+  actualEnd     DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  development  Development                         @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  measurements ConstructionPhaseMeasurementValue[]
+
+  @@index([developmentId])
+  @@map("construction_phases")
+}
+
+/// Medição periódica de evolução física (mensal, por convenção) — 1 registro
+/// por lançamento, com o % de cada fase naquele momento
+/// (ConstructionPhaseMeasurementValue). `overallPercentComplete` é o
+/// ponderado pelos pesos das fases, calculado e congelado no lançamento —
+/// nunca recalculado retroativamente se os pesos mudarem depois (memória
+/// auditável, mesmo princípio da carteira/comissão/permuta). Fotos opcionais
+/// via Document genérico (entityType="ConstructionMeasurement").
+model ConstructionMeasurement {
+  id                     String   @id @default(uuid()) @db.Uuid
+  developmentId          String   @db.Uuid
+  measurementDate        DateTime
+  overallPercentComplete Decimal  @db.Decimal(5, 2)
+  notes                  String?
+  informedByUserId       String?  @db.Uuid
+  createdAt              DateTime @default(now())
+
+  development Development                         @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+  phaseValues ConstructionPhaseMeasurementValue[]
+
+  @@index([developmentId])
+  @@map("construction_measurements")
+}
+
+model ConstructionPhaseMeasurementValue {
+  id              String  @id @default(uuid()) @db.Uuid
+  measurementId   String  @db.Uuid
+  phaseId         String  @db.Uuid
+  percentComplete Decimal @db.Decimal(5, 2)
+
+  measurement ConstructionMeasurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+  phase       ConstructionPhase       @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  @@unique([measurementId, phaseId])
+  @@map("construction_phase_measurement_values")
 }
 
 /// Torre ou bloco de um empreendimento vertical. Não se aplica a loteamentos.
