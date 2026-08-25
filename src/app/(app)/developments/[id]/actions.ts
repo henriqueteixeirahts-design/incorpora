@@ -2,10 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAccessContext, hasPermission } from "@/server/auth-context";
-import { createBuilding, createFloor } from "@/server/developments";
+import {
+  createBuilding,
+  createFloor,
+  updateDevelopmentDetails,
+  uploadDevelopmentDocument,
+  deleteDevelopmentDocument,
+} from "@/server/developments";
 import { createUnit, updateUnitStatus, linkUnits } from "@/server/units";
 import { setDevelopmentCorrectionRule } from "@/server/receivables";
-import type { InterestType } from "@/generated/prisma/client";
+import {
+  createConstructionPhase,
+  updateConstructionPhase,
+  deactivateConstructionPhase,
+  createConstructionMeasurement,
+} from "@/server/construction";
+import type { InterestType, DocumentCategory } from "@/generated/prisma/client";
 import type {
   UnitType,
   UnitStatus,
@@ -13,7 +25,7 @@ import type {
   UnitLinkPricing,
 } from "@/generated/prisma/client";
 
-export type FormState = { error?: string };
+export type FormState = { error?: string; success?: boolean };
 
 export async function createBuildingAction(
   _prevState: FormState,
@@ -204,4 +216,185 @@ export async function setDevelopmentCorrectionRuleAction(
 
   revalidatePath(`/developments/${developmentId}`);
   return {};
+}
+
+function parseOptionalDate(formData: FormData, key: string): Date | null | undefined {
+  const raw = String(formData.get(key) ?? "").trim();
+  return raw ? new Date(raw) : null;
+}
+
+export async function updateDevelopmentDetailsAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  if (!developmentId) return { error: "Empreendimento inválido." };
+
+  try {
+    await updateDevelopmentDetails(context, developmentId, {
+      launchDate: parseOptionalDate(formData, "launchDate"),
+      expectedDeliveryDate: parseOptionalDate(formData, "expectedDeliveryDate"),
+      actualDeliveryDate: parseOptionalDate(formData, "actualDeliveryDate"),
+      registrationNumber: String(formData.get("registrationNumber") ?? "").trim() || null,
+      notaryOffice: String(formData.get("notaryOffice") ?? "").trim() || null,
+      registrationDate: parseOptionalDate(formData, "registrationDate"),
+      motherPropertyRecord: String(formData.get("motherPropertyRecord") ?? "").trim() || null,
+      hasPropertyAffectation: formData.get("hasPropertyAffectation") === "on",
+      taxRegime: String(formData.get("taxRegime") ?? "").trim() || null,
+      bankAccount: String(formData.get("bankAccount") ?? "").trim() || null,
+      builderCompanyName: String(formData.get("builderCompanyName") ?? "").trim() || null,
+      marketingAgencyName: String(formData.get("marketingAgencyName") ?? "").trim() || null,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar registro/documentação." };
+  }
+
+  revalidatePath(`/developments/${developmentId}`);
+  return {};
+}
+
+export async function uploadDevelopmentDocumentAction(
+  developmentId: string,
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Selecione um arquivo." };
+  const category = String(formData.get("category") ?? "OTHER") as DocumentCategory;
+  const description = String(formData.get("description") ?? "").trim();
+  const expiresAtRaw = String(formData.get("expiresAt") ?? "").trim();
+
+  try {
+    await uploadDevelopmentDocument(context, developmentId, file, category, description || undefined, expiresAtRaw ? new Date(expiresAtRaw) : undefined);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao enviar anexo." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return { success: true };
+}
+
+export async function deleteDevelopmentDocumentAction(
+  developmentId: string,
+  documentId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deleteDevelopmentDocument(context, developmentId, documentId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao remover anexo." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return { success: true };
+}
+
+export async function createConstructionPhaseAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const sequence = Number(formData.get("sequence"));
+  const weightPct = Number(formData.get("weightPct"));
+  if (!name) return { error: "Informe o nome da fase." };
+  if (Number.isNaN(sequence)) return { error: "Informe a ordem da fase." };
+  if (Number.isNaN(weightPct)) return { error: "Informe o peso da fase." };
+
+  const plannedStart = parseOptionalDate(formData, "plannedStart") || undefined;
+  const plannedEnd = parseOptionalDate(formData, "plannedEnd") || undefined;
+
+  try {
+    await createConstructionPhase(context, developmentId, { name, sequence, weightPct, plannedStart, plannedEnd });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao criar fase de obra." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return { success: true };
+}
+
+export async function updateConstructionPhaseAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const phaseId = String(formData.get("phaseId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const sequence = Number(formData.get("sequence"));
+  const weightPct = Number(formData.get("weightPct"));
+  if (!phaseId) return { error: "Fase inválida." };
+  if (!name) return { error: "Informe o nome da fase." };
+  if (Number.isNaN(sequence) || Number.isNaN(weightPct)) return { error: "Informe ordem e peso da fase." };
+
+  try {
+    await updateConstructionPhase(context, developmentId, phaseId, {
+      name,
+      sequence,
+      weightPct,
+      plannedStart: parseOptionalDate(formData, "plannedStart") || undefined,
+      plannedEnd: parseOptionalDate(formData, "plannedEnd") || undefined,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao atualizar fase de obra." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return {};
+}
+
+export async function deactivateConstructionPhaseAction(
+  developmentId: string,
+  phaseId: string,
+): Promise<{ error?: string; success?: boolean }> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  try {
+    await deactivateConstructionPhase(context, developmentId, phaseId);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao desativar fase de obra." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return { success: true };
+}
+
+export async function createConstructionMeasurementAction(
+  _prevState: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireAccessContext();
+  if (!hasPermission(context, "development", "EDIT")) return { error: "Sem permissão." };
+
+  const developmentId = String(formData.get("developmentId") ?? "");
+  const measurementDateRaw = String(formData.get("measurementDate") ?? "").trim();
+  if (!measurementDateRaw) return { error: "Informe a data da medição." };
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const phaseIds = formData.getAll("phaseId").map(String);
+  const phaseValues = phaseIds.map((phaseId) => ({
+    phaseId,
+    percentComplete: Number(formData.get(`percentComplete-${phaseId}`) ?? 0),
+  }));
+
+  try {
+    await createConstructionMeasurement(context, developmentId, {
+      measurementDate: new Date(measurementDateRaw),
+      notes: notes || undefined,
+      phaseValues,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao lançar medição de evolução física." };
+  }
+  revalidatePath(`/developments/${developmentId}`);
+  return { success: true };
 }

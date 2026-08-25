@@ -12,6 +12,9 @@ import { CreateUnitForm } from "./create-unit-form";
 import { UnitStatusSelect } from "./unit-status-select";
 import { LinkAccessoryForm } from "./link-accessory-form";
 import { HabiteSeForm } from "./habite-se-form";
+import { DevelopmentLegalForm, DevelopmentDocumentsSection } from "./development-legal-form";
+import { ConstructionSection } from "./construction-phases";
+import { listConstructionPhases, listConstructionMeasurements } from "@/server/construction";
 
 export default async function DevelopmentDetailPage({
   params,
@@ -26,6 +29,8 @@ export default async function DevelopmentDetailPage({
 
   const units = await listUnits(context, id);
   const indexRules = await listIndexRules(context.organizationId);
+  const constructionPhases = await listConstructionPhases(context, id);
+  const constructionMeasurementsRaw = await listConstructionMeasurements(context, id);
   const canEdit = hasPermission(context, "development", "EDIT");
   const canCreateUnit = hasPermission(context, "unit", "CREATE");
   const canEditUnit = hasPermission(context, "unit", "EDIT");
@@ -47,6 +52,31 @@ export default async function DevelopmentDetailPage({
         {" · "}Última alteração por {development.audit.updatedByName ?? "—"} em{" "}
         {formatDateTimeBR(development.audit.updatedAt)}
       </p>
+      {canEdit ? (
+        <section style={{ marginTop: "2rem" }}>
+          <h2 style={{ fontSize: "1.1rem" }}>Registro e documentação legal</h2>
+          <DevelopmentLegalForm
+            developmentId={id}
+            current={{
+              launchDate: development.launchDate ? new Date(development.launchDate).toISOString().slice(0, 10) : null,
+              expectedDeliveryDate: development.expectedDeliveryDate ? new Date(development.expectedDeliveryDate).toISOString().slice(0, 10) : null,
+              actualDeliveryDate: development.actualDeliveryDate ? new Date(development.actualDeliveryDate).toISOString().slice(0, 10) : null,
+              registrationNumber: development.registrationNumber,
+              notaryOffice: development.notaryOffice,
+              registrationDate: development.registrationDate ? new Date(development.registrationDate).toISOString().slice(0, 10) : null,
+              motherPropertyRecord: development.motherPropertyRecord,
+              hasPropertyAffectation: development.hasPropertyAffectation,
+              taxRegime: development.taxRegime,
+              bankAccount: development.bankAccount,
+              builderCompanyName: development.builderCompanyName,
+              marketingAgencyName: development.marketingAgencyName,
+            }}
+          />
+          <h3 style={{ fontSize: "1rem", marginTop: "1.25rem" }}>Anexos</h3>
+          <DevelopmentDocumentsSection developmentId={id} documents={development.documents} />
+        </section>
+      ) : null}
+
       <section style={{ marginTop: "2rem" }}>
         <h2 style={{ fontSize: "1.1rem" }}>Torres e pavimentos</h2>
         <ul>
@@ -145,6 +175,32 @@ export default async function DevelopmentDetailPage({
           </div>
         </section>
       ) : null}
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2 style={{ fontSize: "1.1rem" }}>Fases de obra e evolução física</h2>
+        <ConstructionSection
+          developmentId={id}
+          phases={constructionPhases.map((p) => ({
+            id: p.id,
+            name: p.name,
+            sequence: p.sequence,
+            weightPct: Number(p.weightPct),
+            isActive: p.isActive,
+          }))}
+          measurements={constructionMeasurementsRaw.map((m) => ({
+            id: m.id,
+            measurementDate: m.measurementDate,
+            overallPercentComplete: Number(m.overallPercentComplete),
+            notes: m.notes,
+            phaseValues: m.phaseValues.map((v) => ({
+              phaseId: v.phaseId,
+              phaseName: v.phase.name,
+              percentComplete: Number(v.percentComplete),
+            })),
+          }))}
+          canEdit={canEdit}
+        />
+      </section>
 
       {canEditUnit && principalUnits.length > 0 && accessoryUnits.length > 0 ? (
         <section style={{ marginTop: "2rem" }}>

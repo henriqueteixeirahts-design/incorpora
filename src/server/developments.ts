@@ -3,9 +3,12 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
+import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
 import { developmentIdAccessScope, canAccessDevelopment } from "@/server/scope";
-import type { DevelopmentType, Prisma } from "@/generated/prisma/client";
+import type { DevelopmentType, DocumentCategory, Prisma } from "@/generated/prisma/client";
+
+const DOCUMENT_ENTITY_TYPE = "Development";
 
 /**
  * `Development` é a raiz do escopo por empreendimento
@@ -82,8 +85,11 @@ export async function getDevelopment(context: AccessContext, developmentId: stri
   const createdEvent = auditTrail[0] ?? null;
   const updatedEvent = auditTrail[auditTrail.length - 1] ?? null;
 
+  const documents = await listDevelopmentDocuments(context, developmentId);
+
   return {
     ...development,
+    documents,
     audit: {
       createdByName: createdEvent?.actor?.fullName ?? null,
       createdAt: createdEvent?.createdAt ?? development.createdAt,
@@ -222,6 +228,136 @@ export async function deleteDevelopment(context: AccessContext, developmentId: s
       entityId: developmentId,
       beforeData: development,
     });
+  });
+}
+
+/**
+ * Registro/documentação legal + datas-chave (docs/ESPEC_FASE_C_DASHBOARD_
+ * EMPREENDIMENTOS.md, Etapa 1, Aba 1-2) — separado de `updateDevelopment`
+ * (o modal rápido de criação) pelo mesmo motivo do Habite-se
+ * (`setDevelopmentCorrectionRule`, receivables.ts): um formulário dedicado,
+ * mais denso, editado na página de detalhe, não no modal de criação rápida.
+ */
+export type UpdateDevelopmentDetailsInput = {
+  launchDate?: Date | null;
+  expectedDeliveryDate?: Date | null;
+  actualDeliveryDate?: Date | null;
+  registrationNumber?: string | null;
+  notaryOffice?: string | null;
+  registrationDate?: Date | null;
+  motherPropertyRecord?: string | null;
+  hasPropertyAffectation?: boolean;
+  taxRegime?: string | null;
+  bankAccount?: string | null;
+  builderCompanyName?: string | null;
+  marketingAgencyName?: string | null;
+};
+
+export async function updateDevelopmentDetails(
+  context: AccessContext,
+  developmentId: string,
+  input: UpdateDevelopmentDetailsInput,
+) {
+  const before = await prisma.development.findFirst({
+    where: { id: developmentId, organizationId: context.organizationId },
+  });
+  if (!before || !canAccessDevelopment(context, developmentId)) {
+    throw new Error("Empreendimento não encontrado.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const development = await tx.development.update({ where: { id: developmentId }, data: input });
+
+    await recordAuditEvent(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      action: "update",
+      entityType: "Development",
+      entityId: development.id,
+      beforeData: before,
+      afterData: development,
+    });
+
+    return development;
+  });
+}
+
+/** Anexos categorizados do empreendimento (Etapa 1, Aba 2) — mesmo padrão de uploadSpeDocument (src/server/spes.ts). */
+export async function listDevelopmentDocuments(context: AccessContext, developmentId: string) {
+  if (!canAccessDevelopment(context, developmentId)) return [];
+
+  const documents = await prisma.document.findMany({
+    where: { organizationId: context.organizationId, entityType: DOCUMENT_ENTITY_TYPE, entityId: developmentId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return Promise.all(
+    documents.map(async (doc) => ({
+      ...doc,
+      signedUrl: await getSignedDocumentUrl(doc.fileUrl).catch(() => null),
+    })),
+  );
+}
+
+export async function uploadDevelopmentDocument(
+  context: AccessContext,
+  developmentId: string,
+  file: File,
+  category: DocumentCategory,
+  description?: string,
+  expiresAt?: Date,
+) {
+  const development = await prisma.development.findFirst({
+    where: { id: developmentId, organizationId: context.organizationId },
+  });
+  if (!development || !canAccessDevelopment(context, developmentId)) throw new Error("Empreendimento não encontrado.");
+
+  const path = await uploadEntityDocument(file, DOCUMENT_ENTITY_TYPE, developmentId);
+
+  const document = await prisma.document.create({
+    data: {
+      organizationId: context.organizationId,
+      entityType: DOCUMENT_ENTITY_TYPE,
+      entityId: developmentId,
+      category,
+      description: description || undefined,
+      fileName: file.name,
+      fileUrl: path,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      expiresAt: expiresAt ?? undefined,
+      uploadedById: context.userId,
+    },
+  });
+
+  await recordAuditEvent(prisma, {
+    organizationId: context.organizationId,
+    actorUserId: context.userId,
+    action: "create",
+    entityType: "Development",
+    entityId: developmentId,
+    afterData: { documentId: document.id, fileName: document.fileName, category: document.category },
+  });
+
+  return document;
+}
+
+export async function deleteDevelopmentDocument(context: AccessContext, developmentId: string, documentId: string) {
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, organizationId: context.organizationId, entityType: DOCUMENT_ENTITY_TYPE, entityId: developmentId },
+  });
+  if (!document) throw new Error("Anexo não encontrado.");
+
+  await prisma.document.delete({ where: { id: documentId } });
+  await deleteEntityDocumentFile(document.fileUrl);
+
+  await recordAuditEvent(prisma, {
+    organizationId: context.organizationId,
+    actorUserId: context.userId,
+    action: "delete",
+    entityType: "Development",
+    entityId: developmentId,
+    beforeData: { documentId, fileName: document.fileName, category: document.category },
   });
 }
 
