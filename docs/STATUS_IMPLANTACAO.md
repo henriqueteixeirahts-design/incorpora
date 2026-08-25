@@ -803,6 +803,26 @@ Especificada em `docs/ESPEC_PERMUTANTES.md`. Etapas 1-2 (cadastro do contrato de
 
 ---
 
+### Visão Gerencial (Fase C) — concluída (6 etapas)
+
+Especificada em `docs/ESPEC_FASE_C_DASHBOARD_EMPREENDIMENTOS.md` — fecha o ciclo comercial/financeiro/permuta/aportes numa camada de agregação e visualização, sem cálculo de dinheiro novo (exceção: os dois indicadores decididos com o usuário antes de codar — VSO de período e exposição de caixa).
+
+**Etapa 1 — cadastro enriquecido (Registro/documentação legal)**: achado central — a maior parte dos campos (registro de incorporação, cartório, matrícula-mãe, patrimônio de afetação, datas-chave de lançamento/entrega) já existia no `Development` desde fases anteriores, mas nunca tinha sido exposta em nenhum formulário. `updateDevelopmentDetails` (separado do modal rápido de criação, mesmo padrão do Habite-se) expõe tudo; anexos categorizados reaproveitam o `Document` genérico (já suportava `category`+`expiresAt`, então alvará/licença usa `PERMIT_LICENSE` sem model novo).
+
+**Etapa 2 — fases de obra + evolução física** (greenfield): `ConstructionPhase`/`ConstructionMeasurement`/`ConstructionPhaseMeasurementValue`. % geral de cada medição é a média ponderada pelo peso das fases ATIVAS naquele momento — nunca bloqueia por a soma dos pesos não fechar em 100%, e desativar uma fase não apaga o histórico de medições já lançadas contra ela (congeladas na hora).
+
+**Etapa 3 — dashboard executivo**: substitui o dashboard simples pelos 4 blocos da spec (Comercial/Carteira/Financeiro/Obra — o bloco Obra saiu pronto junto, adiantando a etapa 4), com filtro de período e de empreendimento. VSO de período (vendas ÷ estoque total × 100 — simplificação registrada: o sistema não rastreia "unidade ofertada" como conceito distinto de "unidade criada") e exposição de caixa (ponto mais negativo do saldo acumulado projetado, `cumulativeForecast` já calculado pelo motor de fluxo de caixa) confirmados com o usuário antes de codar. Um teste de isolamento por organização pegou um bug real: o guard de `developmentId` checava só `developmentAccess` (escopo de papel), não `organizationId` — corrigido antes do commit.
+
+**Etapa 5 — central de relatórios**: 13 relatórios organizados por grupo (Comercial/Carteira/Financeiro), cada um com filtros próprios e exportação em xlsx (ExcelJS, já dependência) e PDF (renderer genérico, sem motor de templates — mesma limitação já registrada pros extratos de investidor/permutante: relatório não é documento vinculado a um `Contract`). O 14º relatório da spec ("resumo executivo do empreendimento") já existia como `/reports/[id]` — não duplicado.
+
+**Etapa 6 — relatórios agendados** (preparação Fase 2): `ScheduledReport` (relatório + filtro de empreendimento + periodicidade + destinatários), geração manual via "Gerar agora" — disparo automático por e-mail fica pra quando a integração de comunicação da Fase 2 existir.
+
+**Achado registrado (não corrigido nesta fase — fora de escopo)**: a mesma varredura que achou os campos do `Development` sem exposição achou o padrão se repetindo em `SpecialPurposeEntity.isActive`, `RealEstateAgency.isActive` e `Broker.isActive` — os três existem no schema, nascem `true`, e não têm nenhum caminho de código pra virar `false`. Sinalizado como tarefa separada (fora do escopo da Fase C).
+
+**Testado**: `npx tsc --noEmit`, `npm run lint`, `npm run build` limpos em cada etapa. 21 testes novos de integração/unidade. Suíte completa ao final: unitária 180/180 + integração **370/370, zero falhas**.
+
+---
+
 ## 2. Decisões que se afastaram do PRD/arquitetura original
 
 | Decisão | O que diz o PRD/arquitetura | O que foi implementado | Motivo | Precisa revisão? |
