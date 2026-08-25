@@ -167,6 +167,75 @@ export async function renderStatementPdf(params: {
   return renderToBuffer(doc);
 }
 
+const genericTableStyles = StyleSheet.create({
+  meta: { fontSize: 8, color: "#666666", marginBottom: 10 },
+  table: { marginTop: 4, borderTop: 1, borderColor: "#cccccc" },
+  headerRow: { flexDirection: "row", borderBottom: 1, borderColor: "#999999", paddingVertical: 3, backgroundColor: "#f2f2f2" },
+  row: { flexDirection: "row", borderBottom: 1, borderColor: "#eeeeee", paddingVertical: 3 },
+  cell: { fontSize: 7.5, paddingRight: 4 },
+  headerCell: { fontSize: 7.5, fontWeight: 700, paddingRight: 4 },
+});
+
+export type GenericReportColumn = { label: string; align?: "left" | "right" };
+export type GenericReportRow = string[];
+
+/**
+ * PDF genérico pra Central de Relatórios (docs/ESPEC_FASE_C_DASHBOARD_
+ * EMPREENDIMENTOS.md, Etapa 5) — sem motor de templates (relatório não é um
+ * documento vinculado a um Contract, mesma limitação já registrada pro
+ * extrato do investidor/permutante e pro contrato de parceria). Cabeçalho
+ * fixo com nome do relatório, data de emissão e filtros aplicados — cobre a
+ * exigência da spec ("cabeçalho com logo TSH, data de emissão, filtros
+ * aplicados") na parte estrutural; o logo em si fica pra uma passada futura
+ * de identidade visual do PDF.
+ */
+export async function renderGenericReportPdf(params: {
+  title: string;
+  filtersLabel: string;
+  columns: GenericReportColumn[];
+  rows: GenericReportRow[];
+  footer: string;
+}): Promise<Buffer> {
+  const colWidth = `${Math.floor(100 / Math.max(1, params.columns.length))}%`;
+
+  const doc = (
+    <Document>
+      <Page size="A4" orientation="landscape" style={styles.page} wrap>
+        <Text style={styles.title}>{params.title}</Text>
+        <Text style={genericTableStyles.meta}>{params.filtersLabel}</Text>
+
+        <View style={genericTableStyles.table}>
+          <View style={genericTableStyles.headerRow} fixed>
+            {params.columns.map((col, i) => (
+              <Text key={i} style={[genericTableStyles.headerCell, { width: colWidth, textAlign: col.align ?? "left" }]}>
+                {col.label}
+              </Text>
+            ))}
+          </View>
+          {params.rows.map((row, rowIndex) => (
+            <View key={rowIndex} style={genericTableStyles.row} wrap={false}>
+              {row.map((cell, cellIndex) => (
+                <Text
+                  key={cellIndex}
+                  style={[genericTableStyles.cell, { width: colWidth, textAlign: params.columns[cellIndex]?.align ?? "left" }]}
+                >
+                  {cell}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.footer} fixed>
+          {params.footer}
+        </Text>
+      </Page>
+    </Document>
+  );
+
+  return renderToBuffer(doc);
+}
+
 export type InvestorStatementSummaryRow = { label: string; valueLabel: string };
 export type InvestorStatementEventRow = {
   dateLabel: string;

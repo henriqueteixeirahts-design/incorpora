@@ -7,6 +7,7 @@ import {
   getPayablesSummary,
 } from "@/server/reports";
 import { listDevelopments } from "@/server/developments";
+import { REPORT_GROUPS } from "@/server/reports-center";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
 import { formatCurrencyBRL } from "@/lib/format";
 
@@ -83,6 +84,30 @@ export default async function ReportsPage() {
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="inc-page-head" style={{ marginTop: "1.5rem" }}>
+        <div>
+          <div className="inc-eyebrow">Central de relatórios</div>
+          <h2 className="inc-h2">Relatórios por grupo</h2>
+          <p className="inc-lede">
+            Cada relatório tem filtros próprios (empreendimento e período) e exportação em xlsx e PDF.
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--inc-gap-grid)" }}>
+        {REPORT_GROUPS.map((group) => (
+          <div key={group.group} className="inc-card">
+            <div className="inc-card__head">
+              <div className="inc-card__title">{group.group}</div>
+            </div>
+            <div className="inc-card__body" style={{ display: "flex", flexDirection: "column", gap: "var(--inc-space-4)" }}>
+              {group.reports.map((r) => (
+                <Link key={r.key} href={`/reports/view/${r.key}`}>{r.label}</Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="inc-card">
