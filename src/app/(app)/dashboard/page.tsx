@@ -69,7 +69,12 @@ export default async function DashboardPage() {
           <div className="inc-kpi__value">
             R$ {vgvVendido.main} {vgvVendido.unit ? <small>{vgvVendido.unit}</small> : null}
           </div>
-          <div className="inc-kpi__delta">{salesSummary.unitsSold} unidade(s) vendida(s)</div>
+          <div className="inc-kpi__delta">
+            {salesSummary.unitsSold} unidade(s) vendida(s)
+            {salesSummary.vgvPermutante > 0
+              ? ` · +${formatCompactBRL(salesSummary.vgvPermutante).main}${formatCompactBRL(salesSummary.vgvPermutante).unit ? ` ${formatCompactBRL(salesSummary.vgvPermutante).unit}` : ""} em permuta (${salesSummary.unitsPermutante} unidade(s), não é receita da SPE)`
+              : ""}
+          </div>
         </div>
         <div className="inc-kpi inc-kpi--gold">
           <div className="inc-kpi__label">A receber</div>

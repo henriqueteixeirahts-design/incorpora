@@ -46,6 +46,7 @@ export default async function InvestorReportPage({
             {[
               { label: "VGV total", value: formatCurrency(sales.vgvTotal) },
               { label: "VGV vendido", value: formatCurrency(sales.vgvSold) },
+              { label: "VGV permutante", value: formatCurrency(sales.vgvPermutante) },
               { label: "VGV disponível", value: formatCurrency(sales.vgvAvailable) },
               { label: "% vendido", value: `${sales.percentSold}%` },
               { label: "Unidades vendidas", value: `${sales.unitsSold} / ${sales.unitsTotal}` },

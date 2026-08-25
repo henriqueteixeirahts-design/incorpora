@@ -48,20 +48,36 @@ export async function getSalesSummary(organizationId: string, developmentId?: st
     getInventoryPosition(organizationId, developmentId),
     prisma.sale.findMany({
       where: { organizationId, developmentId, status: "ACTIVE" },
-      select: { salePrice: true },
+      select: {
+        salePrice: true,
+        unit: { select: { exchangeContract: { select: { type: true, managedBySystem: true } } } },
+      },
     }),
   ]);
 
-  const vgvSold = sales.reduce((sum, sale) => sum + Number(sale.salePrice), 0);
-  const unitsSoldCount = sales.length;
+  // Unidade de permuta física sob gestão (docs/ESPEC_PERMUTANTES.md, Etapa 6)
+  // — a venda existe no funil normal, mas o dinheiro nunca é receita da SPE
+  // (vira repasse ao permutante). VGV separa as duas: "vendido" (receita
+  // própria) exclui essas unidades; "permutante" mostra o quanto delas.
+  const isPermutaFisica = (sale: (typeof sales)[number]) =>
+    sale.unit.exchangeContract?.type !== "FINANCIAL" && sale.unit.exchangeContract?.managedBySystem === true;
+
+  const ownSales = sales.filter((s) => !isPermutaFisica(s));
+  const permutaSales = sales.filter(isPermutaFisica);
+
+  const vgvSold = ownSales.reduce((sum, sale) => sum + Number(sale.salePrice), 0);
+  const vgvPermutante = permutaSales.reduce((sum, sale) => sum + Number(sale.salePrice), 0);
+  const unitsSoldCount = ownSales.length;
 
   return {
     vgvTotal: inventory.totalValue,
     vgvSold: round2(vgvSold),
-    vgvAvailable: round2(inventory.totalValue - vgvSold),
+    vgvPermutante: round2(vgvPermutante),
+    vgvAvailable: round2(inventory.totalValue - vgvSold - vgvPermutante),
     percentSold: inventory.totalUnits > 0 ? round2((unitsSoldCount / inventory.totalUnits) * 100) : 0,
     unitsTotal: inventory.totalUnits,
     unitsSold: unitsSoldCount,
+    unitsPermutante: permutaSales.length,
     averageTicket: unitsSoldCount > 0 ? round2(vgvSold / unitsSoldCount) : 0,
   };
 }
