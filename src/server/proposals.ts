@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
@@ -131,7 +131,7 @@ function assertValidProposedFlow(input: CreateProposalInput) {
 }
 
 async function resolveListPrice(
-  tx: typeof prisma | Prisma.TransactionClient,
+  tx: typeof prisma | TransactionClient,
   input: { unitId: string; listPriceOverride?: number; unitReferenceValue: Prisma.Decimal | null },
   salesTable: { id: string } | null,
 ): Promise<number> {

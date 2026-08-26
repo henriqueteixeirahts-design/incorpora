@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
@@ -139,7 +139,7 @@ export async function getSale(context: AccessContext, saleId: string) {
   return sale;
 }
 
-async function nextSaleNumber(tx: Prisma.TransactionClient, organizationId: string) {
+async function nextSaleNumber(tx: TransactionClient, organizationId: string) {
   const year = new Date().getFullYear();
   const count = await tx.sale.count({
     where: { organizationId, saleNumber: { startsWith: `V-${year}-` } },

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import {
   assertDestinationsMatchAmount,
@@ -62,7 +62,7 @@ function templateDevelopmentAccessWhere(context: AccessContext): Prisma.Allocati
 }
 
 async function assertDestinationsOwned(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   context: AccessContext,
   destinations: { developmentId: string | null }[],
 ) {

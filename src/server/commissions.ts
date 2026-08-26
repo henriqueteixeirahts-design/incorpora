@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { getEffectiveCommissionReleaseRule } from "@/server/commission-release-rules";
@@ -16,7 +16,7 @@ const BENEFICIARY_LABELS: Record<string, string> = {
   CAMPAIGN: "Campanha",
 };
 
-async function getOrCreateSupplierForBroker(tx: Prisma.TransactionClient, organizationId: string, brokerId: string) {
+async function getOrCreateSupplierForBroker(tx: TransactionClient, organizationId: string, brokerId: string) {
   const existing = await tx.supplier.findUnique({ where: { brokerId } });
   if (existing) return existing;
 
@@ -33,7 +33,7 @@ async function getOrCreateSupplierForBroker(tx: Prisma.TransactionClient, organi
   });
 }
 
-async function getOrCreateSupplierForAgency(tx: Prisma.TransactionClient, organizationId: string, agencyId: string) {
+async function getOrCreateSupplierForAgency(tx: TransactionClient, organizationId: string, agencyId: string) {
   const existing = await tx.supplier.findUnique({ where: { agencyId } });
   if (existing) return existing;
 
@@ -53,7 +53,7 @@ async function getOrCreateSupplierForAgency(tx: Prisma.TransactionClient, organi
  * nesse caso pontual.
  */
 async function ensurePayableForReleasedSplit(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   organizationId: string,
   developmentId: string,
   saleNumber: string,
@@ -100,7 +100,7 @@ async function ensurePayableForReleasedSplit(
  * em questão). Mesma convenção de `changeUnitStatusTx` em `units.ts`.
  */
 export async function tryReleaseCommissions(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   organizationId: string,
   contractId: string,
   actorUserId: string | null,

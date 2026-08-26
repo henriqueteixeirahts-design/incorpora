@@ -1,11 +1,11 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { speOwnedScope, orgScope } from "@/server/scope";
 import { uploadEntityDocument, getSignedDocumentUrl, deleteEntityDocumentFile } from "@/server/storage";
 import type { AccessContext } from "@/server/auth-context";
-import type { SpeContributionForecastOrigin, Prisma } from "@/generated/prisma/client";
+import type { SpeContributionForecastOrigin } from "@/generated/prisma/client";
 
 const FORECAST_ENTITY_TYPE = "SpeInvestorContributionForecast";
 const CONTRIBUTION_ENTITY_TYPE = "SpeInvestorContribution";
@@ -19,7 +19,7 @@ async function getInvestorScoped(context: AccessContext, investorId: string) {
 }
 
 /** Recalcula o status da previsão a partir da soma dos aportes vinculados. Nunca mexe em CANCELLED. */
-async function recomputeForecastStatus(tx: Prisma.TransactionClient, forecastId: string) {
+async function recomputeForecastStatus(tx: TransactionClient, forecastId: string) {
   const forecast = await tx.speInvestorContributionForecast.findUnique({ where: { id: forecastId } });
   if (!forecast || forecast.status === "CANCELLED") return;
 

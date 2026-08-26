@@ -1,6 +1,7 @@
-import { Prisma, type PrismaClient } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
+import type { prisma, TransactionClient } from "@/lib/prisma";
 
-type Db = PrismaClient | Prisma.TransactionClient;
+type Db = typeof prisma | TransactionClient;
 
 export type DevelopmentEventInput = {
   organizationId: string;

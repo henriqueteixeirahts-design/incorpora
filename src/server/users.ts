@@ -1,11 +1,10 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordAuditEvent, getAuditSummaries } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma } from "@/generated/prisma/client";
 
 export function listOrganizationUsers(organizationId: string) {
   return prisma.accessGrant.findMany({
@@ -129,7 +128,7 @@ export type InviteUserInput = {
 };
 
 async function assertDevelopmentsOwned(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   context: AccessContext,
   developmentIds: string[],
 ) {
@@ -212,7 +211,7 @@ export type UpdateUserAccessInput = {
 };
 
 async function assertNotLastAdmin(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   context: AccessContext,
   userId: string,
   newRoleId: string,

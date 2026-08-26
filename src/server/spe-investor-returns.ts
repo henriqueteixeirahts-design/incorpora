@@ -1,12 +1,12 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { speOwnedScope } from "@/server/scope";
 import { getInvestorLoanPosition } from "@/server/spe-investor-loan";
 import { round2 } from "@/lib/loan-balance";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma, SpeInvestorReturnType } from "@/generated/prisma/client";
+import type { SpeInvestorReturnType } from "@/generated/prisma/client";
 
 const RETURN_ENTITY_TYPE = "SpeInvestorReturn";
 
@@ -27,7 +27,7 @@ async function getInvestorScoped(context: AccessContext, investorId: string) {
 }
 
 /** Find-or-create — mesmo padrão de fornecedor=corretor/imobiliária/cliente já usado em commissions.ts/contract-distratos.ts. */
-async function getOrCreateSupplierForInvestor(tx: Prisma.TransactionClient, organizationId: string, investorId: string) {
+async function getOrCreateSupplierForInvestor(tx: TransactionClient, organizationId: string, investorId: string) {
   const existing = await tx.supplier.findUnique({ where: { speInvestorId: investorId } });
   if (existing) return existing;
 

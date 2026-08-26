@@ -1,14 +1,13 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { createAssignmentFeeReceivable } from "@/server/receivables-avulsos";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
-import type { Prisma } from "@/generated/prisma/client";
 
-async function nextAssignmentSequence(tx: Prisma.TransactionClient, contractId: string) {
+async function nextAssignmentSequence(tx: TransactionClient, contractId: string) {
   const count = await tx.contractAssignment.count({ where: { contractId } });
   return count + 1;
 }

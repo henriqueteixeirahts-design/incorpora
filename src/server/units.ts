@@ -1,12 +1,11 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
 import {
-  Prisma,
   type UnitType,
   type UnitStatus,
   type UnitLinkType,
@@ -121,7 +120,7 @@ export async function createUnit(context: AccessContext, input: CreateUnitInput)
  * chama já deve ter carregado/validado a unidade nessa mesma transação.
  */
 export async function changeUnitStatusTx(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: {
     organizationId: string;
     developmentId: string;

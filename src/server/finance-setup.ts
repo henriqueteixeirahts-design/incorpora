@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent, getAuditSummaries } from "@/lib/audit";
 import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
@@ -191,7 +191,7 @@ export type CreateCostCenterInput = {
   developmentId?: string;
 };
 
-async function assertDevelopmentOwned(tx: Prisma.TransactionClient, context: AccessContext, developmentId?: string) {
+async function assertDevelopmentOwned(tx: TransactionClient, context: AccessContext, developmentId?: string) {
   if (!developmentId) return;
   const development = await tx.development.findFirst({
     where: { id: developmentId, organizationId: context.organizationId },

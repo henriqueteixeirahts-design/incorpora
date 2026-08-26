@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
@@ -9,7 +9,6 @@ import { resolveInternalSplitForSale } from "@/server/commission-resolution";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
 import type { PaymentFlowResult } from "@/lib/payment-flow";
-import type { Prisma } from "@/generated/prisma/client";
 
 export async function getContractBySale(context: AccessContext, saleId: string) {
   const contract = await prisma.contract.findFirst({
@@ -54,7 +53,7 @@ export async function getContract(context: AccessContext, contractId: string) {
   return contract;
 }
 
-async function nextContractNumber(tx: Prisma.TransactionClient, organizationId: string) {
+async function nextContractNumber(tx: TransactionClient, organizationId: string) {
   const year = new Date().getFullYear();
   const count = await tx.contract.count({
     where: { organizationId, contractNumber: { startsWith: `CT-${year}-` } },

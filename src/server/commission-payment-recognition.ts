@@ -1,7 +1,7 @@
 import "server-only";
 
 import { computeAllocationAmountsFromPercent } from "@/lib/payable-allocation";
-import type { Prisma } from "@/generated/prisma/client";
+import type { TransactionClient } from "@/lib/prisma";
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
@@ -12,7 +12,7 @@ function round2(value: number) {
  * rata entre os ExternalCommissionSplit da venda, incrementando `paidAmount`
  * (nunca passa do `value` de cada um) e atualizando o `status`.
  */
-async function distributeExternalRecognition(tx: Prisma.TransactionClient, saleId: string, amount: number) {
+async function distributeExternalRecognition(tx: TransactionClient, saleId: string, amount: number) {
   const splits = await tx.externalCommissionSplit.findMany({ where: { saleId } });
   if (splits.length === 0 || amount <= 0) return;
 
@@ -60,7 +60,7 @@ export type CommissionRecognitionResult = {
 };
 
 export async function recognizeCommissionOnPayment(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: { installmentId: string; saleId: string; paymentAmount: number },
 ): Promise<CommissionRecognitionResult> {
   const installment = await tx.installment.findUniqueOrThrow({ where: { id: params.installmentId } });

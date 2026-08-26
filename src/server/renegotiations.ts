@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
@@ -9,7 +9,7 @@ import { getInstallmentLivePosition } from "@/server/receivables";
 import { getEffectiveRenegotiationRule } from "@/server/renegotiation-rules";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
-import type { ApprovalDecision, ApprovalLevel, Prisma } from "@/generated/prisma/client";
+import type { ApprovalDecision, ApprovalLevel } from "@/generated/prisma/client";
 
 /**
  * Acordo de renegociação de parcelas (Fase B, Parte 2). Diferente do
@@ -26,7 +26,7 @@ function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 }
 
-async function nextAgreementSequence(tx: Prisma.TransactionClient, contractId: string) {
+async function nextAgreementSequence(tx: TransactionClient, contractId: string) {
   const count = await tx.renegotiationAgreement.count({ where: { contractId } });
   return count + 1;
 }

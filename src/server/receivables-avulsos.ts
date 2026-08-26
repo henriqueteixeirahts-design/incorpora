@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import type { AccessContext } from "@/server/auth-context";
@@ -125,7 +125,7 @@ export type CreateReceivableInput = {
 };
 
 async function assertReceivableRelationsOwned(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   context: AccessContext,
   input: CreateReceivableInput,
 ) {
@@ -282,7 +282,7 @@ export async function cancelReceivable(context: AccessContext, receivableId: str
  * correção").
  */
 export async function createAssignmentFeeReceivable(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: {
     organizationId: string;
     developmentId: string | null;

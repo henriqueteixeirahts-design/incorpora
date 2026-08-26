@@ -1,18 +1,17 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { developmentOwnedScope, canAccessDevelopment } from "@/server/scope";
 import { calculatePhysicalRepasse, calculateFinancialEvent, applyValueCap, closeApurationPeriod as closeApurationPeriodCalc } from "@/lib/exchange-repasse";
 import type { AccessContext } from "@/server/auth-context";
-import type { Prisma } from "@/generated/prisma/client";
 
 const REPASSE_ENTITY_TYPE = "ExchangeRepasse";
 const RETENTION_RELEASE_ENTITY_TYPE = "ExchangeRetentionRelease";
 const APURATION_PERIOD_ENTITY_TYPE = "ExchangeApurationPeriod";
 
 /** Find-or-create — mesmo padrão de fornecedor=corretor/imobiliária/investidor já usado em commissions.ts/spe-investor-returns.ts. */
-async function getOrCreateSupplierForPermutante(tx: Prisma.TransactionClient, organizationId: string, permutanteId: string) {
+async function getOrCreateSupplierForPermutante(tx: TransactionClient, organizationId: string, permutanteId: string) {
   const existing = await tx.supplier.findUnique({ where: { permutanteId } });
   if (existing) return existing;
 
@@ -40,7 +39,7 @@ async function getOrCreateSupplierForPermutante(tx: Prisma.TransactionClient, or
  * está no funil normal de vendas.
  */
 export async function recognizeExchangePhysicalRepasseOnPayment(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: {
     organizationId: string;
     actorUserId: string | null;
@@ -128,7 +127,7 @@ function round2(value: number) {
  * período corrente, aberto até uma ação manual fechar.
  */
 async function findOrCreateOpenApurationPeriod(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   exchangeContractId: string,
   payoutFlow: "ON_RECEIPT" | "MONTHLY_CONSOLIDATED" | "MILESTONES",
   referenceDate: Date,
@@ -159,7 +158,7 @@ async function findOrCreateOpenApurationPeriod(
  * suportado — decisão explícita do usuário).
  */
 export async function recognizeExchangeFinancialRepasseOnPayment(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: {
     organizationId: string;
     actorUserId: string | null;

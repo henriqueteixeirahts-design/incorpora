@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-correction";
@@ -154,7 +154,7 @@ export function buildCorrectionPhases(contract: ContractWithIndexRule, developme
  * convenção de `changeUnitStatusTx` em `units.ts`.
  */
 export async function recalculateInstallment(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   installmentId: string,
   asOfDate: Date = new Date(),
 ) {

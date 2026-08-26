@@ -3,6 +3,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { setCurrentOrgId } from "@/lib/tenant-context";
 
 /**
  * Escopo de empreendimento do usuário (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
@@ -86,6 +87,11 @@ export async function getAccessContext(): Promise<AccessContext | null> {
     }
     developmentAccess = grantedDevelopmentIds;
   }
+
+  // RLS (Pilar 2) — a partir daqui, toda query Prisma desta requisição
+  // (mesma continuação assíncrona) passa a carregar este organizationId
+  // pra extensão do Prisma setar via SET LOCAL. Ver src/lib/tenant-context.ts.
+  setCurrentOrgId(organizationId);
 
   return {
     userId: authUser.id,

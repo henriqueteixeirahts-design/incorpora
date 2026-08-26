@@ -1,13 +1,13 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
 import { getEffectiveReservationRule } from "@/server/reservation-rules";
 import type { AccessContext } from "@/server/auth-context";
 import { developmentIdAccessScope, canAccessDevelopment } from "@/server/scope";
-import type { Prisma, Unit, Reservation, ReservationWaitlistEntry } from "@/generated/prisma/client";
+import type { Unit, Reservation, ReservationWaitlistEntry } from "@/generated/prisma/client";
 
 export function listReservations(context: AccessContext) {
   return prisma.reservation.findMany({
@@ -53,7 +53,7 @@ export function listWaitlistForOrganization(context: AccessContext) {
  * expiração (docs/ESPEC_MODULO_COMERCIAL.md, Parte 2 — comportamentos).
  */
 async function releaseUnitAndPromoteWaitlist(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   params: {
     organizationId: string;
     unit: Unit;

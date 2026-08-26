@@ -1,12 +1,12 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { simulatePaymentFlow, type PaymentFlowResult } from "@/lib/payment-flow";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
-import type { ContractAmendmentType, Prisma } from "@/generated/prisma/client";
+import type { ContractAmendmentType } from "@/generated/prisma/client";
 
 /**
  * Aditivo contratual (Fase A, Parte 2.2). Criado a partir do contrato
@@ -25,7 +25,7 @@ function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 }
 
-async function nextAmendmentSequence(tx: Prisma.TransactionClient, contractId: string) {
+async function nextAmendmentSequence(tx: TransactionClient, contractId: string) {
   const count = await tx.contractAmendment.count({ where: { contractId } });
   return count + 1;
 }
@@ -139,7 +139,7 @@ export async function createAmendment(context: AccessContext, contractId: string
  * descreve o que falta pagar dali pra frente, não o histórico completo.
  */
 async function reprogramPortfolio(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   contractId: string,
   proposedPaymentFlow: PaymentFlowResult,
   signedAt: Date,

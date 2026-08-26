@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import {
@@ -256,7 +256,7 @@ function assertItemsMatchAmount(amount: number, items: PayableItemInput[] | unde
 }
 
 async function assertPayableRelationsOwned(
-  tx: Prisma.TransactionClient,
+  tx: TransactionClient,
   context: AccessContext,
   input: CreatePayableInput,
 ) {

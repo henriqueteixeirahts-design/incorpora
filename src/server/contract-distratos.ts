@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
 import { changeUnitStatusTx } from "@/server/units";
@@ -9,9 +9,8 @@ import { getEffectiveCommissionRule } from "@/server/commission-rules";
 import { calculateDistratoSettlement } from "@/lib/distrato-settlement";
 import type { AccessContext } from "@/server/auth-context";
 import { canAccessDevelopment } from "@/server/scope";
-import type { Prisma } from "@/generated/prisma/client";
 
-async function getOrCreateSupplierForCustomer(tx: Prisma.TransactionClient, organizationId: string, customerId: string) {
+async function getOrCreateSupplierForCustomer(tx: TransactionClient, organizationId: string, customerId: string) {
   const existing = await tx.supplier.findUnique({ where: { customerId } });
   if (existing) return existing;
 
