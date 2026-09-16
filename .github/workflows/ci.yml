@@ -24,10 +24,17 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      # Testes de unidade/build não tocam banco de verdade. Testes de
-      # integração usam o serviço Postgres acima (schema aplicado via
-      # `prisma migrate deploy` antes de rodar).
-      DATABASE_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
+      # RLS Pilar 2, Etapa 2.5/3 — DATABASE_URL (o que a aplicação e os
+      # testes usam de verdade, via src/lib/prisma.ts) conecta como
+      # `app_user`, NUNCA como a role superusuária do serviço Postgres do
+      # CI (`incorpora`, criada superusuário pela imagem oficial — ignora
+      # RLS incondicionalmente). Sem isso, os futuros testes de bypass de
+      # RLS (Etapa 4+) dariam falso-verde no CI pelo mesmo motivo que
+      # dariam localmente/produção sem essa mesma correção (já aplicada
+      # nesses dois ambientes). DIRECT_URL continua em `incorpora` — só
+      # `prisma migrate deploy` e os dois scripts de bootstrap abaixo usam
+      # essa credencial, nunca os testes.
+      DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:5432/incorpora?schema=public"
       DIRECT_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
@@ -53,10 +60,16 @@ jobs:
       - name: Testes de unidade
         run: npm test
 
-      - name: Aplicar migrations no Postgres de teste
+      - name: Criar role app_user (antes das migrations — a migration da função list_active_org_ids já concede EXECUTE a ela)
+        run: node scripts/ci-create-app-user-role.js
+
+      - name: Aplicar migrations no Postgres de teste (como incorpora, via DIRECT_URL)
         run: npx prisma migrate deploy
 
-      - name: Testes de integração (isolamento entre organizações, CRUD, regras)
+      - name: Conceder privilégios de app_user nas tabelas criadas
+        run: node scripts/ci-grant-app-user-privileges.js
+
+      - name: Testes de integração (isolamento entre organizações, CRUD, regras — como app_user, sem BYPASSRLS)
         run: npm run test:integration
 
       - name: Build

@@ -1,0 +1,12 @@
+-- RLS Pilar 2, Etapa 3 — teto de statement_timeout pra app_user.
+--
+-- Achado na Etapa 2.5: app_user não tinha nenhum teto (rolconfig nulo),
+-- diferente das roles nativas do Supabase (authenticated/authenticator já
+-- vêm com statement_timeout=8s). Levantamento em produção via
+-- pg_stat_statements antes de aplicar (top queries reais da aplicação,
+-- não migration/admin): pior caso observado ~41ms numa leitura, ~44ms numa
+-- escrita — nenhuma query legítima chega perto de 30s. 30s dá folga
+-- generosa (>700x o pior caso observado) pra qualquer query de request
+-- normal, e ainda assim é um teto de verdade — nunca compete com o
+-- timeout de função da própria Vercel.
+ALTER ROLE app_user SET statement_timeout = '30s';
