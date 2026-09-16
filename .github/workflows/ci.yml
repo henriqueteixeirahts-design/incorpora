@@ -32,8 +32,8 @@ jobs:
       # RLS (Etapa 4+) dariam falso-verde no CI pelo mesmo motivo que
       # dariam localmente/produção sem essa mesma correção (já aplicada
       # nesses dois ambientes). DIRECT_URL continua em `incorpora` — só
-      # `prisma migrate deploy` e os dois scripts de bootstrap abaixo usam
-      # essa credencial, nunca os testes.
+      # `prisma migrate deploy` e o script de senha abaixo usam essa
+      # credencial, nunca os testes.
       DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:5432/incorpora?schema=public"
       DIRECT_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
@@ -60,14 +60,11 @@ jobs:
       - name: Testes de unidade
         run: npm test
 
-      - name: Criar role app_user (antes das migrations — a migration da função list_active_org_ids já concede EXECUTE a ela)
-        run: node scripts/ci-create-app-user-role.js
-
-      - name: Aplicar migrations no Postgres de teste (como incorpora, via DIRECT_URL)
+      - name: Aplicar migrations no Postgres de teste (como incorpora, via DIRECT_URL — cria app_user, grants e statement_timeout, tudo já versionado nas migrations da Etapa 2.5/3)
         run: npx prisma migrate deploy
 
-      - name: Conceder privilégios de app_user nas tabelas criadas
-        run: node scripts/ci-grant-app-user-privileges.js
+      - name: Habilitar login pra app_user (a migration cria ela NOLOGIN de propósito — senha real nunca fica versionada)
+        run: node scripts/ci-set-app-user-password.js
 
       - name: Testes de integração (isolamento entre organizações, CRUD, regras — como app_user, sem BYPASSRLS)
         run: npm run test:integration
