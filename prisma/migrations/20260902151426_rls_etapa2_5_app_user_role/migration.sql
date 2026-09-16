@@ -26,7 +26,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
 
 -- Cobre tabelas/sequences de migrations FUTURAS sem precisar de um grant
--- manual a cada uma — todas as migrations de produção rodam como `postgres`
--- (via DIRECT_URL), então é a role de referência aqui.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+-- manual a cada uma — `current_user`, não o nome fixo "postgres": em
+-- Supabase (produção/staging) a role de migration se chama `postgres` de
+-- verdade, mas num Postgres genérico (local, CI) o superusuário tem outro
+-- nome (`incorpora`) — `ALTER DEFAULT PRIVILEGES FOR ROLE postgres`
+-- quebraria com "role postgres does not exist" num replay do zero nesses
+-- ambientes (achado só depois, replayando esta migration numa instância
+-- limpa pela primeira vez — nunca tinha sido testada assim; em produção o
+-- efeito é idêntico, porque lá quem aplica migration já é `postgres`).
+DO $$
+BEGIN
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user', current_user);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user', current_user);
+END
+$$;
