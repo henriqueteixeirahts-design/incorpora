@@ -3,7 +3,7 @@ import "server-only";
 import { prisma, type TransactionClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { recordDevelopmentEvent } from "@/lib/events";
-import { calculateInstallment, type CorrectionPhaseConfig } from "@/lib/index-correction";
+import { calculateInstallment, startOfMonth, type CorrectionPhaseConfig } from "@/lib/index-correction";
 import { simulateAnticipation } from "@/lib/anticipation";
 import { tryReleaseCommissions } from "@/server/commissions";
 import { recognizeCommissionOnPayment } from "@/server/commission-payment-recognition";
@@ -198,20 +198,30 @@ export async function recalculateInstallment(
     latePaymentMonthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent),
   });
 
-  await tx.financialCalculation.create({
-    data: {
-      installmentId,
-      asOfDate,
-      baseValue: result.baseValue,
-      indexFactor: result.indexFactor,
-      interestFactor: result.interestFactor,
-      correctedValue: result.correctedValue,
-      daysOverdue: result.daysOverdue,
-      fineAmount: result.fineAmount,
-      overdueInterestAmount: result.overdueInterestAmount,
-      resultValue: result.resultValue,
-      details: result.details as unknown as Prisma.InputJsonValue,
-    },
+  const competenceMonth = startOfMonth(asOfDate);
+  const calculationData = {
+    asOfDate,
+    baseValue: result.baseValue,
+    indexFactor: result.indexFactor,
+    interestFactor: result.interestFactor,
+    correctedValue: result.correctedValue,
+    daysOverdue: result.daysOverdue,
+    fineAmount: result.fineAmount,
+    overdueInterestAmount: result.overdueInterestAmount,
+    resultValue: result.resultValue,
+    details: result.details as unknown as Prisma.InputJsonValue,
+  };
+
+  // Upsert por (installmentId, competenceMonth): recálculo repetido no mesmo
+  // mês de competência (reentrada do job, resumo pós-timeout) atualiza a
+  // mesma linha em vez de duplicar histórico de auditoria — idempotência
+  // exigida pela correção do recalculate-installments (RLS Pilar 2, Etapa 3).
+  // Um novo mês de competência sempre cria uma linha nova (histórico entre
+  // meses preservado).
+  await tx.financialCalculation.upsert({
+    where: { installmentId_competenceMonth: { installmentId, competenceMonth } },
+    create: { installmentId, competenceMonth, ...calculationData },
+    update: calculationData,
   });
 
   const paidAmount = Number(installment.paidAmount);
@@ -349,26 +359,76 @@ export async function registerInstallmentPayment(
   });
 }
 
+// Concorrência do lote: pool efetivo de produção tem max_connections=60
+// (Supabase, confirmado via pg_settings), compartilhado com tráfego real de
+// usuário e outros jobs — 5 conexões simultâneas é uma fração pequena e
+// conservadora desse limite, não o máximo teórico que caberia. Não elimina a
+// necessidade do cursor: mesmo 5x de paralelismo não processa 1.500 parcelas
+// sintéticas dentro de uma janela de 60s (medido no teste de volume), por
+// isso o corte por orçamento de tempo abaixo é o mecanismo principal de
+// segurança, não a velocidade do lote.
+const RECALC_BATCH_CONCURRENCY = 5;
+
+// Abaixo do `maxDuration = 60` das rotas de cron da Vercel (Hobby) — dá
+// margem pra a última transação em andamento terminar e o cursor ser
+// persistido antes da função ser morta por timeout.
+const RECALC_TIME_BUDGET_MS = 50_000;
+
 /**
- * Recalcula todas as parcelas em aberto da organização — usado pela rotina
- * mensal agendada (src/app/api/cron/recalculate-installments/route.ts,
- * configurada em vercel.json). Também é seguro chamar manualmente; parcelas
- * já pagas/canceladas são ignoradas por `recalculateInstallment`.
+ * Recalcula as parcelas em aberto da organização, em lotes concorrentes
+ * limitados por `RECALC_BATCH_CONCURRENCY`, respeitando um orçamento de
+ * tempo (`RECALC_TIME_BUDGET_MS`) — usado pela rotina diária agendada
+ * (src/app/api/cron/recalculate-installments/route.ts, configurada em
+ * vercel.json). Também é seguro chamar manualmente; parcelas já
+ * pagas/canceladas são ignoradas por `recalculateInstallment`.
+ *
+ * `resumeAfterId`: id da última parcela processada numa execução anterior
+ * incompleta (retomada via `JobRun.cursor`) — processamento continua a
+ * partir da próxima parcela na mesma ordem estável (`id asc`), nunca
+ * reprocessando o que já passou. `undefined`/`null` = começa do zero.
+ *
+ * Retorno: `cursor` não-nulo significa que o orçamento de tempo esgotou
+ * antes de processar tudo — o caller (jobs.ts) persiste esse cursor e a
+ * próxima invocação retoma dele; `cursor: null` significa que esta chamada
+ * processou até o fim da lista de parcelas em aberto.
  */
-export async function recalculateAllOpenInstallments(organizationId: string) {
+export async function recalculateAllOpenInstallments(
+  organizationId: string,
+  resumeAfterId?: string | null,
+) {
   const openInstallments = await prisma.installment.findMany({
     where: { portfolio: { organizationId }, status: { notIn: ["PAID", "CANCELLED"] } },
     select: { id: true },
+    orderBy: { id: "asc" },
   });
 
+  const startIndex = resumeAfterId
+    ? openInstallments.findIndex((installment) => installment.id === resumeAfterId) + 1
+    : 0;
+  const pending = openInstallments.slice(startIndex);
+
   const asOfDate = new Date();
+  const deadline = Date.now() + RECALC_TIME_BUDGET_MS;
   let recalculated = 0;
-  for (const installment of openInstallments) {
-    await prisma.$transaction((tx) => recalculateInstallment(tx, installment.id, asOfDate));
-    recalculated += 1;
+  let cursor: string | null = null;
+
+  for (let i = 0; i < pending.length; i += RECALC_BATCH_CONCURRENCY) {
+    if (Date.now() >= deadline) {
+      break;
+    }
+
+    const chunk = pending.slice(i, i + RECALC_BATCH_CONCURRENCY);
+    await Promise.all(
+      chunk.map((installment) =>
+        prisma.$transaction((tx) => recalculateInstallment(tx, installment.id, asOfDate)),
+      ),
+    );
+    recalculated += chunk.length;
+    cursor = chunk[chunk.length - 1].id;
   }
 
-  return { totalOpen: openInstallments.length, recalculated };
+  const fullyProcessed = startIndex + recalculated >= openInstallments.length;
+  return { totalOpen: openInstallments.length, recalculated, cursor: fullyProcessed ? null : cursor };
 }
 
 /**

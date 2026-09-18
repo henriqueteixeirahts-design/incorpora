@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { runAuditForOrganization, getIndexFreshnessWarnings } from "@/server/audit";
+import { recalculateInstallment } from "@/server/receivables";
 
 /**
  * Auditoria de atualização (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
@@ -285,6 +286,87 @@ describe("V3 — Consistência da memória (recálculo por caminho independente)
 
       // A parcela correta nunca aparece na lista de divergências
       expect(issues.some((i) => i.installmentId === correctInstallment.id)).toBe(false);
+    } finally {
+      await cleanupOrg(org.id, user.id);
+    }
+  });
+
+  it("não alerta parcela vencida (com multa + mora) calculada corretamente pelo motor real — regressão do bug achado em 2026-09-18 (V3 comparava correctedValue sem multa/mora contra o resultValue gravado, dava ALERT falso em toda parcela vencida)", async () => {
+    const { org, user } = await makeOrg("Org — Auditoria V3 — Parcela Vencida");
+    try {
+      const spe = await prisma.specialPurposeEntity.create({
+        data: { organizationId: org.id, name: "SPE V3 Vencida", document: "46127017000105", status: "ACTIVE" },
+      });
+      const development = await prisma.development.create({
+        data: { organizationId: org.id, speId: spe.id, name: "Empreendimento V3 Vencida", type: "RESIDENTIAL_BUILDING" },
+      });
+      const unit = await prisma.unit.create({
+        data: { developmentId: development.id, unitType: "APARTMENT", number: "301", status: "SOLD" },
+      });
+      const customer = await prisma.customer.create({
+        data: { organizationId: org.id, type: "INDIVIDUAL", name: "Cliente V3 Vencida", document: "02654427102" },
+      });
+      const proposal = await prisma.proposal.create({
+        data: {
+          organizationId: org.id,
+          developmentId: development.id,
+          unitId: unit.id,
+          customerId: customer.id,
+          listPrice: 1000,
+          discountPercent: 0,
+          salePrice: 1000,
+          status: "CONVERTED",
+          paymentFlow: {},
+        },
+      });
+      const sale = await prisma.sale.create({
+        data: {
+          organizationId: org.id,
+          developmentId: development.id,
+          unitId: unit.id,
+          proposalId: proposal.id,
+          customerId: customer.id,
+          saleNumber: "V-TEST-VENCIDA",
+          salePrice: 1000,
+        },
+      });
+      const contract = await prisma.contract.create({
+        data: {
+          organizationId: org.id,
+          developmentId: development.id,
+          unitId: unit.id,
+          saleId: sale.id,
+          customerId: customer.id,
+          contractNumber: "CT-V3-VENCIDA",
+          issuedAt: new Date("2010-01-01"),
+          // latePaymentFinePercent/latePaymentMonthlyInterestPercent ficam
+          // no default do schema (2% multa, 1%/mês mora) — de propósito,
+          // pra garantir que a parcela vencida abaixo tenha multa+mora
+          // não-zero (é exatamente essa combinação que expunha o bug).
+        },
+      });
+      const portfolio = await prisma.receivablePortfolio.create({
+        data: { organizationId: org.id, contractId: contract.id, totalValue: 1000 },
+      });
+      const overdueInstallment = await prisma.installment.create({
+        data: {
+          portfolioId: portfolio.id,
+          sequence: 1,
+          label: "Parcela vencida",
+          dueDate: new Date("2020-01-01"), // bem vencida — garante multa+mora não-zero
+          originalValue: 1000,
+        },
+      });
+
+      // Usa o motor real (não um valor calculado à mão) pra gravar
+      // correctedValue — o mesmo caminho que recalculateAllOpenInstallments
+      // usa em produção.
+      await prisma.$transaction((tx) => recalculateInstallment(tx, overdueInstallment.id));
+
+      const result = await runAuditForOrganization(org.id, { full: true, triggeredBy: "MANUAL" });
+      const v3 = result.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
+      expect(v3.status).toBe("OK");
+      expect(v3.summary.divergent).toBe(0);
     } finally {
       await cleanupOrg(org.id, user.id);
     }

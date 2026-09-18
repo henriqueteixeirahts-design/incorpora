@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/recalculate-installments",
-      "schedule": "0 3 2 * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/sync-index-values",

@@ -210,13 +210,22 @@ async function checkV3MemoryConsistency(organizationId: string, full: boolean): 
       latePaymentMonthlyInterestPercent: Number(contract.latePaymentMonthlyInterestPercent),
     });
 
+    // `Installment.correctedValue` guarda, na prática, o `resultValue` do
+    // motor real (recalculateInstallment grava `result.resultValue` nesse
+    // campo — correção + multa + mora já somadas, não só a correção pura).
+    // Comparar contra `recomputed.correctedValue` (que exclui multa/mora)
+    // dava ALERT falso em toda parcela vencida, mesmo com o motor real
+    // certo — achado durante a correção do recalculate-installments
+    // (2026-09-18), corrigido junto por tocar na mesma garantia financeira.
+    // `resultValue` é a grandeza certa pra comparar: já inclui multa/mora
+    // quando há atraso, e é idêntico à correção pura quando não há.
     const stored = Number(installment.correctedValue ?? installment.originalValue);
-    const diff = round2(Math.abs(recomputed.correctedValue - stored));
+    const diff = round2(Math.abs(recomputed.resultValue - stored));
     if (diff >= 0.01) {
       issues.push({
         installmentId: installment.id,
         contractNumber: contract.contractNumber,
-        expected: recomputed.correctedValue,
+        expected: recomputed.resultValue,
         found: stored,
         diff,
       });

@@ -4,19 +4,27 @@ import { runJobForAllOrganizations, recalculateInstallmentsJob, auditUpdateFullJ
 export const maxDuration = 60; // teto do plano Hobby da Vercel — se ficar apertado com o volume real de dados, é o sinal pra migrar pro serviço de fila (Parte 1.3 da especificação)
 
 /**
- * Correção mensal automática (PRD seção 12) — agendada em vercel.json
- * (dia 2 de cada mês). Rota é só o "chamador" do job (docs/
- * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 1) — a lógica de recálculo
- * vive em src/server/jobs.ts, e cada execução por organização fica
- * registrada em JobRun. Antes desta rota existir, o recálculo só
- * acontecia quando alguém abria uma tela específica.
+ * Correção mensal automática (PRD seção 12) — agendada DIARIAMENTE em
+ * vercel.json (plano Hobby da Vercel não roda cron sub-diário nem permite
+ * garantir um dia exato do mês com precisão — ±59min de imprecisão mesmo
+ * em cadência diária). `recalculateInstallmentsJob` decide por conta
+ * própria se há trabalho de verdade a fazer: é um no-op na maioria dos
+ * dias (competência do mês já concluída) e só processa de verdade uma vez
+ * por mês de competência — ou retoma, via `JobRun.cursor`, se a execução
+ * anterior esgotou o orçamento de tempo antes de terminar. Rota é só o
+ * "chamador" do job (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 1)
+ * — a lógica vive em src/server/jobs.ts e src/server/receivables.ts, cada
+ * execução por organização fica registrada em JobRun.
  *
- * Também dispara, na sequência, a auditoria de atualização COMPLETA
- * (Parte 2 da mesma especificação) — verifica toda parcela em aberto, não
- * uma amostra, logo depois do recálculo do mês. Encadeada aqui (em vez de
- * um cron próprio) porque o plano Hobby da Vercel limita o número de cron
- * jobs do projeto; os dois já usados (este e o de índices) não sobram
- * slot pra mais dois. Ver docs/STATUS_IMPLANTACAO.md pra esse registro.
+ * Também dispara, só no dia 2 (aproximação do "mês fechou" — mesma janela
+ * que a cadência mensal original usava), a auditoria de atualização
+ * COMPLETA (Parte 2 da mesma especificação) — verifica toda parcela em
+ * aberto, não uma amostra. `auditUpdateFullJob` não tem checkpoint/no-op
+ * próprio (é pesada de propósito, não deveria rodar todo dia) — o filtro
+ * de data aqui na rota é o que mantém a cadência mensal pretendida mesmo
+ * com o cron agora disparando diariamente. Encadeada nesta mesma rota (em
+ * vez de um cron próprio) porque o plano Hobby limita o número de cron
+ * jobs do projeto. Ver docs/STATUS_IMPLANTACAO.md.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -27,7 +35,9 @@ export async function GET(request: NextRequest) {
   }
 
   const results = await runJobForAllOrganizations(recalculateInstallmentsJob, "CRON");
-  const auditResults = await runJobForAllOrganizations(auditUpdateFullJob, "CRON");
+
+  const isMonthlyAuditWindow = new Date().getDate() <= 2;
+  const auditResults = isMonthlyAuditWindow ? await runJobForAllOrganizations(auditUpdateFullJob, "CRON") : null;
 
   return NextResponse.json({
     success: true,

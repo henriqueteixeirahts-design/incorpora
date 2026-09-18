@@ -178,7 +178,7 @@ function applyPhase(phase: PhaseName, months: Date[], config: CorrectionPhaseCon
   };
 }
 
-function startOfMonth(date: Date) {
+export function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
@@ -190,7 +190,7 @@ function monthDiff(a: Date, b: Date) {
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
 }
 
-function monthKey(date: Date) {
+export function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 

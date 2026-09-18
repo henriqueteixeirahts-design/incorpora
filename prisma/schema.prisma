@@ -1126,6 +1126,7 @@ model JobRun {
   finishedAt     DateTime?
   summary        Json?
   error          String?
+  cursor         String? // checkpoint de retomada: "<competência YYYY-MM>:<últimoIdProcessado>", null = concluído ou nunca iniciado
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -2814,10 +2815,15 @@ enum InterestType {
 
 /// Registro auditável de cada cálculo de correção de uma parcela (PRD seção
 /// 12: "o sistema deve manter o índice utilizado em cada cálculo e nunca
-/// simplesmente sobrescrever valores"). Nunca é atualizado, só criado.
+/// simplesmente sobrescrever valores"). Um registro por (parcela, mês de
+/// competência): recálculos dentro do mesmo mês de competência fazem upsert
+/// (idempotência do job de recálculo, não duplicam histórico); um novo mês
+/// de competência sempre cria uma linha nova, preservando o histórico entre
+/// meses.
 model FinancialCalculation {
   id                    String   @id @default(uuid()) @db.Uuid
   installmentId         String   @db.Uuid
+  competenceMonth       DateTime @db.Date // dia 1 do mês em que o cálculo rodou — chave de idempotência junto com installmentId
   asOfDate              DateTime
   baseValue             Decimal  @db.Decimal(14, 2)
   indexFactor           Decimal  @db.Decimal(10, 6)
@@ -2829,9 +2835,11 @@ model FinancialCalculation {
   resultValue           Decimal  @db.Decimal(14, 2) // valor final na asOfDate (corrigido + multa + mora)
   details               Json // memória: meses/índices aplicados e parâmetros usados
   createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   installment Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
 
+  @@unique([installmentId, competenceMonth])
   @@index([installmentId])
   @@map("financial_calculations")
 }
