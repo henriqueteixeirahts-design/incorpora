@@ -5,8 +5,8 @@ export const maxDuration = 60;
 
 /**
  * Auditoria de atualização por amostragem (docs/
- * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2) — roda as 5 verificações
- * (V1-V5) e alimenta o selo de saúde do dashboard.
+ * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2) — roda as 6 verificações
+ * (V1-V6) e alimenta o selo de saúde do dashboard.
  *
  * NÃO está agendada em vercel.json: o plano Hobby da Vercel limita o
  * número de cron jobs do projeto, e os 2 slots já são usados pelo

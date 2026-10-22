@@ -6,7 +6,7 @@ import { recalculateInstallment } from "@/server/receivables";
 
 /**
  * Auditoria de atualização (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
- * Parte 2) — V1-V5 + persistência em AuditRun/AuditCheckResult. Cada
+ * Parte 2) — V1-V6 + persistência em AuditRun/AuditCheckResult. Cada
  * describe usa sua própria organização, pra isolar o estado que cada
  * verificação examina (evita que o fixture de um teste vaze pro cálculo de
  * outro). V5 nunca é exercitado contra a rede real aqui — mesma razão de
@@ -590,13 +590,13 @@ describe("V5 — Divergência de fonte (sem tocar rede no CI)", () => {
 });
 
 describe("Orquestrador — persistência e status geral", () => {
-  it("grava AuditRun com status ALERT quando qualquer verificação falha, e persiste os 5 AuditCheckResult", async () => {
+  it("grava AuditRun com status ALERT quando qualquer verificação falha, e persiste os 6 AuditCheckResult", async () => {
     const { org, user } = await makeOrg("Org — Auditoria Orquestrador");
     try {
       // Organização "vazia" já basta pro V4 alertar (nenhum JobRun ainda) — suficiente pra provar a propagação do status geral.
       const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "CRON" });
       expect(result.status).toBe("ALERT");
-      expect(result.checks).toHaveLength(5);
+      expect(result.checks).toHaveLength(6);
 
       const persisted = await prisma.auditRun.findUnique({
         where: { id: result.auditRunId },
@@ -604,7 +604,7 @@ describe("Orquestrador — persistência e status geral", () => {
       });
       expect(persisted?.status).toBe("ALERT");
       expect(persisted?.triggeredBy).toBe("CRON");
-      expect(persisted?.checks).toHaveLength(5);
+      expect(persisted?.checks).toHaveLength(6);
       expect(persisted?.finishedAt).not.toBeNull();
     } finally {
       await cleanupOrg(org.id, user.id);

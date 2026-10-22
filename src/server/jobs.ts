@@ -268,7 +268,7 @@ export const auditUpdateJob: JobDefinition = {
   name: "audit-update",
   label: "Auditoria de atualização (diária, por amostragem)",
   description:
-    "Roda as 5 verificações de integridade (frescor de índices, cobertura da correção, consistência da memória por amostragem, execução dos jobs, divergência contra o Banco Central) e atualiza o selo de saúde do dashboard.",
+    "Roda as 6 verificações de integridade (frescor de índices, cobertura da correção, consistência da memória por amostragem, execução dos jobs, divergência contra o Banco Central, consistência do histórico de cálculo) e atualiza o selo de saúde do dashboard.",
   idempotent: true,
   runForOrganization: (organizationId, triggeredBy) => runAuditJob(organizationId, triggeredBy, false),
 };
@@ -277,7 +277,7 @@ export const auditUpdateFullJob: JobDefinition = {
   name: "audit-update-full",
   label: "Auditoria de atualização completa (mensal / re-verificação manual)",
   description:
-    "Mesmas 5 verificações da auditoria diária, mas a V3 (consistência da memória) confere TODA parcela em aberto, não uma amostra — mais lenta, roda mensalmente e sob demanda (botão \"Re-verificar agora\" na tela de Auditoria).",
+    "Mesmas 6 verificações da auditoria diária, mas a V3 (consistência da memória) confere TODA parcela em aberto, não uma amostra — mais lenta, roda mensalmente e sob demanda (botão \"Re-verificar agora\" na tela de Auditoria).",
   idempotent: true,
   runForOrganization: (organizationId, triggeredBy) => runAuditJob(organizationId, triggeredBy, true),
 };

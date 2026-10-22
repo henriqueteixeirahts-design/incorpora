@@ -5,7 +5,7 @@ export const maxDuration = 60; // teto do plano Hobby da Vercel
 
 /**
  * Auditoria de atualização completa (docs/
- * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2.2). Mesmas 5 verificações
+ * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2.2). Mesmas 6 verificações
  * da amostragem, mas a V3 (consistência da memória) confere TODA parcela
  * em aberto, não uma amostra.
  *

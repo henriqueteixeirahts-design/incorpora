@@ -98,7 +98,7 @@ export default async function SettingsPage() {
         },
         {
           href: "/settings/audit",
-          label: "Auditoria de atualização — verificações V1-V5",
+          label: "Auditoria de atualização — verificações V1-V6",
           visible: hasPermission(context, "audit", "VIEW"),
         },
       ],

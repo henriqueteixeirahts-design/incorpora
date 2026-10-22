@@ -29,9 +29,17 @@ const CHECK_LABELS: Record<string, string> = {
   V3_MEMORY_CONSISTENCY: "V3 — Consistência da memória",
   V4_JOB_EXECUTION: "V4 — Execução dos jobs",
   V5_SOURCE_DIVERGENCE: "V5 — Divergência de fonte",
+  V6_HISTORY_CONSISTENCY: "V6 — Consistência do histórico",
 };
 
-const CHECK_ORDER = ["V1_INDEX_FRESHNESS", "V2_CORRECTION_COVERAGE", "V3_MEMORY_CONSISTENCY", "V4_JOB_EXECUTION", "V5_SOURCE_DIVERGENCE"];
+const CHECK_ORDER = [
+  "V1_INDEX_FRESHNESS",
+  "V2_CORRECTION_COVERAGE",
+  "V3_MEMORY_CONSISTENCY",
+  "V4_JOB_EXECUTION",
+  "V5_SOURCE_DIVERGENCE",
+  "V6_HISTORY_CONSISTENCY",
+];
 
 const TRIGGER_LABELS: Record<string, string> = {
   CRON: "Automático (cron)",

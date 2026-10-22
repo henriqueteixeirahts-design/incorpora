@@ -7,7 +7,7 @@ import type { JobTrigger, AuditCheckCode, AuditStatus, IndexCode, Prisma } from 
 
 /**
  * Auditoria de atualização — o "double-check" (docs/
- * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2). Cinco verificações
+ * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2). Seis verificações
  * independentes do motor de correção; V2/V3/V5 deliberadamente NÃO
  * reutilizam a função que calcula/sincroniza pra conferir a si mesma —
  * cada uma lê o estado dos dados (ou a fonte oficial) por conta própria.
@@ -383,12 +383,81 @@ async function checkV5SourceDivergence(organizationId: string): Promise<AuditChe
   };
 }
 
+/**
+ * V6 — Consistência do histórico (V6a): a linha mais recente de
+ * `FinancialCalculation` de cada parcela em aberto bate com o valor guardado
+ * na própria parcela — `resultValue` = `Installment.correctedValue` e
+ * `asOfDate` = `lastCalculatedAt`. A V3 confere o valor guardado contra um
+ * recálculo independente; esta fecha a outra ponta: o valor guardado
+ * precisa ser exatamente o que a memória de cálculo registra (gravação
+ * parcial, escrita no valor por fora do motor, upsert que não atualizou a
+ * linha do mês). Não recalcula nada — só compara o que está gravado, então
+ * não sofre com índice/contrato que mudaram depois (o motivo de a V6b,
+ * recálculo do histórico inteiro, ter sido descartada). Barata: confere
+ * toda parcela em aberto, sem amostra.
+ */
+async function checkV6HistoryConsistency(organizationId: string): Promise<AuditCheckOutcome> {
+  const installments = await prisma.installment.findMany({
+    where: { status: { notIn: ["PAID", "CANCELLED"] }, lastCalculatedAt: { not: null }, portfolio: { organizationId } },
+    select: {
+      id: true,
+      correctedValue: true,
+      lastCalculatedAt: true,
+      portfolio: { select: { contract: { select: { contractNumber: true } } } },
+      financialCalculations: {
+        orderBy: { asOfDate: "desc" },
+        take: 1,
+        select: { id: true, resultValue: true, asOfDate: true },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+
+  const issues: Array<{
+    installmentId: string;
+    contractNumber: string;
+    problem: "MISSING_CALCULATION" | "VALUE_MISMATCH" | "DATE_MISMATCH";
+    stored: number | string | null;
+    calculation: number | string | null;
+  }> = [];
+
+  for (const installment of installments) {
+    const contractNumber = installment.portfolio.contract.contractNumber;
+    const latest = installment.financialCalculations[0];
+    if (!latest) {
+      issues.push({ installmentId: installment.id, contractNumber, problem: "MISSING_CALCULATION", stored: Number(installment.correctedValue), calculation: null });
+      continue;
+    }
+    const stored = Number(installment.correctedValue);
+    const calculated = Number(latest.resultValue);
+    if (round2(Math.abs(stored - calculated)) >= 0.01) {
+      issues.push({ installmentId: installment.id, contractNumber, problem: "VALUE_MISMATCH", stored, calculation: calculated });
+    }
+    if (latest.asOfDate.getTime() !== installment.lastCalculatedAt!.getTime()) {
+      issues.push({
+        installmentId: installment.id,
+        contractNumber,
+        problem: "DATE_MISMATCH",
+        stored: installment.lastCalculatedAt!.toISOString(),
+        calculation: latest.asOfDate.toISOString(),
+      });
+    }
+  }
+
+  return {
+    status: issues.length > 0 ? "ALERT" : "OK",
+    summary: { checked: installments.length, divergent: issues.length },
+    issues,
+  };
+}
+
 const CHECKS: Array<{ code: AuditCheckCode; run: (organizationId: string, full: boolean) => Promise<AuditCheckOutcome> }> = [
   { code: "V1_INDEX_FRESHNESS", run: (organizationId) => checkV1IndexFreshness(organizationId) },
   { code: "V2_CORRECTION_COVERAGE", run: (organizationId) => checkV2CorrectionCoverage(organizationId) },
   { code: "V3_MEMORY_CONSISTENCY", run: (organizationId, full) => checkV3MemoryConsistency(organizationId, full) },
   { code: "V4_JOB_EXECUTION", run: (organizationId) => checkV4JobExecution(organizationId) },
   { code: "V5_SOURCE_DIVERGENCE", run: (organizationId) => checkV5SourceDivergence(organizationId) },
+  { code: "V6_HISTORY_CONSISTENCY", run: (organizationId) => checkV6HistoryConsistency(organizationId) },
 ];
 
 export async function runAuditForOrganization(
