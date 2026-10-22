@@ -14,10 +14,9 @@ name: Alerta de jobs
 #   Secret   JOB_ALERT_DISPATCH_TOKEN  — mesmo valor do segredo da Edge Function
 #   Variable JOB_ALERT_DISPATCH_URL    — https://<ref>.supabase.co/functions/v1/job-alert-dispatch
 #
-# A variável JOB_ALERT_DISPATCH_URL é a chave de liga/desliga: sem ela, o
-# job aparece como "skipped" (estado de antes da configuração — visível na
-# aba Actions, não um sucesso falso). Com ela definida, tudo é estrito:
-# token ausente ou qualquer resposta diferente de 200 faz o job falhar.
+# Sem chave de liga/desliga: secret ou variável ausente FALHA o job. A
+# versão anterior pulava o job ("skipped") sem a variável — e em 2026-10-22
+# isso escondeu uma variável que não estava visível pro workflow.
 #
 # Atenção: num repositório público, o GitHub desativa workflows agendados
 # depois de 60 dias sem atividade no repo (avisa por e-mail antes).
@@ -35,7 +34,6 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ vars.JOB_ALERT_DISPATCH_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -45,8 +43,12 @@ jobs:
           URL: ${{ vars.JOB_ALERT_DISPATCH_URL }}
         run: |
           set -euo pipefail
-          if [ -z "${TOKEN}" ] || [ -z "${URL}" ]; then
-            echo "::error::JOB_ALERT_DISPATCH_TOKEN (secret) ou JOB_ALERT_DISPATCH_URL (variable) não configurado."
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Secret JOB_ALERT_DISPATCH_TOKEN ausente ou invisível pro workflow (Settings → Secrets and variables → Actions → aba Secrets → Repository secrets)."
+            exit 1
+          fi
+          if [ -z "${URL}" ]; then
+            echo "::error::Variável JOB_ALERT_DISPATCH_URL ausente ou invisível pro workflow (Settings → Secrets and variables → Actions → aba Variables → Repository variables — não em Secrets, não num Environment)."
             exit 1
           fi
           status=$(curl -sS -o response.json -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 10 \
