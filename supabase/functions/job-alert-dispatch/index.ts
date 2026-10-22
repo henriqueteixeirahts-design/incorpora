@@ -20,7 +20,7 @@
 // configuração (mesmo sem nada pendente), responde erro HTTP — o job do
 // Actions falha e o GitHub notifica por e-mail.
 import postgres from "npm:postgres@3.4.5";
-import { dispatchPendingJobAlerts } from "./dispatch.ts";
+import { dispatchPendingJobAlerts, recordDispatchHeartbeat } from "./dispatch.ts";
 
 function safeEqual(a: string, b: string) {
   if (a.length !== b.length) return false;
@@ -42,24 +42,28 @@ Deno.serve(async (request) => {
     from: Deno.env.get("JOB_ALERT_EMAIL_FROM"),
     environmentLabel: Deno.env.get("JOB_ALERT_ENV_LABEL"),
   };
-  if (!config.resendApiKey || !config.to || !config.from) {
-    console.error(JSON.stringify({ event: "job-alert-dispatch-misconfigured" }));
-    return Response.json({ error: "missing_email_config" }, { status: 500 });
-  }
 
   const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
+  const db = { query: (text: string, params: unknown[] = []) => sql.unsafe(text, params as never[]) as never };
   try {
-    const result = await dispatchPendingJobAlerts(
-      { query: (text, params = []) => sql.unsafe(text, params as never[]) as never },
-      config,
-      fetch,
-    );
+    if (!config.resendApiKey || !config.to || !config.from) {
+      console.error(JSON.stringify({ event: "job-alert-dispatch-misconfigured" }));
+      await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
+      return Response.json({ error: "missing_email_config" }, { status: 500 });
+    }
+
+    const result = await dispatchPendingJobAlerts(db, config, fetch);
     // Só contagens e ids opacos — o log do Actions é público num repo público.
     const body = { pending: result.pending, delivered: result.delivered.length, failed: result.failed };
+    const ok = result.failed.length === 0;
+    await recordDispatchHeartbeat(db, { success: ok, summary: body, error: ok ? undefined : "alerta(s) não entregue(s)" });
     console.log(JSON.stringify({ event: "job-alert-dispatch", ...body }));
-    return Response.json(body, { status: result.failed.length > 0 ? 502 : 200 });
+    return Response.json(body, { status: ok ? 200 : 502 });
   } catch (error) {
-    console.error(JSON.stringify({ event: "job-alert-dispatch-error", message: error instanceof Error ? error.message : String(error) }));
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ event: "job-alert-dispatch-error", message }));
+    // Melhor esforço: se o próprio banco caiu, o GitHub Actions ainda falha.
+    await recordDispatchHeartbeat(db, { success: false, summary: {}, error: message }).catch(() => undefined);
     return Response.json({ error: "dispatch_failed" }, { status: 500 });
   } finally {
     await sql.end();

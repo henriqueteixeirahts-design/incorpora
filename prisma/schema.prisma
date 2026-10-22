@@ -1149,12 +1149,13 @@ enum AuditCheckCode {
   V4_JOB_EXECUTION // execução dos jobs agendados
   V5_SOURCE_DIVERGENCE // divergência contra a fonte oficial (BC)
   V6_HISTORY_CONSISTENCY // último FinancialCalculation x valor guardado na parcela
+  V7_ALERT_DISPATCH_HEARTBEAT // o gatilho externo do alerta (GitHub Actions → Edge Function) rodou com sucesso na última hora
 }
 
 /// Uma rodada da auditoria de atualização (docs/
 /// ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2) — o "double-check"
 /// independente do motor de correção. `status` é ALERT se qualquer uma das
-/// 6 verificações (AuditCheckResult) vier ALERT. `fullCheck` diferencia a
+/// 7 verificações (AuditCheckResult) vier ALERT. `fullCheck` diferencia a
 /// rodada diária (V3 por amostragem) da mensal (V3 completa — todas as
 /// parcelas, não só uma amostra).
 model AuditRun {
@@ -1178,7 +1179,7 @@ model AuditRun {
   @@map("audit_runs")
 }
 
-/// Resultado de UMA das 6 verificações dentro de uma AuditRun. `summary` é o
+/// Resultado de UMA das 7 verificações dentro de uma AuditRun. `summary` é o
 /// resumo agregado (contadores); `issues` é o detalhe de cada problema
 /// encontrado (ex.: qual parcela, qual índice, valor esperado × encontrado)
 /// — a matéria-prima da tela de detalhe de falha.

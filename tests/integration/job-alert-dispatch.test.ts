@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
-import { dispatchPendingJobAlerts, type DispatchConfig, type DispatchDb } from "../../supabase/functions/job-alert-dispatch/dispatch";
+import {
+  dispatchPendingJobAlerts,
+  recordDispatchHeartbeat,
+  type DispatchConfig,
+  type DispatchDb,
+} from "../../supabase/functions/job-alert-dispatch/dispatch";
 
 /**
  * Alerta de falha de job independente da Vercel (decisão de 2026-10-22).
@@ -176,6 +181,24 @@ describe("Alerta de job — despacho pela Edge Function, independente da Vercel"
 
     // Limpa pra não vazar como pendente pros outros testes.
     await client.query(`UPDATE job_runs SET "alertSuppressed" = true WHERE id = $1`, [failed]);
+  });
+
+  it("batimento: cada chamada grava job_runs 'job-alert-dispatch' sem organização, e uma falha do próprio despacho nunca vira alerta sobre si mesma", async () => {
+    await recordDispatchHeartbeat(db, { success: true, summary: { pending: 0, delivered: 0, failed: [] } });
+    await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
+
+    const beats = await client.query(
+      `SELECT status, "alertSuppressed", "organizationId", error FROM job_runs
+        WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL ORDER BY "startedAt" DESC, status DESC LIMIT 2`,
+    );
+    expect(beats.rows.map((r) => r.status).sort()).toEqual(["FAILURE", "SUCCESS"]);
+    expect(beats.rows.every((r) => r.alertSuppressed === true && r.organizationId === null)).toBe(true);
+
+    const fetchMock = fakeResend(200);
+    await dispatchPendingJobAlerts(db, config, fetchMock as unknown as typeof fetch);
+    expect(fetchMock.mock.calls.filter((call) => String((call as unknown as [string, RequestInit])[1].body).includes("job-alert-dispatch"))).toHaveLength(0);
+
+    await client.query(`DELETE FROM job_runs WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL`);
   });
 
   it("falha anterior ao controle de entrega (alertSuppressed) nunca é enviada", async () => {

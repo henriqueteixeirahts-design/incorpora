@@ -7,7 +7,7 @@ import type { JobTrigger, AuditCheckCode, AuditStatus, IndexCode, Prisma } from 
 
 /**
  * Auditoria de atualização — o "double-check" (docs/
- * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2). Seis verificações
+ * ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md, Parte 2). Sete verificações
  * independentes do motor de correção; V2/V3/V5 deliberadamente NÃO
  * reutilizam a função que calcula/sincroniza pra conferir a si mesma —
  * cada uma lê o estado dos dados (ou a fonte oficial) por conta própria.
@@ -451,6 +451,59 @@ async function checkV6HistoryConsistency(organizationId: string): Promise<AuditC
   };
 }
 
+/** Nome do batimento gravado pela Edge Function job-alert-dispatch a cada chamada (supabase/functions/job-alert-dispatch/dispatch.ts). */
+export const ALERT_DISPATCH_HEARTBEAT_JOB = "job-alert-dispatch";
+const ALERT_DISPATCH_MAX_SILENCE_MS = 60 * 60 * 1000;
+
+/**
+ * V7 — Vigia do alerta: o gatilho externo dos alertas de falha (GitHub
+ * Actions → Edge Function job-alert-dispatch, a cada 15 min) registrou uma
+ * execução bem-sucedida na última hora? O alerta não consegue avisar que
+ * ele mesmo parou — um gatilho que morre (workflow desativado, agendamento
+ * do GitHub que não dispara, função fora do ar, token trocado de um lado
+ * só) precisa aparecer em algum lugar. Global (não é por organização): o
+ * batimento é gravado com `organizationId` nulo.
+ */
+async function checkV7AlertDispatchHeartbeat(): Promise<AuditCheckOutcome> {
+  const [lastSuccess, lastAny] = await Promise.all([
+    prisma.jobRun.findFirst({
+      where: { jobName: ALERT_DISPATCH_HEARTBEAT_JOB, organizationId: null, status: "SUCCESS" },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true },
+    }),
+    prisma.jobRun.findFirst({
+      where: { jobName: ALERT_DISPATCH_HEARTBEAT_JOB, organizationId: null },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true, status: true, error: true },
+    }),
+  ]);
+
+  const silentForMs = lastSuccess ? Date.now() - lastSuccess.startedAt.getTime() : null;
+  const alive = silentForMs !== null && silentForMs <= ALERT_DISPATCH_MAX_SILENCE_MS;
+  const summary = {
+    lastSuccessAt: lastSuccess?.startedAt.toISOString() ?? null,
+    lastRunAt: lastAny?.startedAt.toISOString() ?? null,
+    lastRunStatus: lastAny?.status ?? null,
+    maxSilenceMinutes: ALERT_DISPATCH_MAX_SILENCE_MS / 60000,
+  };
+
+  return {
+    status: alive ? "OK" : "ALERT",
+    summary,
+    issues: alive
+      ? []
+      : [
+          {
+            message: lastSuccess
+              ? `O despacho de alertas não roda com sucesso há ${Math.round(silentForMs! / 60000)} minutos — falhas de job não estão sendo avisadas.`
+              : "O despacho de alertas nunca registrou uma execução bem-sucedida — falhas de job não estão sendo avisadas.",
+            lastRunStatus: lastAny?.status ?? null,
+            lastRunError: lastAny?.error ?? null,
+          },
+        ],
+  };
+}
+
 const CHECKS: Array<{ code: AuditCheckCode; run: (organizationId: string, full: boolean) => Promise<AuditCheckOutcome> }> = [
   { code: "V1_INDEX_FRESHNESS", run: (organizationId) => checkV1IndexFreshness(organizationId) },
   { code: "V2_CORRECTION_COVERAGE", run: (organizationId) => checkV2CorrectionCoverage(organizationId) },
@@ -458,6 +511,7 @@ const CHECKS: Array<{ code: AuditCheckCode; run: (organizationId: string, full: 
   { code: "V4_JOB_EXECUTION", run: (organizationId) => checkV4JobExecution(organizationId) },
   { code: "V5_SOURCE_DIVERGENCE", run: (organizationId) => checkV5SourceDivergence(organizationId) },
   { code: "V6_HISTORY_CONSISTENCY", run: (organizationId) => checkV6HistoryConsistency(organizationId) },
+  { code: "V7_ALERT_DISPATCH_HEARTBEAT", run: () => checkV7AlertDispatchHeartbeat() },
 ];
 
 export async function runAuditForOrganization(

@@ -6,7 +6,7 @@ import { recalculateInstallment } from "@/server/receivables";
 
 /**
  * Auditoria de atualização (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
- * Parte 2) — V1-V6 + persistência em AuditRun/AuditCheckResult. Cada
+ * Parte 2) — V1-V7 + persistência em AuditRun/AuditCheckResult. Cada
  * describe usa sua própria organização, pra isolar o estado que cada
  * verificação examina (evita que o fixture de um teste vaze pro cálculo de
  * outro). V5 nunca é exercitado contra a rede real aqui — mesma razão de
@@ -523,6 +523,44 @@ describe("V3 — amostragem da auditoria semanal (não completa)", () => {
   });
 });
 
+describe("V7 — vigia do alerta (batimento do despacho)", () => {
+  async function v7(orgId: string) {
+    const result = await runAuditForOrganization(orgId, { full: false, triggeredBy: "MANUAL" });
+    return result.checks.find((c) => c.code === "V7_ALERT_DISPATCH_HEARTBEAT")!;
+  }
+  async function beat(status: "SUCCESS" | "FAILURE", minutesAgo: number) {
+    const at = new Date(Date.now() - minutesAgo * 60 * 1000);
+    await prisma.jobRun.create({
+      data: { jobName: "job-alert-dispatch", organizationId: null, triggeredBy: "CRON", status, startedAt: at, finishedAt: at, alertSuppressed: true },
+    });
+  }
+  const clearBeats = () => prisma.jobRun.deleteMany({ where: { jobName: "job-alert-dispatch", organizationId: null } });
+
+  it("acusa sem batimento nenhum, com último sucesso há mais de 1h, e com só falhas recentes; fica OK com sucesso na última hora", async () => {
+    const { org, user } = await makeOrg("Org — Auditoria V7");
+    try {
+      await clearBeats();
+      const never = await v7(org.id);
+      expect(never.status).toBe("ALERT");
+      expect(never.summary.lastSuccessAt).toBeNull();
+
+      await beat("SUCCESS", 90);
+      expect((await v7(org.id)).status).toBe("ALERT");
+
+      await beat("FAILURE", 5); // gatilho vivo mas despacho falhando — não conta como sucesso
+      const failing = await v7(org.id);
+      expect(failing.status).toBe("ALERT");
+      expect(failing.summary.lastRunStatus).toBe("FAILURE");
+
+      await beat("SUCCESS", 10);
+      expect((await v7(org.id)).status).toBe("OK");
+    } finally {
+      await clearBeats();
+      await cleanupOrg(org.id, user.id);
+    }
+  });
+});
+
 describe("V4 — tolerância do recalculate-installments (job diário)", () => {
   it("acusa sem SUCCESS há mais de 3 dias e aceita SUCCESS de 2 dias atrás", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V4 — Tolerância");
@@ -590,13 +628,13 @@ describe("V5 — Divergência de fonte (sem tocar rede no CI)", () => {
 });
 
 describe("Orquestrador — persistência e status geral", () => {
-  it("grava AuditRun com status ALERT quando qualquer verificação falha, e persiste os 6 AuditCheckResult", async () => {
+  it("grava AuditRun com status ALERT quando qualquer verificação falha, e persiste os 7 AuditCheckResult", async () => {
     const { org, user } = await makeOrg("Org — Auditoria Orquestrador");
     try {
       // Organização "vazia" já basta pro V4 alertar (nenhum JobRun ainda) — suficiente pra provar a propagação do status geral.
       const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "CRON" });
       expect(result.status).toBe("ALERT");
-      expect(result.checks).toHaveLength(6);
+      expect(result.checks).toHaveLength(7);
 
       const persisted = await prisma.auditRun.findUnique({
         where: { id: result.auditRunId },
@@ -604,7 +642,7 @@ describe("Orquestrador — persistência e status geral", () => {
       });
       expect(persisted?.status).toBe("ALERT");
       expect(persisted?.triggeredBy).toBe("CRON");
-      expect(persisted?.checks).toHaveLength(6);
+      expect(persisted?.checks).toHaveLength(7);
       expect(persisted?.finishedAt).not.toBeNull();
     } finally {
       await cleanupOrg(org.id, user.id);

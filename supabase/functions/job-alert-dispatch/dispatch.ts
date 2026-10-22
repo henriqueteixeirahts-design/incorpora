@@ -80,6 +80,26 @@ export async function dispatchPendingJobAlerts(
   return result;
 }
 
+/**
+ * Batimento do despacho: uma linha em job_runs por chamada autorizada
+ * (jobName 'job-alert-dispatch', sem organização). A auditoria V7
+ * (src/server/audit.ts) acusa se o último SUCCESS tiver mais de 1 hora —
+ * é assim que um gatilho morto (GitHub Actions que não dispara, função fora
+ * do ar) aparece. `alertSuppressed = true`: falha do próprio despacho é
+ * avisada pelo GitHub Actions (job falho), nunca vira e-mail sobre si mesma
+ * — senão um Resend quebrado geraria uma falha nova a cada rodada.
+ */
+export async function recordDispatchHeartbeat(
+  db: DispatchDb,
+  outcome: { success: boolean; summary: Record<string, unknown>; error?: string },
+): Promise<void> {
+  await db.query(
+    `INSERT INTO job_runs (id, "jobName", "organizationId", status, "triggeredBy", "startedAt", "finishedAt", summary, error, "alertSuppressed")
+     VALUES (gen_random_uuid(), 'job-alert-dispatch', NULL, $1, 'CRON', now(), now(), $2::jsonb, $3, true)`,
+    [outcome.success ? "SUCCESS" : "FAILURE", JSON.stringify(outcome.summary), outcome.error ?? null],
+  );
+}
+
 /** `null` = entregue (Resend aceitou); senão, o motivo da falha. */
 async function sendViaResend(row: PendingRow, config: DispatchConfig, fetchImpl: typeof fetch): Promise<string | null> {
   const label = config.environmentLabel ? ` (${config.environmentLabel})` : "";

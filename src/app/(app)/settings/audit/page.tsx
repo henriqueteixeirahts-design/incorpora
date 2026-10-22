@@ -24,11 +24,12 @@ export default async function AuditPage({
           <div className="inc-eyebrow">Configurações</div>
           <h1 className="inc-h1">Auditoria de atualização</h1>
           <p className="inc-lede">
-            O double-check independente do motor de correção: 6 verificações que conferem se os índices
+            O double-check independente do motor de correção: 7 verificações que conferem se os índices
             estão em dia, se toda parcela foi recalculada no ciclo, se o valor calculado bate com um
             recálculo por caminho de código separado, se os jobs agendados rodaram, se o índice
-            gravado bate com a fonte oficial do Banco Central, e se o valor guardado em cada parcela é
-            exatamente o que a memória de cálculo registra. Roda automaticamente e sob demanda.
+            gravado bate com a fonte oficial do Banco Central, se o valor guardado em cada parcela é
+            exatamente o que a memória de cálculo registra, e se o gatilho que envia os alertas de
+            falha está vivo. Roda automaticamente e sob demanda.
           </p>
         </div>
       </div>
