@@ -137,6 +137,10 @@ async function v3AfterRecalc(mutation: Mutation) {
 
     const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
     const v3 = result.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
+    // Evidência legível quando rodado à mão (scripts/staging-bootstrap.js --mutation-test).
+    if (process.env.V3_MUTATION_VERBOSE) {
+      console.info(`[V3 mutação=${mutation}] status=${v3.status} summary=${JSON.stringify(v3.summary)} issues=${JSON.stringify(v3.issues)}`);
+    }
     return { v3, installmentId: installment.id };
   } finally {
     await cleanup(org.id, user.id);
