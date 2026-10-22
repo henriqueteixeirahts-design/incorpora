@@ -88,14 +88,12 @@ async function reset(directUrl) {
           IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-run-watchdog') THEN
             PERFORM cron.unschedule('job-run-watchdog');
           END IF;
-          IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-alert-dispatch') THEN
-            PERFORM cron.unschedule('job-alert-dispatch');
-          END IF;
         END IF;
       END $$;`);
-    // Schema `ops` (despacho de alerta, migration 20261022160000) também é
-    // recriado pelo replay.
-    await client.query("DROP SCHEMA IF EXISTS ops CASCADE");
+    // pg_net é proibido no projeto (decisão de 2026-10-22 — o Supabase dá a
+    // PUBLIC, inclusive app_user, chamada HTTP de dentro do banco, sem como
+    // revogar). Se alguém instalar na staging, o reset tira.
+    await client.query("DROP EXTENSION IF EXISTS pg_net");
     await client.query("DROP SCHEMA IF EXISTS public CASCADE");
     await client.query("CREATE SCHEMA public");
     // app_user é role do cluster (sobrevive ao DROP SCHEMA) e a migration da
@@ -118,22 +116,6 @@ async function reset(directUrl) {
     await client.query("COMMIT");
     console.log("[staging-bootstrap] reset concluído (schema public recriado, app_user removida).");
   });
-}
-
-/** URL da Edge Function de alerta desta staging, no Vault (a migration 20261022160000 lê de lá). */
-async function setAlertDispatchUrl(directUrl) {
-  const url = `https://${STAGING_PROJECT_REF}.supabase.co/functions/v1/job-alert-dispatch`;
-  await withClient(directUrl, async (client) => {
-    const vault = await client.query(`SELECT to_regclass('vault.secrets') AS t`);
-    if (!vault.rows[0].t) return;
-    const existing = await client.query(`SELECT id FROM vault.secrets WHERE name = 'job_alert_dispatch_url'`);
-    if (existing.rowCount > 0) {
-      await client.query(`SELECT vault.update_secret($1, $2)`, [existing.rows[0].id, url]);
-    } else {
-      await client.query(`SELECT vault.create_secret($1, 'job_alert_dispatch_url')`, [url]);
-    }
-  });
-  console.log(`[staging-bootstrap] job_alert_dispatch_url = ${url}`);
 }
 
 async function setAppUserLogin(directUrl, password) {
@@ -176,14 +158,8 @@ async function verify(directUrl) {
       ? (await client.query(`SELECT count(*)::int AS n FROM cron.job WHERE jobname = 'job-run-watchdog' AND active`)).rows[0].n
       : 0;
     if (!watchdog) problems.push("watchdog pg_cron não agendado");
-    const dispatch = cron.rows[0].n
-      ? (await client.query(`SELECT count(*)::int AS n FROM cron.job WHERE jobname = 'job-alert-dispatch' AND active`)).rows[0].n
-      : 0;
-    if (!dispatch) problems.push("despacho de alerta (job-alert-dispatch) não agendado");
-    const dispatchSecrets = await client.query(
-      `SELECT count(*)::int AS n FROM vault.secrets WHERE name IN ('job_alert_dispatch_url', 'job_alert_dispatch_token')`,
-    );
-    if (dispatchSecrets.rows[0].n !== 2) problems.push("segredos do despacho de alerta ausentes no Vault");
+    const pgNet = await client.query(`SELECT count(*)::int AS n FROM pg_extension WHERE extname = 'pg_net'`);
+    if (pgNet.rows[0].n) problems.push("pg_net instalado (proibido — ver docs/STATUS_IMPLANTACAO.md)");
 
     const org = await client.query(`SELECT count(*)::int AS n FROM organizations`);
     console.log(
@@ -234,7 +210,6 @@ async function main() {
   await reset(directUrl);
   run("npx", ["prisma", "migrate", "deploy"], { DIRECT_URL: directUrl, DATABASE_URL: directUrl });
   await setAppUserLogin(directUrl, appUserPassword);
-  await setAlertDispatchUrl(directUrl);
   run("npx", ["prisma", "db", "seed"], { DIRECT_URL: directUrl, DATABASE_URL: directUrl });
   await verify(directUrl);
 }

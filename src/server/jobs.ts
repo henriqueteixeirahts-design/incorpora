@@ -62,8 +62,8 @@ const STALE_JOB_RUN_THRESHOLD_MS = 10 * 60 * 1000;
  * nunca mais dispara deixa a organização em `RUNNING` pra sempre sem isso.
  *
  * Não envia alerta: o único remetente é a Edge Function
- * `job-alert-dispatch` (supabase/functions/job-alert-dispatch), chamada pelo
- * pg_cron a cada 15 min, independente da Vercel. Toda FAILURE sem
+ * `job-alert-dispatch` (supabase/functions/job-alert-dispatch), chamada a
+ * cada 15 min pelo GitHub Actions, independente da Vercel. Toda FAILURE sem
  * `alertSentAt` é alerta pendente pra ela — marcada aqui, pelo watchdog
  * pg_cron ou pelos caminhos de falha abaixo.
  */

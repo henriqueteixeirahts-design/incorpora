@@ -1,6 +1,7 @@
 // Núcleo do despacho de alertas de falha de job — roda na Edge Function
-// `job-alert-dispatch` (Supabase), invocada pelo pg_cron a cada 15 min.
-// Independente da Vercel por desenho: nada aqui depende do runtime do
+// `job-alert-dispatch` (Supabase), chamada a cada 15 min pelo GitHub Actions
+// (.github/workflows/job-alert-dispatch.yml).
+// Independente da Vercel e do banco por desenho: nada aqui depende do runtime do
 // Next.js nem de um cron da Vercel disparar (o incidente de 2026-09-02 era
 // exatamente o cron/função da Vercel morrendo em silêncio).
 //
@@ -12,7 +13,7 @@
 //
 // Único remetente de alerta do sistema: a aplicação só marca FAILURE (ver
 // src/server/jobs.ts). A chave do Resend vive só nos segredos da Edge
-// Function — nunca em tabela, nem no Vault.
+// Function — nunca em tabela, nem no Vault, nem no repo.
 
 export type DispatchDb = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;

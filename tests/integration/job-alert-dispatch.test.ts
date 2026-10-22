@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { Client } from "pg";
 import { dispatchPendingJobAlerts, type DispatchConfig, type DispatchDb } from "../../supabase/functions/job-alert-dispatch/dispatch";
 
@@ -10,8 +12,12 @@ import { dispatchPendingJobAlerts, type DispatchConfig, type DispatchDb } from "
  * que a Edge Function `job-alert-dispatch` executa. É a prova de que, com a
  * Vercel inteira parada, um job travado ainda vira e-mail:
  *   job travado (RUNNING) → watchdog pg_cron fecha como FAILURE →
- *   pg_cron chama a Edge Function → dispatch entrega via Resend.
+ *   GitHub Actions chama a Edge Function → dispatch entrega via Resend.
  * O Resend é substituído por um `fetch` falso.
+ *
+ * E de que nada disso precisa de pg_net (recusado em 2026-10-22 — ver
+ * docs/STATUS_IMPLANTACAO.md): o banco onde roda não tem pg_net, e o teste
+ * falha se alguém instalar.
  */
 
 const config: DispatchConfig = {
@@ -70,6 +76,42 @@ function fakeResend(status: number) {
 function callsFor(fetchMock: ReturnType<typeof fakeResend>, jobRunId: string) {
   return fetchMock.mock.calls.filter((call) => String((call as unknown as [string, RequestInit])[1].body).includes(jobRunId));
 }
+
+describe("Alerta de job — sem pg_net", () => {
+  it("banco sem pg_net: a extensão e o schema `net` não existem, e o job travado ainda vira alerta", async () => {
+    const pgNet = await client.query(`SELECT count(*)::int AS n FROM pg_extension WHERE extname = 'pg_net'`);
+    expect(pgNet.rows[0].n).toBe(0);
+    const netSchema = await client.query(`SELECT count(*)::int AS n FROM pg_namespace WHERE nspname = 'net'`);
+    expect(netSchema.rows[0].n).toBe(0);
+
+    const stuck = await insertJobRun({ jobName: "recalculate-installments", status: "RUNNING", minutesAgo: 30 });
+    await runPgCronWatchdogSql();
+    const fetchMock = fakeResend(200);
+    await dispatchPendingJobAlerts(db, config, fetchMock as unknown as typeof fetch);
+    expect(callsFor(fetchMock, stuck)).toHaveLength(1);
+  });
+
+  it("nenhuma migration do repo instala pg_net", () => {
+    const migrationsDir = path.resolve(__dirname, "../../prisma/migrations");
+    const offenders = fs
+      .readdirSync(migrationsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .filter((entry) => {
+        const sql = fs.readFileSync(path.join(migrationsDir, entry.name, "migration.sql"), "utf8");
+        return /create\s+extension[^;]*pg_net/i.test(sql);
+      })
+      .map((entry) => entry.name);
+    expect(offenders).toEqual([]);
+  });
+
+  it("o workflow do GitHub Actions é agendado, lê o token de um secret e falha em qualquer resposta que não seja 200", () => {
+    const workflow = fs.readFileSync(path.resolve(__dirname, "../../.github/workflows/job-alert-dispatch.yml"), "utf8");
+    expect(workflow).toMatch(/schedule:\s*\n\s*- cron: "5,20,35,50 \* \* \* \*"/);
+    expect(workflow).toContain("${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}");
+    expect(workflow).toMatch(/if \[ "\$\{status\}" != "200" \]; then[\s\S]*?exit 1/);
+    expect(workflow).not.toMatch(/Bearer [A-Za-z0-9]{16,}/); // token nunca escrito no repo
+  });
+});
 
 describe("Alerta de job — despacho pela Edge Function, independente da Vercel", () => {
   it("Vercel parada: job travado → watchdog pg_cron → despacho → exatamente 1 e-mail, sem reenvio", async () => {
