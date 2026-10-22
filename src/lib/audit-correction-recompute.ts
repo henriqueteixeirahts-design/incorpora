@@ -18,6 +18,23 @@
 // contra os MESMOS vetores de teste do motor real, pra garantir que as duas
 // implementações concordam quando os dados estão corretos — só divergem
 // quando há um bug de verdade.
+//
+// PONTO CEGO CONHECIDO (registrado em 2026-10-22, docs/STATUS_IMPLANTACAO.md):
+// as premissas abaixo são COMPARTILHADAS por desenho entre este oráculo e o
+// motor — as duas implementações seguem a mesma regra de negócio, então um
+// erro NA REGRA aparece igual nas duas e a V3 nunca acusa. Nenhum
+// verificador automático do sistema pega erro aqui; só conferência manual
+// contra o contrato assinado:
+//   - mora pro-rata em mês comercial de 30 dias (daysOverdue / 30);
+//   - mês de índice ausente no cadastro conta como 0% (não trava o cálculo);
+//   - meses e dias de atraso calculados no fuso LOCAL do processo
+//     (getFullYear/getMonth, Math.floor de milissegundos) — o mesmo Date
+//     cai em meses diferentes conforme o fuso do servidor;
+//   - multa aplicada uma vez, mora simples, ambas sobre o valor corrigido
+//     no vencimento; o mês do próprio Habite-se já conta como pós-Habite-se.
+// Mudar qualquer uma dessas regras exige mudar as DUAS implementações — e o
+// teste de mutação (tests/integration/audit-v3-mutation.test.ts) não ajuda
+// aqui, porque ele só prova divergência entre as duas, não acerto da regra.
 
 export type IndependentIndexPoint = { referenceMonth: Date; ratePercent: number };
 

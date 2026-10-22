@@ -130,6 +130,19 @@ async function checkV2CorrectionCoverage(organizationId: string): Promise<AuditC
   };
 }
 
+/** Tamanho do sorteio da V3 semanal, além de todas as parcelas vencidas (que entram sempre). */
+const V3_RANDOM_SAMPLE_SIZE = 50;
+
+/** Sorteio sem reposição (Fisher-Yates) — amostra diferente a cada execução. */
+function pickRandom<T>(items: T[], count: number): T[] {
+  const pool = [...items];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
+
 /**
  * V3 — Consistência da memória: recalcula por caminho de código
  * INDEPENDENTE (src/lib/audit-correction-recompute.ts, nunca importa nada
@@ -138,6 +151,11 @@ async function checkV2CorrectionCoverage(organizationId: string): Promise<AuditC
  * motor calculou" contra "o que uma implementação separada calcularia com
  * os MESMOS dados", não contra um valor mais novo (isso é o trabalho do
  * V2, cobertura/frescor, não do V3, correção do cálculo em si).
+ *
+ * Ponto cego conhecido: premissas de regra compartilhadas entre motor e
+ * oráculo (mês de 30 dias, índice ausente = 0%, fuso local) — ver o
+ * cabeçalho de src/lib/audit-correction-recompute.ts. A V3 só detecta
+ * divergência ENTRE as duas implementações, nunca um erro da regra em si.
  */
 async function checkV3MemoryConsistency(organizationId: string, full: boolean): Promise<AuditCheckOutcome> {
   const where: Prisma.InstallmentWhereInput = {
@@ -146,12 +164,33 @@ async function checkV3MemoryConsistency(organizationId: string, full: boolean): 
     portfolio: { organizationId },
   };
 
-  const total = await prisma.installment.count({ where });
-  const sampleSize = full ? total : Math.min(total, 50);
+  const candidates = await prisma.installment.findMany({
+    where,
+    select: { id: true, dueDate: true, lastCalculatedAt: true },
+    orderBy: { id: "asc" },
+  });
+  const total = candidates.length;
+
+  // Amostragem (só na auditoria semanal; a completa confere tudo): TODA
+  // parcela vencida na data do próprio cálculo entra sempre — é o único caso
+  // em que o motor aplica multa + mora, e uma amostra que não a inclua não
+  // confere essa parte do cálculo. O restante entra por sorteio, não pelas
+  // primeiras N por id: a amostra fixa anterior era sempre a mesma e, em
+  // produção, deixava de fora justamente as 2 únicas vencidas (achado da
+  // auditoria do oráculo em 2026-10-22).
+  const overdueIds = candidates
+    .filter((candidate) => candidate.lastCalculatedAt! > candidate.dueDate)
+    .map((candidate) => candidate.id);
+  const overdueIdSet = new Set(overdueIds);
+  const randomIds = full
+    ? []
+    : pickRandom(
+        candidates.filter((candidate) => !overdueIdSet.has(candidate.id)).map((candidate) => candidate.id),
+        V3_RANDOM_SAMPLE_SIZE,
+      );
 
   const installments = await prisma.installment.findMany({
-    where,
-    take: sampleSize,
+    where: full ? where : { ...where, id: { in: [...overdueIds, ...randomIds] } },
     orderBy: { id: "asc" },
     include: {
       portfolio: {
@@ -234,14 +273,24 @@ async function checkV3MemoryConsistency(organizationId: string, full: boolean): 
 
   return {
     status: issues.length > 0 ? "ALERT" : "OK",
-    summary: { sampled: installments.length, total, full, divergent: issues.length },
+    summary: {
+      sampled: installments.length,
+      total,
+      full,
+      overdueChecked: overdueIds.length,
+      randomSampled: randomIds.length,
+      divergent: issues.length,
+    },
     issues,
   };
 }
 
 /** V4 — Execução dos jobs: os jobs agendados têm JobRun de sucesso dentro do período esperado? */
 const JOB_EXPECTED_CADENCE_DAYS: Record<string, number> = {
-  "recalculate-installments": 35, // mensal (dia 2) + folga
+  // Diário desde 2026-09-18 (no-op fora da competência, mas registra JobRun
+  // SUCCESS todo dia) — 3 dias de folga cobrem uma falha isolada do cron da
+  // Vercel sem esperar o mês inteiro pra acusar uma parada de verdade.
+  "recalculate-installments": 3,
   "sync-index-values": 8, // semanal + folga
 };
 

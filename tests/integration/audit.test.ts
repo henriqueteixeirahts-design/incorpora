@@ -48,6 +48,61 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Contrato + carteira mínimos (multa/mora no default do schema: 2% e 1%/mês). */
+async function makeContractWithPortfolio(orgId: string, tag: string) {
+  const spe = await prisma.specialPurposeEntity.create({
+    data: { organizationId: orgId, name: `SPE ${tag}`, document: "46127017000105", status: "ACTIVE" },
+  });
+  const development = await prisma.development.create({
+    data: { organizationId: orgId, speId: spe.id, name: `Empreendimento ${tag}`, type: "RESIDENTIAL_BUILDING" },
+  });
+  const unit = await prisma.unit.create({
+    data: { developmentId: development.id, unitType: "APARTMENT", number: "101", status: "SOLD" },
+  });
+  const customer = await prisma.customer.create({
+    data: { organizationId: orgId, type: "INDIVIDUAL", name: `Cliente ${tag}`, document: "02654427102" },
+  });
+  const proposal = await prisma.proposal.create({
+    data: {
+      organizationId: orgId,
+      developmentId: development.id,
+      unitId: unit.id,
+      customerId: customer.id,
+      listPrice: 1000,
+      discountPercent: 0,
+      salePrice: 1000,
+      status: "CONVERTED",
+      paymentFlow: {},
+    },
+  });
+  const sale = await prisma.sale.create({
+    data: {
+      organizationId: orgId,
+      developmentId: development.id,
+      unitId: unit.id,
+      proposalId: proposal.id,
+      customerId: customer.id,
+      saleNumber: `V-${tag}`,
+      salePrice: 1000,
+    },
+  });
+  const contract = await prisma.contract.create({
+    data: {
+      organizationId: orgId,
+      developmentId: development.id,
+      unitId: unit.id,
+      saleId: sale.id,
+      customerId: customer.id,
+      contractNumber: `CT-${tag}`,
+      issuedAt: new Date("2010-01-01"),
+    },
+  });
+  const portfolio = await prisma.receivablePortfolio.create({
+    data: { organizationId: orgId, contractId: contract.id, totalValue: 1000 },
+  });
+  return { contract, portfolio };
+}
+
 describe("V1 — Frescor dos índices", () => {
   it("alerta quando o mês fechado está ausente após o prazo, e some quando o valor é lançado", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V1");
@@ -367,6 +422,127 @@ describe("V3 — Consistência da memória (recálculo por caminho independente)
       const v3 = result.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
       expect(v3.status).toBe("OK");
       expect(v3.summary.divergent).toBe(0);
+    } finally {
+      await cleanupOrg(org.id, user.id);
+    }
+  });
+});
+
+describe("V3 — amostragem da auditoria semanal (não completa)", () => {
+  it("confere SEMPRE toda parcela vencida, mesmo fora das primeiras 50 por id — erro de 1 centavo plantado numa vencida é pego pela semanal, não só pela completa", async () => {
+    const { org, user } = await makeOrg("Org — Auditoria V3 — Amostragem");
+    try {
+      const { portfolio } = await makeContractWithPortfolio(org.id, "V3-AMOSTRA");
+
+      // 60 parcelas não vencidas, corretas (sem índice/juros: valor = original).
+      await prisma.installment.createMany({
+        data: Array.from({ length: 60 }, (_, i) => ({
+          portfolioId: portfolio.id,
+          sequence: i + 1,
+          label: `Parcela ${i + 1}`,
+          dueDate: new Date("2030-01-01"),
+          originalValue: 1000,
+          correctedValue: 1000,
+          lastCalculatedAt: new Date("2026-01-01"),
+        })),
+      });
+
+      // Vencida com id forçado pro fim da ordenação — a amostra fixa antiga
+      // (primeiras 50 por id) nunca chegaria nela.
+      const overdue = await prisma.installment.create({
+        data: {
+          id: `ffffffff${crypto.randomUUID().slice(8)}`,
+          portfolioId: portfolio.id,
+          sequence: 61,
+          label: "Parcela vencida",
+          dueDate: new Date("2020-01-01"),
+          originalValue: 1000,
+        },
+      });
+      await prisma.$transaction((tx) => recalculateInstallment(tx, overdue.id));
+
+      const clean = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
+      const v3Clean = clean.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
+      expect(v3Clean.status).toBe("OK");
+      expect(v3Clean.summary).toMatchObject({ total: 61, full: false, overdueChecked: 1, randomSampled: 50, sampled: 51 });
+
+      // Erro plantado: 1 centavo a mais no valor gravado da vencida.
+      const stored = await prisma.installment.findUniqueOrThrow({ where: { id: overdue.id } });
+      await prisma.installment.update({
+        where: { id: overdue.id },
+        data: { correctedValue: Number(stored.correctedValue) + 0.01 },
+      });
+
+      const planted = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
+      const v3Planted = planted.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
+      expect(v3Planted.status).toBe("ALERT");
+      const issues = v3Planted.issues as Array<{ installmentId: string; diff: number }>;
+      expect(issues).toHaveLength(1);
+      expect(issues[0].installmentId).toBe(overdue.id);
+      expect(issues[0].diff).toBe(0.01);
+    } finally {
+      await cleanupOrg(org.id, user.id);
+    }
+  });
+
+  it("sorteia o restante em vez de pegar sempre as primeiras por id", async () => {
+    const { org, user } = await makeOrg("Org — Auditoria V3 — Sorteio");
+    try {
+      const { portfolio } = await makeContractWithPortfolio(org.id, "V3-SORTEIO");
+      await prisma.installment.createMany({
+        data: Array.from({ length: 120 }, (_, i) => ({
+          portfolioId: portfolio.id,
+          sequence: i + 1,
+          label: `Parcela ${i + 1}`,
+          dueDate: new Date("2030-01-01"),
+          originalValue: 1000,
+          correctedValue: 1000,
+          lastCalculatedAt: new Date("2026-01-01"),
+        })),
+      });
+
+      // Erro plantado numa parcela qualquer: com sorteio de 50 em 120, a
+      // chance de ela nunca sair em 25 execuções é (70/120)^25 ≈ 1,4 em 1
+      // milhão (falso vermelho desprezível); com a amostra fixa antiga, fora
+      // das 50 primeiras, a chance de sair era zero.
+      const all = await prisma.installment.findMany({ where: { portfolioId: portfolio.id }, orderBy: { id: "asc" } });
+      const target = all[all.length - 1]; // a última por id — nunca entraria na amostra fixa antiga
+      await prisma.installment.update({ where: { id: target.id }, data: { correctedValue: 1000.01 } });
+
+      let caught = false;
+      for (let run = 0; run < 25 && !caught; run++) {
+        const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
+        const v3 = result.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
+        expect(v3.summary).toMatchObject({ overdueChecked: 0, randomSampled: 50, sampled: 50 });
+        caught = v3.status === "ALERT";
+      }
+      expect(caught).toBe(true);
+    } finally {
+      await cleanupOrg(org.id, user.id);
+    }
+  });
+});
+
+describe("V4 — tolerância do recalculate-installments (job diário)", () => {
+  it("acusa sem SUCCESS há mais de 3 dias e aceita SUCCESS de 2 dias atrás", async () => {
+    const { org, user } = await makeOrg("Org — Auditoria V4 — Tolerância");
+    const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+    try {
+      await prisma.jobRun.create({
+        data: { jobName: "sync-index-values", organizationId: org.id, triggeredBy: "CRON", status: "SUCCESS", finishedAt: new Date() },
+      });
+      const stale = await prisma.jobRun.create({
+        data: { jobName: "recalculate-installments", organizationId: org.id, triggeredBy: "CRON", status: "SUCCESS", startedAt: daysAgo(4), finishedAt: daysAgo(4) },
+      });
+
+      const late = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
+      const v4Late = late.checks.find((c) => c.code === "V4_JOB_EXECUTION")!;
+      expect(v4Late.status).toBe("ALERT");
+      expect(v4Late.summary.missing).toBe(1);
+
+      await prisma.jobRun.update({ where: { id: stale.id }, data: { startedAt: daysAgo(2), finishedAt: daysAgo(2) } });
+      const onTime = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
+      expect(onTime.checks.find((c) => c.code === "V4_JOB_EXECUTION")!.status).toBe("OK");
     } finally {
       await cleanupOrg(org.id, user.id);
     }
