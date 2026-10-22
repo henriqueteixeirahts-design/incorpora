@@ -19,7 +19,7 @@
 //
 //   node scripts/staging-bootstrap.js --confirm-reset     # apaga e reconstrói
 //   node scripts/staging-bootstrap.js --verify            # só confere, não muda nada
-//   node scripts/staging-bootstrap.js --mutation-test     # roda o teste de mutação da V3 contra a staging
+//   node scripts/staging-bootstrap.js --mutation-test     # roda contra a staging os testes de mutação da V3/V6 e o despacho de alerta
 //
 // Travas: recusa rodar se a URL não for do projeto de staging, e SEMPRE
 // recusa se for do projeto de produção. O reset exige --confirm-reset.
@@ -84,11 +84,18 @@ async function reset(directUrl) {
     await client.query(`
       DO $$
       BEGIN
-        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
-           AND EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-run-watchdog') THEN
-          PERFORM cron.unschedule('job-run-watchdog');
+        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+          IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-run-watchdog') THEN
+            PERFORM cron.unschedule('job-run-watchdog');
+          END IF;
+          IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-alert-dispatch') THEN
+            PERFORM cron.unschedule('job-alert-dispatch');
+          END IF;
         END IF;
       END $$;`);
+    // Schema `ops` (despacho de alerta, migration 20261022160000) também é
+    // recriado pelo replay.
+    await client.query("DROP SCHEMA IF EXISTS ops CASCADE");
     await client.query("DROP SCHEMA IF EXISTS public CASCADE");
     await client.query("CREATE SCHEMA public");
     // app_user é role do cluster (sobrevive ao DROP SCHEMA) e a migration da
@@ -111,6 +118,22 @@ async function reset(directUrl) {
     await client.query("COMMIT");
     console.log("[staging-bootstrap] reset concluído (schema public recriado, app_user removida).");
   });
+}
+
+/** URL da Edge Function de alerta desta staging, no Vault (a migration 20261022160000 lê de lá). */
+async function setAlertDispatchUrl(directUrl) {
+  const url = `https://${STAGING_PROJECT_REF}.supabase.co/functions/v1/job-alert-dispatch`;
+  await withClient(directUrl, async (client) => {
+    const vault = await client.query(`SELECT to_regclass('vault.secrets') AS t`);
+    if (!vault.rows[0].t) return;
+    const existing = await client.query(`SELECT id FROM vault.secrets WHERE name = 'job_alert_dispatch_url'`);
+    if (existing.rowCount > 0) {
+      await client.query(`SELECT vault.update_secret($1, $2)`, [existing.rows[0].id, url]);
+    } else {
+      await client.query(`SELECT vault.create_secret($1, 'job_alert_dispatch_url')`, [url]);
+    }
+  });
+  console.log(`[staging-bootstrap] job_alert_dispatch_url = ${url}`);
 }
 
 async function setAppUserLogin(directUrl, password) {
@@ -153,6 +176,14 @@ async function verify(directUrl) {
       ? (await client.query(`SELECT count(*)::int AS n FROM cron.job WHERE jobname = 'job-run-watchdog' AND active`)).rows[0].n
       : 0;
     if (!watchdog) problems.push("watchdog pg_cron não agendado");
+    const dispatch = cron.rows[0].n
+      ? (await client.query(`SELECT count(*)::int AS n FROM cron.job WHERE jobname = 'job-alert-dispatch' AND active`)).rows[0].n
+      : 0;
+    if (!dispatch) problems.push("despacho de alerta (job-alert-dispatch) não agendado");
+    const dispatchSecrets = await client.query(
+      `SELECT count(*)::int AS n FROM vault.secrets WHERE name IN ('job_alert_dispatch_url', 'job_alert_dispatch_token')`,
+    );
+    if (dispatchSecrets.rows[0].n !== 2) problems.push("segredos do despacho de alerta ausentes no Vault");
 
     const org = await client.query(`SELECT count(*)::int AS n FROM organizations`);
     console.log(
@@ -170,7 +201,16 @@ async function main() {
   if (args.has("--mutation-test")) {
     const databaseUrl = requireStagingUrl("STAGING_DATABASE_URL");
     const directUrl = requireStagingUrl("STAGING_DIRECT_URL");
-    run("npx", ["vitest", "run", "--config", "vitest.integration.config.ts", "tests/integration/audit-v3-mutation.test.ts", "--reporter=verbose"], {
+    run("npx", [
+      "vitest",
+      "run",
+      "--config",
+      "vitest.integration.config.ts",
+      "tests/integration/audit-v3-mutation.test.ts",
+      "tests/integration/audit-v6-history.test.ts",
+      "tests/integration/job-alert-dispatch.test.ts",
+      "--reporter=verbose",
+    ], {
       DATABASE_URL: databaseUrl,
       DIRECT_URL: directUrl,
       V3_MUTATION_VERBOSE: "1",
@@ -194,6 +234,7 @@ async function main() {
   await reset(directUrl);
   run("npx", ["prisma", "migrate", "deploy"], { DIRECT_URL: directUrl, DATABASE_URL: directUrl });
   await setAppUserLogin(directUrl, appUserPassword);
+  await setAlertDispatchUrl(directUrl);
   run("npx", ["prisma", "db", "seed"], { DIRECT_URL: directUrl, DATABASE_URL: directUrl });
   await verify(directUrl);
 }
