@@ -12,15 +12,15 @@
 
 ## Conferência com o registro da Etapa 2
 
-| | Etapa 2 (registrado) | Reconstruído (2026-10-22) |
-|---|---|---|
-| Tier 1 | 40 | 40 |
-| Tier 2 | 28 | 29 |
-| Tier 3 | 16 | 15 |
-| Exceções | 6 | 6 |
-| **Total** | **90** | **90** |
+| | Etapa 2 (registrado) | Caminho mais curto (mecânico) | **Final (caminho da aplicação)** |
+|---|---|---|---|
+| Tier 1 | 40 | 40 | **40** |
+| Tier 2 | 28 | 29 | **26** |
+| Tier 3 | 16 | 15 | **18** |
+| Exceções | 6 | 6 | **6** |
+| **Total** | **90** | **90** | **90** |
 
-A lista nominal da Etapa 2 nunca foi versionada — só os totais. A reconstrução bate em tudo menos **uma tabela que mudou entre Tier 2 e Tier 3**. A causa provável: três tabelas têm dois caminhos possíveis até a organização, e a Etapa 2 escolheu o de 2 saltos (o que a aplicação usa) em pelo menos uma delas. **Decisão pendente para a Etapa 4** (ver "Caminhos a decidir").
+A lista nominal da Etapa 2 nunca foi versionada — só os totais. O cálculo mecânico (menor cadeia de FKs obrigatórias) bate com a Etapa 2 em tudo menos uma tabela entre Tier 2 e Tier 3: três tabelas têm dois caminhos possíveis, e a Etapa 2 escolheu o da aplicação em pelo menos uma delas. **Decidido em 2026-10-22: as três seguem o caminho da aplicação** (ver "Caminhos decididos") — por isso o final é 40/26/18/6.
 
 ## Exceções (fora do padrão mecânico — decisão própria, não entram nos grupos)
 
@@ -91,8 +91,8 @@ Ordem: do menor risco (configuração, pouco tráfego) ao maior (carteira, lida 
 | `spe_investors` | 2 | `speId → special_purpose_entities` |
 | `spe_investor_contribution_forecasts` | 3 | `investorId → spe_investors → special_purpose_entities` |
 | `spe_capital_calls` | 3 | `forecastId → forecasts → spe_investors → special_purpose_entities` |
-| `spe_investor_contributions` | 2* | `bankAccountId → bank_accounts` (*caminho a decidir) |
-| `spe_investor_returns` | 2* | `payableId → payables` (*caminho a decidir) |
+| `spe_investor_contributions` | 3 | `investorId → spe_investors → special_purpose_entities` (decidido — ver "Caminhos decididos") |
+| `spe_investor_returns` | 3 | `investorId → spe_investors → special_purpose_entities` (decidido — ver "Caminhos decididos") |
 | `spe_investor_loan_calculations` | 3 | `investorId → spe_investors → special_purpose_entities` |
 
 ### Grupo 7 — Índices (2)
@@ -168,7 +168,7 @@ Lidas pelos jobs (`sync-index-values`) e pela auditoria (V1, V5) — os dois já
 | `exchange_contract_financial_units` | 3 | `unitId → units → developments` |
 | `exchange_apuration_periods` | 3 | `exchangeContractId → exchange_contracts → developments` |
 | `exchange_repasses` | 3 | `exchangeContractId → exchange_contracts → developments` |
-| `exchange_retention_releases` | 2* | `payableId → payables` (*caminho a decidir) |
+| `exchange_retention_releases` | 3 | `exchangeContractId → exchange_contracts → developments` (decidido — ver "Caminhos decididos") |
 
 ### Grupo 15 — Cobrança e renegociação (3)
 | Tabela | Tier | Caminho |
@@ -199,12 +199,16 @@ Depois do Grupo 17: as 6 exceções acima, uma a uma.
 
 **Contagem**: 84 tabelas em grupos + 6 exceções = 90.
 
-## Caminhos a decidir antes de ativar
+## Caminhos decididos (eram ambíguos) — 2026-10-22
 
-| Tabela | Caminho mais curto (1 salto) | Caminho que a aplicação usa (2 saltos) |
-|---|---|---|
-| `spe_investor_contributions` | `bankAccountId → bank_accounts` | `investorId → spe_investors → special_purpose_entities` |
-| `spe_investor_returns` | `payableId → payables` | `investorId → spe_investors → special_purpose_entities` |
-| `exchange_retention_releases` | `payableId → payables` | `exchangeContractId → exchange_contracts → developments` |
+Três tabelas têm duas FKs obrigatórias que chegam à organização. **Regra aplicada (decisão do usuário): o caminho que a aplicação já usa hoje; em empate, o mais restritivo.** Não houve empate — a aplicação é consistente nas três:
 
-Regra da Etapa 2: o caminho mais curto só vale se os dois caminhos forem **equivalentes por construção** (criados na mesma transação, sem `.update()` capaz de divergir). Precisa ser verificado tabela a tabela; na dúvida, usar o caminho da aplicação.
+| Tabela | Caminho escolhido (Tier 3) | Caminho descartado (1 salto) | Evidência no código |
+|---|---|---|---|
+| `spe_investor_contributions` | `investorId → spe_investors → special_purpose_entities` | `bankAccountId → bank_accounts` | Toda leitura/escrita filtra por `investorId` (`spe-contributions.ts`, `spe-investor-statement.ts`, `spe-investor-loan.ts`) ou por `investor: { spe: … }` (`cash-flow.ts`, `receivables-consolidated.ts`), depois de `getInvestorScoped`, que valida o investidor via `speOwnedScope` do `scope.ts` |
+| `spe_investor_returns` | `investorId → spe_investors → special_purpose_entities` | `payableId → payables` | Mesmo padrão: `spe-investor-returns.ts`, `spe-investor-statement.ts`, `spe-investor-loan.ts` filtram por `investorId` depois de `getInvestorScoped` |
+| `exchange_retention_releases` | `exchangeContractId → exchange_contracts → developments` | `payableId → payables` | `exchange-repasse.ts` e `exchange-statement.ts` filtram por `exchangeContractId` depois de `getExchangeContractScoped` |
+
+O `scope.ts` não tem helper próprio pra nenhuma das três — elas são sempre alcançadas pelo pai (investidor ou contrato de permuta), e a policy segue esse mesmo pai, de modo que a tranca do banco e a da aplicação recusam pelo mesmo motivo. As FKs descartadas (`bankAccountId`, `payableId`) continuam existindo e obrigatórias, mas não são caminho de policy.
+
+**Efeito nos totais**: as três passam de Tier 2 para Tier 3 — inventário final **40 Tier 1 / 26 Tier 2 / 18 Tier 3 / 6 exceções = 90**. A diferença para os totais registrados na Etapa 2 (40/28/16/6) é exatamente essa escolha de caminho (a Etapa 2 tinha pelo menos uma das três em Tier 3; agora são as três). Nenhuma tabela fica pendente de caminho para a Etapa 4.

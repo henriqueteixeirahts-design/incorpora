@@ -50,6 +50,18 @@ for (const m of models.values()) {
   }
   result.push({ model: m.name, table: m.map, tier: found ? (found.length === 1 ? 2 : 3) : 0, path: found ? found.join(" ; ") + " .organizationId" : "— sem caminho até organizationId" });
 }
+// Caminhos decididos à mão (docs/RLS_INVENTARIO_TIERS.md, "Caminhos
+// decididos", 2026-10-22): tabelas com dois caminhos obrigatórios seguem o
+// que a aplicação já usa, não o mais curto.
+const DECIDED_PATHS = {
+  spe_investor_contributions: { tier: 3, path: "investorId → SpeInvestor ; speId → SpecialPurposeEntity .organizationId (decidido)" },
+  spe_investor_returns: { tier: 3, path: "investorId → SpeInvestor ; speId → SpecialPurposeEntity .organizationId (decidido)" },
+  exchange_retention_releases: { tier: 3, path: "exchangeContractId → ExchangeContract ; developmentId → Development .organizationId (decidido)" },
+};
+for (const row of result) {
+  if (DECIDED_PATHS[row.table]) Object.assign(row, DECIDED_PATHS[row.table]);
+}
+
 result.sort((a, b) => a.tier - b.tier || a.table.localeCompare(b.table));
 const counts = result.reduce((acc, r) => ((acc[r.tier] = (acc[r.tier] ?? 0) + 1), acc), {});
 console.log(JSON.stringify({ total: result.length, counts }, null, 0));

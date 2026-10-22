@@ -108,6 +108,9 @@ describe("Alerta de job — sem pg_net", () => {
     const workflow = fs.readFileSync(path.resolve(__dirname, "../../.github/workflows/job-alert-dispatch.yml"), "utf8");
     expect(workflow).toMatch(/schedule:\s*\n\s*- cron: "5,20,35,50 \* \* \* \*"/);
     expect(workflow).toContain("${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}");
+    // Desligado só pela ausência da URL (estado pré-configuração); com a URL, token ausente falha.
+    expect(workflow).toContain("if: ${{ vars.JOB_ALERT_DISPATCH_URL != '' }}");
+    expect(workflow).toMatch(/if \[ -z "\$\{TOKEN\}" \][\s\S]*?exit 1/);
     expect(workflow).toMatch(/if \[ "\$\{status\}" != "200" \]; then[\s\S]*?exit 1/);
     expect(workflow).not.toMatch(/Bearer [A-Za-z0-9]{16,}/); // token nunca escrito no repo
   });
