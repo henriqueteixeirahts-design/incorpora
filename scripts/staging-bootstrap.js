@@ -19,7 +19,7 @@
 //
 //   node scripts/staging-bootstrap.js --confirm-reset     # apaga e reconstrói
 //   node scripts/staging-bootstrap.js --verify            # só confere, não muda nada
-//   node scripts/staging-bootstrap.js --mutation-test     # roda o teste de mutação da V3 contra a staging
+//   node scripts/staging-bootstrap.js --mutation-test     # roda contra a staging os testes de mutação da V3/V6 e o despacho de alerta
 //
 // Travas: recusa rodar se a URL não for do projeto de staging, e SEMPRE
 // recusa se for do projeto de produção. O reset exige --confirm-reset.
@@ -84,11 +84,16 @@ async function reset(directUrl) {
     await client.query(`
       DO $$
       BEGIN
-        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
-           AND EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-run-watchdog') THEN
-          PERFORM cron.unschedule('job-run-watchdog');
+        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+          IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'job-run-watchdog') THEN
+            PERFORM cron.unschedule('job-run-watchdog');
+          END IF;
         END IF;
       END $$;`);
+    // pg_net é proibido no projeto (decisão de 2026-10-22 — o Supabase dá a
+    // PUBLIC, inclusive app_user, chamada HTTP de dentro do banco, sem como
+    // revogar). Se alguém instalar na staging, o reset tira.
+    await client.query("DROP EXTENSION IF EXISTS pg_net");
     await client.query("DROP SCHEMA IF EXISTS public CASCADE");
     await client.query("CREATE SCHEMA public");
     // app_user é role do cluster (sobrevive ao DROP SCHEMA) e a migration da
@@ -153,6 +158,8 @@ async function verify(directUrl) {
       ? (await client.query(`SELECT count(*)::int AS n FROM cron.job WHERE jobname = 'job-run-watchdog' AND active`)).rows[0].n
       : 0;
     if (!watchdog) problems.push("watchdog pg_cron não agendado");
+    const pgNet = await client.query(`SELECT count(*)::int AS n FROM pg_extension WHERE extname = 'pg_net'`);
+    if (pgNet.rows[0].n) problems.push("pg_net instalado (proibido — ver docs/STATUS_IMPLANTACAO.md)");
 
     const org = await client.query(`SELECT count(*)::int AS n FROM organizations`);
     console.log(
@@ -170,7 +177,16 @@ async function main() {
   if (args.has("--mutation-test")) {
     const databaseUrl = requireStagingUrl("STAGING_DATABASE_URL");
     const directUrl = requireStagingUrl("STAGING_DIRECT_URL");
-    run("npx", ["vitest", "run", "--config", "vitest.integration.config.ts", "tests/integration/audit-v3-mutation.test.ts", "--reporter=verbose"], {
+    run("npx", [
+      "vitest",
+      "run",
+      "--config",
+      "vitest.integration.config.ts",
+      "tests/integration/audit-v3-mutation.test.ts",
+      "tests/integration/audit-v6-history.test.ts",
+      "tests/integration/job-alert-dispatch.test.ts",
+      "--reporter=verbose",
+    ], {
       DATABASE_URL: databaseUrl,
       DIRECT_URL: directUrl,
       V3_MUTATION_VERBOSE: "1",

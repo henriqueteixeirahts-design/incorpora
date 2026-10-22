@@ -1,0 +1,53 @@
+name: Alerta de jobs
+
+# Gatilho do alerta de falha de job, fora da Vercel e fora do banco
+# (decisão de 2026-10-22, docs/STATUS_IMPLANTACAO.md — pg_net recusado).
+# A cada 15 min chama a Edge Function `job-alert-dispatch` do Supabase de
+# produção, que entrega por e-mail toda falha ainda não alertada
+# (idempotente: chamar duas vezes nunca duplica o e-mail).
+#
+# Nunca falha em silêncio: secret/variável ausente, token recusado, função
+# fora do ar, alerta não entregue ou canal sem configuração — tudo faz este
+# job falhar, e o GitHub manda e-mail de workflow falho. O vigia tem vigia.
+#
+# Configuração (Settings → Secrets and variables → Actions):
+#   Secret   JOB_ALERT_DISPATCH_TOKEN  — mesmo valor do segredo da Edge Function
+#   Variable JOB_ALERT_DISPATCH_URL    — https://<ref>.supabase.co/functions/v1/job-alert-dispatch
+#
+# Atenção: num repositório público, o GitHub desativa workflows agendados
+# depois de 60 dias sem atividade no repo (avisa por e-mail antes).
+
+on:
+  schedule:
+    - cron: "5,20,35,50 * * * *" # depois do watchdog pg_cron (*/15), que marca o job travado como FAILURE
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: job-alert-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chamar a Edge Function de alerta
+        env:
+          TOKEN: ${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}
+          URL: ${{ vars.JOB_ALERT_DISPATCH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ] || [ -z "${URL}" ]; then
+            echo "::error::JOB_ALERT_DISPATCH_TOKEN (secret) ou JOB_ALERT_DISPATCH_URL (variable) não configurado."
+            exit 1
+          fi
+          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 10 \
+            -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{}' "${URL}")
+          # A resposta só tem contagens e ids opacos de JobRun — sem dado sensível.
+          cat response.json; echo
+          if [ "${status}" != "200" ]; then
+            echo "::error::Despacho de alerta respondeu HTTP ${status} — há alerta não entregue ou o canal está quebrado."
+            exit 1
+          fi

@@ -6,7 +6,6 @@ import { syncIndexRulesForOrganization } from "@/server/index-rules";
 import { runAuditForOrganization } from "@/server/audit";
 import { expireReservationsForOrganization } from "@/server/reservations";
 import { withOrgContext } from "@/lib/tenant-context";
-import { sendJobFailureAlert } from "@/lib/alerts";
 import { startOfMonth, monthKey } from "@/lib/index-correction";
 import type { AccessContext } from "@/server/auth-context";
 import type { JobTrigger, Prisma } from "@/generated/prisma/client";
@@ -58,10 +57,15 @@ const STALE_JOB_RUN_THRESHOLD_MS = 10 * 60 * 1000;
 /**
  * Varre `JobRun`s órfãos (RUNNING há mais que o teto — sintoma de kill por
  * timeout de função serverless, sem chance de a própria execução marcar
- * FAILURE), fecha como FAILURE e entrega os alertas pendentes. Chamada no
- * início de toda execução de job (qualquer um dos 5) — não depende só do
- * cron rodar de novo pra detectar: mesmo um job que nunca mais dispara
- * deixa a organização em `RUNNING` pra sempre sem isso.
+ * FAILURE) e os fecha como FAILURE. Chamada no início de toda execução de
+ * job — não depende só do cron rodar de novo pra detectar: mesmo um job que
+ * nunca mais dispara deixa a organização em `RUNNING` pra sempre sem isso.
+ *
+ * Não envia alerta: o único remetente é a Edge Function
+ * `job-alert-dispatch` (supabase/functions/job-alert-dispatch), chamada a
+ * cada 15 min pelo GitHub Actions, independente da Vercel. Toda FAILURE sem
+ * `alertSentAt` é alerta pendente pra ela — marcada aqui, pelo watchdog
+ * pg_cron ou pelos caminhos de falha abaixo.
  */
 async function sweepStaleJobRuns() {
   const staleThreshold = new Date(Date.now() - STALE_JOB_RUN_THRESHOLD_MS);
@@ -71,49 +75,6 @@ async function sweepStaleJobRuns() {
     where: { status: "RUNNING", startedAt: { lt: staleThreshold } },
     data: { status: "FAILURE", finishedAt: new Date(), error },
   });
-
-  await deliverPendingFailureAlerts();
-}
-
-/**
- * Entrega o alerta de TODA falha ainda não alertada — inclusive as que o
- * watchdog pg_cron marcou em SQL puro (ele roda a cada 15 min e quase
- * sempre fecha o JobRun travado antes desta aplicação ver; sem isso, job
- * travado de verdade nunca gerava e-mail). Alerta não entregue (canal sem
- * configuração, erro HTTP do Resend) continua pendente e é tentado de novo
- * na próxima varredura — nunca é dado como enviado sem o Resend aceitar.
- *
- * Reserva cada linha (`alertSentAt` preenchido) ANTES de enviar e desfaz se
- * a entrega falhar: duas varreduras concorrentes nunca mandam o mesmo
- * alerta duas vezes.
- */
-export async function deliverPendingFailureAlerts() {
-  const pending = await prisma.jobRun.findMany({
-    where: { status: "FAILURE", alertSentAt: null, alertSuppressed: false },
-    orderBy: { startedAt: "asc" },
-  });
-
-  for (const jobRun of pending) {
-    const claimedAt = new Date();
-    const claim = await prisma.jobRun.updateMany({
-      where: { id: jobRun.id, alertSentAt: null },
-      data: { alertSentAt: claimedAt },
-    });
-    if (claim.count === 0) continue;
-
-    const delivery = await sendJobFailureAlert({
-      jobName: jobRun.jobName,
-      organizationId: jobRun.organizationId,
-      jobRunId: jobRun.id,
-      error: jobRun.error ?? "Falha sem mensagem de erro.",
-    });
-    if (!delivery.delivered) {
-      await prisma.jobRun.updateMany({
-        where: { id: jobRun.id, alertSentAt: claimedAt },
-        data: { alertSentAt: null },
-      });
-    }
-  }
 }
 
 async function runJobForOrganization(
@@ -152,9 +113,8 @@ async function runJobForOrganization(
         cursor: result.cursor ?? null,
       },
     });
-    if (!result.success) {
-      await deliverPendingFailureAlerts();
-    }
+    // FAILURE gravada = alerta pendente; quem envia é a Edge Function
+    // job-alert-dispatch (ver sweepStaleJobRuns).
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -162,7 +122,6 @@ async function runJobForOrganization(
       where: { id: jobRun.id },
       data: { status: "FAILURE", finishedAt: new Date(), error: message },
     });
-    await deliverPendingFailureAlerts();
     return { success: false, summary: {}, error: message };
   }
 }
