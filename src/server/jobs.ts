@@ -58,35 +58,62 @@ const STALE_JOB_RUN_THRESHOLD_MS = 10 * 60 * 1000;
 /**
  * Varre `JobRun`s órfãos (RUNNING há mais que o teto — sintoma de kill por
  * timeout de função serverless, sem chance de a própria execução marcar
- * FAILURE) e os fecha com um alerta real. Chamada no início de toda
- * execução de job (qualquer um dos 5) — não depende só do cron rodar de
- * novo pra detectar: mesmo um job que nunca mais dispara deixa a
- * organização em `RUNNING` pra sempre sem isso.
+ * FAILURE), fecha como FAILURE e entrega os alertas pendentes. Chamada no
+ * início de toda execução de job (qualquer um dos 5) — não depende só do
+ * cron rodar de novo pra detectar: mesmo um job que nunca mais dispara
+ * deixa a organização em `RUNNING` pra sempre sem isso.
  */
 async function sweepStaleJobRuns() {
   const staleThreshold = new Date(Date.now() - STALE_JOB_RUN_THRESHOLD_MS);
-  const stale = await prisma.jobRun.findMany({
-    where: { status: "RUNNING", startedAt: { lt: staleThreshold } },
-  });
-  if (stale.length === 0) return;
-
   const error = `Execução travada — sem atualização de status há mais de ${STALE_JOB_RUN_THRESHOLD_MS / 60000} minutos (provável kill por timeout de função serverless). Marcada como falha pelo watchdog.`;
 
   await prisma.jobRun.updateMany({
-    where: { id: { in: stale.map((r) => r.id) } },
+    where: { status: "RUNNING", startedAt: { lt: staleThreshold } },
     data: { status: "FAILURE", finishedAt: new Date(), error },
   });
 
-  await Promise.all(
-    stale.map((jobRun) =>
-      sendJobFailureAlert({
-        jobName: jobRun.jobName,
-        organizationId: jobRun.organizationId,
-        jobRunId: jobRun.id,
-        error,
-      }),
-    ),
-  );
+  await deliverPendingFailureAlerts();
+}
+
+/**
+ * Entrega o alerta de TODA falha ainda não alertada — inclusive as que o
+ * watchdog pg_cron marcou em SQL puro (ele roda a cada 15 min e quase
+ * sempre fecha o JobRun travado antes desta aplicação ver; sem isso, job
+ * travado de verdade nunca gerava e-mail). Alerta não entregue (canal sem
+ * configuração, erro HTTP do Resend) continua pendente e é tentado de novo
+ * na próxima varredura — nunca é dado como enviado sem o Resend aceitar.
+ *
+ * Reserva cada linha (`alertSentAt` preenchido) ANTES de enviar e desfaz se
+ * a entrega falhar: duas varreduras concorrentes nunca mandam o mesmo
+ * alerta duas vezes.
+ */
+export async function deliverPendingFailureAlerts() {
+  const pending = await prisma.jobRun.findMany({
+    where: { status: "FAILURE", alertSentAt: null, alertSuppressed: false },
+    orderBy: { startedAt: "asc" },
+  });
+
+  for (const jobRun of pending) {
+    const claimedAt = new Date();
+    const claim = await prisma.jobRun.updateMany({
+      where: { id: jobRun.id, alertSentAt: null },
+      data: { alertSentAt: claimedAt },
+    });
+    if (claim.count === 0) continue;
+
+    const delivery = await sendJobFailureAlert({
+      jobName: jobRun.jobName,
+      organizationId: jobRun.organizationId,
+      jobRunId: jobRun.id,
+      error: jobRun.error ?? "Falha sem mensagem de erro.",
+    });
+    if (!delivery.delivered) {
+      await prisma.jobRun.updateMany({
+        where: { id: jobRun.id, alertSentAt: claimedAt },
+        data: { alertSentAt: null },
+      });
+    }
+  }
 }
 
 async function runJobForOrganization(
@@ -126,12 +153,7 @@ async function runJobForOrganization(
       },
     });
     if (!result.success) {
-      await sendJobFailureAlert({
-        jobName: job.name,
-        organizationId,
-        jobRunId: jobRun.id,
-        error: result.error ?? "Falha sem mensagem de erro.",
-      });
+      await deliverPendingFailureAlerts();
     }
     return result;
   } catch (error) {
@@ -140,7 +162,7 @@ async function runJobForOrganization(
       where: { id: jobRun.id },
       data: { status: "FAILURE", finishedAt: new Date(), error: message },
     });
-    await sendJobFailureAlert({ jobName: job.name, organizationId, jobRunId: jobRun.id, error: message });
+    await deliverPendingFailureAlerts();
     return { success: false, summary: {}, error: message };
   }
 }

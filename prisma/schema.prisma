@@ -1127,6 +1127,8 @@ model JobRun {
   summary        Json?
   error          String?
   cursor         String? // checkpoint de retomada: "<competência YYYY-MM>:<últimoIdProcessado>", null = concluído ou nunca iniciado
+  alertSentAt    DateTime? // quando o alerta de falha foi ENTREGUE (Resend aceitou); null em FAILURE = alerta pendente, reenviado na próxima varredura
+  alertSuppressed Boolean  @default(false) // FAILURE anterior ao controle de entrega de alerta (migration 20261022120000) — nunca reenviada
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
