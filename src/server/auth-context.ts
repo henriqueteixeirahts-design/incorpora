@@ -43,15 +43,25 @@ export async function getAccessContext(): Promise<AccessContext | null> {
   const authUser = await getAuthUser();
   if (!authUser) return null;
 
+  // RLS (Pilar 2, preparação da Etapa 4): a organização sai de
+  // `resolve_user_organization()` (SECURITY DEFINER, devolve só o id) —
+  // ler `access_grants` antes de existir contexto não veria nada com a
+  // policy ativa. Com o id em mãos, o contexto é definido ANTES da leitura
+  // completa dos vínculos, que passa a valer sob a policy normal.
+  const [resolved] = await prisma.$queryRaw<{ organization_id: string | null }[]>`
+    SELECT resolve_user_organization(${authUser.id}::uuid) AS organization_id
+  `;
+  const organizationId = resolved?.organization_id ?? null;
+  if (!organizationId) return null;
+  setCurrentOrgId(organizationId);
+
   const grants = await prisma.accessGrant.findMany({
-    where: { userId: authUser.id },
+    where: { userId: authUser.id, organizationId },
     include: { role: { include: { permissions: { include: { permission: true } } } } },
     orderBy: { createdAt: "asc" },
   });
 
   if (grants.length === 0) return null;
-
-  const organizationId = grants[0].organizationId;
   const roleNames = new Set<string>();
   const permissions = new Set<string>();
 
@@ -88,11 +98,10 @@ export async function getAccessContext(): Promise<AccessContext | null> {
     developmentAccess = grantedDevelopmentIds;
   }
 
-  // RLS (Pilar 2) — a partir daqui, toda query Prisma desta requisição
-  // (mesma continuação assíncrona) passa a carregar este organizationId
-  // pra extensão do Prisma setar via SET LOCAL. Ver src/lib/tenant-context.ts.
-  setCurrentOrgId(organizationId);
-
+  // RLS (Pilar 2): o contexto já foi definido logo depois de
+  // resolve_user_organization() — toda query Prisma desta requisição (mesma
+  // continuação assíncrona) carrega este organizationId via SET LOCAL. Ver
+  // src/lib/tenant-context.ts.
   return {
     userId: authUser.id,
     organizationId,

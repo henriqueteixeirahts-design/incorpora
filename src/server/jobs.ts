@@ -77,7 +77,26 @@ async function sweepStaleJobRuns() {
   });
 }
 
-async function runJobForOrganization(
+/**
+ * Roda o job pra UMA organização. Tudo — varredura de travados, leitura do
+ * checkpoint, criação e fechamento do JobRun, e o job em si — acontece
+ * dentro de `withOrgContext`: com a policy de RLS de `job_runs` ativa
+ * (Etapa 4), qualquer leitura/escrita fora do contexto veria/gravaria
+ * como "nenhuma organização" e falharia (antes de 2026-11-08 só o job em
+ * si rodava no contexto). Consequência aceita: a varredura daqui fecha só
+ * os travados DESTA organização; a varredura global continua sendo o
+ * watchdog pg_cron, que roda como `postgres`.
+ *
+ * `.run()`, não `.enterWith()`: esta chamada é uma dentre várias na mesma
+ * invocação de `runJobForAllOrganizations` — o contexto não pode vazar pra
+ * próxima iteração do loop nem pra continuação de quem chamou depois. Ver
+ * src/lib/tenant-context.ts.
+ */
+function runJobForOrganization(job: JobDefinition, organizationId: string, triggeredBy: JobTrigger): Promise<JobResult> {
+  return withOrgContext(organizationId, () => runJobInOrgContext(job, organizationId, triggeredBy));
+}
+
+async function runJobInOrgContext(
   job: JobDefinition,
   organizationId: string,
   triggeredBy: JobTrigger,
@@ -94,15 +113,8 @@ async function runJobForOrganization(
     data: { jobName: job.name, organizationId, triggeredBy, status: "RUNNING" },
   });
 
-  // `.run()`, não `.enterWith()`: esta chamada processa só ESTA
-  // organização, mas é uma dentre várias na mesma invocação de
-  // `runJobForAllOrganizations` — o contexto não pode vazar pra próxima
-  // iteração do loop nem pra continuação de quem chamou depois. Ver
-  // src/lib/tenant-context.ts.
   try {
-    const result = await withOrgContext(organizationId, () =>
-      job.runForOrganization(organizationId, triggeredBy, previousRunWithCursor?.cursor ?? null),
-    );
+    const result = await job.runForOrganization(organizationId, triggeredBy, previousRunWithCursor?.cursor ?? null);
     await prisma.jobRun.update({
       where: { id: jobRun.id },
       data: {

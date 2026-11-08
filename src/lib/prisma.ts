@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 import { getCurrentOrgId } from "@/lib/tenant-context";
+import { observeQueryWithoutOrg } from "@/lib/rls-observe";
 
 const globalForPrisma = globalThis as unknown as {
   prismaBase: PrismaClient | undefined;
@@ -105,7 +106,10 @@ export const prisma = base.$extends({
   name: "rls-tenant-context",
   client: { $transaction },
   query: {
-    $allOperations({ args, query }) {
+    $allOperations({ model, operation, args, query }) {
+      // Semana de observação da Etapa 4 (desligada sem RLS_OBSERVE=1): só
+      // registra, nunca altera a consulta. Ver src/lib/rls-observe.ts.
+      observeQueryWithoutOrg(model, operation, getCurrentOrgId());
       if (insidePrimedTransaction.getStore()) {
         return query(args);
       }
