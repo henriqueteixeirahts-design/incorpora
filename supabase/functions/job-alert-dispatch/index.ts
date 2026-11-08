@@ -16,8 +16,8 @@
 // Deploy sem verificação de JWT (o GitHub Actions não tem JWT de usuário):
 // a autorização é o token acima, comparado em tempo constante.
 //
-// Nunca falha em silêncio: qualquer alerta não entregue, ou canal sem
-// configuração (mesmo sem nada pendente), responde erro HTTP — o job do
+// Nunca falha em silêncio: alerta não entregue responde 502; canal sem
+// configuração (mesmo sem nada pendente) responde 503 — o job do
 // Actions falha e o GitHub notifica por e-mail.
 import postgres from "npm:postgres@3.4.5";
 import { dispatchPendingJobAlerts, recordDispatchHeartbeat } from "./dispatch.ts";
@@ -49,7 +49,9 @@ Deno.serve(async (request) => {
     if (!config.resendApiKey || !config.to || !config.from) {
       console.error(JSON.stringify({ event: "job-alert-dispatch-misconfigured" }));
       await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
-      return Response.json({ error: "missing_email_config" }, { status: 500 });
+      // 503 = configuração (o workflow trata como "falha no máximo 1x/dia");
+      // 500/502 = quebrado ou alerta não entregue (falha em toda execução).
+      return Response.json({ error: "missing_email_config" }, { status: 503 });
     }
 
     const result = await dispatchPendingJobAlerts(db, config, fetch);

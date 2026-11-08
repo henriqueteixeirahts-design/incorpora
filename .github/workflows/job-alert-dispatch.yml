@@ -2,31 +2,37 @@ name: Alerta de jobs
 
 # Gatilho do alerta de falha de job, fora da Vercel e fora do banco
 # (decisão de 2026-10-22, docs/STATUS_IMPLANTACAO.md — pg_net recusado).
-# A cada 15 min chama a Edge Function `job-alert-dispatch` do Supabase de
-# produção, que entrega por e-mail toda falha ainda não alertada
-# (idempotente: chamar duas vezes nunca duplica o e-mail).
+# Chama a Edge Function `job-alert-dispatch` do Supabase de produção, que
+# entrega por e-mail toda falha ainda não alertada (idempotente: chamar duas
+# vezes nunca duplica o e-mail).
 #
-# Nunca falha em silêncio: secret/variável ausente, token recusado, função
-# fora do ar, alerta não entregue ou canal sem configuração — tudo faz este
-# job falhar, e o GitHub manda e-mail de workflow falho. O vigia tem vigia.
+# Dois tipos de falha, tratados diferente (decisão de 2026-11-08 — entre
+# 22/10 e 03/11 as 60 execuções agendadas falharam por secret ausente e
+# viraram um e-mail de falha por dia até o workflow ser desativado):
+#   - CONFIGURAÇÃO (secret/variável ausente, token recusado pela função,
+#     Resend sem configurar na função): falha no máximo 1 vez a cada 24h;
+#     nas outras execuções só anota um aviso no log, sem e-mail. Nunca
+#     "skipped", nunca sucesso falso — e a auditoria V7 acusa de qualquer
+#     jeito, porque sem despacho bem-sucedido não há batimento.
+#   - ALERTA NÃO ENTREGUE ou função quebrada (502, 500, timeout, rede):
+#     falha em TODA execução.
 #
 # Configuração (Settings → Secrets and variables → Actions):
 #   Secret   JOB_ALERT_DISPATCH_TOKEN  — mesmo valor do segredo da Edge Function
 #   Variable JOB_ALERT_DISPATCH_URL    — https://<ref>.supabase.co/functions/v1/job-alert-dispatch
 #
-# Sem chave de liga/desliga: secret ou variável ausente FALHA o job. A
-# versão anterior pulava o job ("skipped") sem a variável — e em 2026-10-22
-# isso escondeu uma variável que não estava visível pro workflow.
-#
-# Atenção: num repositório público, o GitHub desativa workflows agendados
-# depois de 60 dias sem atividade no repo (avisa por e-mail antes).
+# Atenção: o agendamento do GitHub é "melhor esforço" — entre 22/10 e 03/11
+# entregou ~5% dos disparos esperados. Este workflow NÃO é o único gatilho
+# (ver docs/STATUS_IMPLANTACAO.md, plano B). Num repositório público, o
+# GitHub desativa workflows agendados após 60 dias sem atividade no repo.
 
 on:
   schedule:
     - cron: "5,20,35,50 * * * *" # depois do watchdog pg_cron (*/15), que marca o job travado como FAILURE
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  actions: read # só pra consultar as execuções anteriores deste workflow (limite de 1 falha/dia por configuração)
 
 concurrency:
   group: job-alert-dispatch
@@ -41,21 +47,45 @@ jobs:
         env:
           TOKEN: ${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}
           URL: ${{ vars.JOB_ALERT_DISPATCH_URL }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          if [ -z "${TOKEN}" ]; then
-            echo "::error::Secret JOB_ALERT_DISPATCH_TOKEN ausente ou invisível pro workflow (Settings → Secrets and variables → Actions → aba Secrets → Repository secrets)."
+          set -uo pipefail
+
+          # Problema de configuração: falha no máximo 1x a cada 24h (1 e-mail
+          # por dia, não 96). Se a consulta à API falhar, falha (lado seguro).
+          config_problem() {
+            since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            recent=$(curl -sS --max-time 20 -H "Authorization: Bearer ${GH_TOKEN}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/workflows/job-alert-dispatch.yml/runs?status=failure&created=%3E%3D${since}&per_page=1" \
+              | jq -r '.total_count // 0' 2>/dev/null || echo 0)
+            if [ "${recent:-0}" -gt 0 ]; then
+              echo "::warning::CONFIGURAÇÃO: $1 (já houve uma falha nas últimas 24h — esta execução só avisa, sem e-mail)."
+              exit 0
+            fi
+            echo "::error::CONFIGURAÇÃO: $1"
             exit 1
+          }
+
+          if [ -z "${TOKEN}" ]; then
+            config_problem "secret JOB_ALERT_DISPATCH_TOKEN ausente ou invisível pro workflow (Settings → Secrets and variables → Actions → aba Secrets → Repository secrets)."
           fi
           if [ -z "${URL}" ]; then
-            echo "::error::Variável JOB_ALERT_DISPATCH_URL ausente ou invisível pro workflow (Settings → Secrets and variables → Actions → aba Variables → Repository variables — não em Secrets, não num Environment)."
-            exit 1
+            config_problem "variável JOB_ALERT_DISPATCH_URL ausente ou invisível pro workflow (aba Variables → Repository variables — não em Secrets, não num Environment)."
           fi
+
           status=$(curl -sS -o response.json -w '%{http_code}' --max-time 60 --retry 2 --retry-delay 10 \
-            -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{}' "${URL}")
+            -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{}' "${URL}" || echo "000")
           # A resposta só tem contagens e ids opacos de JobRun — sem dado sensível.
-          cat response.json; echo
-          if [ "${status}" != "200" ]; then
-            echo "::error::Despacho de alerta respondeu HTTP ${status} — há alerta não entregue ou o canal está quebrado."
-            exit 1
-          fi
+          cat response.json 2>/dev/null; echo
+
+          case "${status}" in
+            200)
+              exit 0 ;;
+            401)
+              config_problem "a função recusou o token (JOB_ALERT_DISPATCH_TOKEN do GitHub diferente do segredo da Edge Function)." ;;
+            503)
+              config_problem "a função está sem RESEND_API_KEY/JOB_ALERT_EMAIL_TO/JOB_ALERT_EMAIL_FROM (Supabase → Edge Functions → Secrets)." ;;
+            *)
+              echo "::error::ALERTA NÃO ENTREGUE: o despacho respondeu HTTP ${status} — há falha de job sem aviso ou a função está quebrada."
+              exit 1 ;;
+          esac

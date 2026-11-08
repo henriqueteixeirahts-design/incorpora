@@ -109,15 +109,21 @@ describe("Alerta de job — sem pg_net", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("o workflow do GitHub Actions é agendado, lê o token de um secret e falha em qualquer resposta que não seja 200", () => {
+  it("o workflow do GitHub Actions é agendado, lê o token de um secret, separa configuração (1 falha/dia) de alerta não entregue (falha sempre)", () => {
     const workflow = fs.readFileSync(path.resolve(__dirname, "../../.github/workflows/job-alert-dispatch.yml"), "utf8");
     expect(workflow).toMatch(/schedule:\s*\n\s*- cron: "5,20,35,50 \* \* \* \*"/);
     expect(workflow).toContain("${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}");
-    // Sem chave de liga/desliga: secret ou variável ausente falha o job, nunca "skipped".
+    // Nunca "skipped": nenhuma condição no job.
     expect(workflow).not.toMatch(/^\s+if:/m);
-    expect(workflow).toMatch(/if \[ -z "\$\{TOKEN\}" \]; then[\s\S]*?exit 1/);
-    expect(workflow).toMatch(/if \[ -z "\$\{URL\}" \]; then[\s\S]*?exit 1/);
-    expect(workflow).toMatch(/if \[ "\$\{status\}" != "200" \]; then[\s\S]*?exit 1/);
+    // Configuração ausente/recusada passa por config_problem (falha no máximo 1x/24h, senão aviso).
+    expect(workflow).toMatch(/if \[ -z "\$\{TOKEN\}" \]; then\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/if \[ -z "\$\{URL\}" \]; then\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/401\)\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/503\)\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/config_problem\(\) \{[\s\S]*?created=%3E%3D\$\{since\}[\s\S]*?exit 0[\s\S]*?exit 1/);
+    // Qualquer outra resposta que não seja 200 (502 = alerta não entregue, 500, rede) falha toda vez.
+    expect(workflow).toMatch(/200\)\s*\n\s*exit 0 ;;/);
+    expect(workflow).toMatch(/\*\)\s*\n\s*echo "::error::ALERTA NÃO ENTREGUE[^\n]*\n\s*exit 1 ;;/);
     expect(workflow).not.toMatch(/Bearer [A-Za-z0-9]{16,}/); // token nunca escrito no repo
   });
 });
