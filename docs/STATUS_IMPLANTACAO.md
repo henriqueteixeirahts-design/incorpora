@@ -2,7 +2,9 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização (2026-10-22):** RLS Pilar 2 — **Etapa 3 concluída** e **correção do `recalculate-installments` concluída**, ambas em 2026-09-18 e verificadas em produção (ver seção 1, bloco RLS). Buracos da V3 tapados (amostra com todas as vencidas + sorteio, teste de mutação permanente no CI, V4 em 3 dias); bug "job travado nunca gerava e-mail" corrigido; script de reconstrução da staging pronto. Pendentes antes da Etapa 4: **detecção de falha silenciosa INCOMPLETA** (Resend não configurado, nenhum disparo real), **staging não reconstruída** (precisa de credenciais + aprovação) e o **teste de mutação real contra a staging**. Etapa 4 com plano aguardando revisão — nada codado.
+**Última atualização (2026-11-08):** retomada após pausa — ver seção "Retomada de 2026-11-08" no fim do bloco RLS: gatilho do GitHub entregou ~5% (61 de ~1.150), alerta nunca configurado por completo, preparação da Etapa 4 pronta num branch local sem push, nada novo em produção.
+
+**Atualização (2026-10-22):** RLS Pilar 2 — **Etapa 3 concluída** e **correção do `recalculate-installments` concluída**, ambas em 2026-09-18 e verificadas em produção (ver seção 1, bloco RLS). Buracos da V3 tapados (amostra com todas as vencidas + sorteio, teste de mutação permanente no CI, V4 em 3 dias); bug "job travado nunca gerava e-mail" corrigido; script de reconstrução da staging pronto. Pendentes antes da Etapa 4: **detecção de falha silenciosa INCOMPLETA** (Resend não configurado, nenhum disparo real), **staging não reconstruída** (precisa de credenciais + aprovação) e o **teste de mutação real contra a staging**. Etapa 4 com plano aguardando revisão — nada codado.
 
 **Atualização (2026-10-22, tarde):** V6a no ar (V1-V6); inventário de tabelas por tier versionado (`docs/RLS_INVENTARIO_TIERS.md`); alerta independente da Vercel no master (GitHub Actions → Edge Function; pg_net recusado), aguardando segredos para o disparo real. Staging aguardando credenciais.
 
@@ -880,7 +882,53 @@ Até os segredos existirem (Resend nos segredos da Edge Function — **não** ma
 
 **Caminhos ambíguos do RLS decididos (2026-10-22)**: `spe_investor_contributions`, `spe_investor_returns` e `exchange_retention_releases` seguem o caminho que a aplicação já usa (via investidor → SPE, e via contrato de permuta → empreendimento) — não houve empate. Inventário final 40 / 26 / 18 / 6 exceções = 90, com justificativa em `docs/RLS_INVENTARIO_TIERS.md`. Nenhuma tabela pendente de caminho.
 
-**Próximo**: Bloco B (reconstrução da staging + testes de mutação V3/V6 e despacho do alerta contra ela) quando o `.env.staging` for confirmado; Bloco C (segredos da Edge Function e do GitHub + disparo real) quando os segredos forem confirmados; depois a Etapa 4 (nada codado).
+**Próximo (registrado em 2026-10-22)**: Bloco B (staging) e Bloco C (disparo real) — ver a retomada de 2026-11-08 logo abaixo.
+
+**V7 — vigia do gatilho (2026-10-22)**: cada chamada autorizada da Edge Function grava um batimento em `job_runs` (`jobName = 'job-alert-dispatch'`, sem organização, `alertSuppressed = true`); a verificação `V7_ALERT_DISPATCH_HEARTBEAT` acusa se o último batimento SUCCESS tiver mais de 1 hora, ou se nunca houve um (migration `20261022200000`, em produção).
+
+---
+
+### Retomada de 2026-11-08 — alerta, plano B do gatilho, preparação da Etapa 4
+
+**Estado de produção em 08/11** (conferido no banco): 56 migrations (última `20261022200000_audit_v7_alert_dispatch_heartbeat`); `recalculate-installments` com SUCCESS diário; 0 jobs travados; auditoria de 02/11 com V1-V6 OK e **V7 em ALERT** (correto); **5 alertas pendentes** (`alertSentAt` nulo): o job falso `aefa5f96` de 22/10, `audit-update` de 26/10 e 02/11, `audit-update-full` de 01/11 e 02/11 (as auditorias "falham" como job porque a V7 acusa); Edge Function `job-alert-dispatch` versão 2 ativa em produção; **0 batimentos** — a função nunca recebeu chamada autorizada; nenhum token de alerta no Vault (por desenho: o token vive só no GitHub e nos segredos da função); 0 policies, 0 tabelas com RLS.
+
+**O gatilho do GitHub entregou ~5%.** Entre 22/10 e 03/11 o workflow "Alerta de jobs" rodou 61 vezes (60 agendadas + 1 manual) contra ~1.150 esperadas pelo cron de 15 min. As 60 agendadas falharam todas pelo mesmo motivo — o secret `JOB_ALERT_DISPATCH_TOKEN` nunca foi criado no GitHub, então a função nunca foi chamada — e viraram um e-mail de falha por dia até o workflow ser desativado à mão (`disabled_manually`).
+
+**Workflow revisto (branch local `sprint-nov-etapa4-prep`, sem push)**: dois tipos de falha. CONFIGURAÇÃO (secret/variável ausente, token recusado — 401, Resend sem configurar na função — 503) falha **no máximo 1 vez a cada 24h** (consulta as execuções falhas anteriores; se a consulta falhar, falha) e nas outras execuções só anota aviso, sem e-mail. ALERTA NÃO ENTREGUE (502), função quebrada (500) e rede falham **em toda execução**. A Edge Function passa a responder 503 (era 500) pra canal sem configuração — **republicar a função em produção depende de aprovação**.
+
+**V7 — achado**: a regra era "sem despacho bem-sucedido em 1h → ALERT", mas a V7 só era avaliada quando a auditoria rodava (semanal + dias 1-2) — um gatilho morto levava até 7 dias pra aparecer. Corrigido no branch: o cron diário do recálculo encadeia a auditoria por amostragem nos dias fora da janela mensal (só se o recálculo terminou em menos de 20s). Limite que continua: a V7 aparece na tela de auditoria/selo; o e-mail sobre ela depende do próprio despacho estar vivo — por isso o plano B precisa de um agendador que avise sozinho quando falha.
+
+**Plano B do gatilho — proposta (decisão pendente)**:
+| Opção | Prós | Contras |
+|---|---|---|
+| Só aumentar a cadência (30/60 min) | Simples, menos execuções | Não resolve: o problema é o GitHub descartar disparos, não a frequência; com ~5%, 60 min dá ~1 disparo a cada 20h |
+| **Agendador externo gratuito em paralelo (cron-job.org) — recomendado** | Gratuito, intervalo de minutos, header de autorização, histórico, **e-mail próprio quando o endpoint falha** (avisa mesmo com o despacho morto); endpoint já idempotente e seguro contra chamadas simultâneas | Um terceiro guarda o token (impacto se vazar: alguém dispara o despacho, que só envia alertas pendentes; rotacionar nos 3 lugares) |
+| Caminho pela aplicação como 3ª via (cron diário da Vercel chamando a função) | Reaproveita um cron que já roda todo dia | Só 1x/dia e no mesmo domínio de falha que o incidente de 02/09 (a Vercel); mais uma cópia do token |
+Recomendação: cron-job.org a cada 15 min como gatilho principal + GitHub mantido em paralelo (mesma cadência, idempotente) + V7 avaliada diariamente como rede. A 3ª via pela aplicação não compensa a cópia extra do token.
+
+**Preparação da Etapa 4 (branch local, nada ativado)**:
+- **Caminhos ambíguos**: já decididos em 2026-10-22 (caminho da aplicação) — ver `docs/RLS_INVENTARIO_TIERS.md`. Nenhum pendente.
+- **Login**: `resolve_user_organization()` (SECURITY DEFINER, devolve só o id da organização do vínculo mais antigo); `getAccessContext` define o contexto antes de ler `access_grants`. Migration `20261108120000_rls_etapa4_resolve_user_organization` com `GRANT EXECUTE` a `app_user` e `REVOKE` das roles do Supabase — **mudança de privilégio, só com aprovação**. Teste em `tests/integration/resolve-user-organization-function.test.ts`.
+- **Jobs**: varredura de travados, leitura do checkpoint e criação/fechamento do `JobRun` passam a rodar dentro de `withOrgContext` (antes só o job em si). A varredura global continua no watchdog pg_cron.
+- **SQL bruto**: já coberto pela extensão do Prisma (provado em `rls-context-plumbing.test.ts`); os únicos usos são `list_active_org_ids()` e `resolve_user_organization()`, feitas pra rodar sem contexto.
+- **Dados de teste**: helper `tests/integration/helpers/tenant.ts` (`asOrg`, `fixturePrisma`) pra migrar as suítes grupo a grupo, junto da ativação de cada grupo.
+- **Semana de observação**: `src/lib/rls-observe.ts` registra no log (deduplicado por model/operação/ponto de chamada) toda consulta a tabela protegida sem organização no contexto, sem bloquear nada — **desligada**; liga com `RLS_OBSERVE=1` na Vercel quando aprovado.
+
+**Nada desta retomada está em produção.** O branch `sprint-nov-etapa4-prep` não foi enviado ao GitHub: push no `master` aplica migrations em produção, e push em qualquer branch dispara preview da Vercel apontando pro banco de produção. CI não rodou; validado localmente com tipos, lint e testes de unidade (191/191).
+
+**Pré-requisitos da Etapa 4 (2026-11-08)**:
+| Pré-requisito | Situação |
+|---|---|
+| V3: vencidas na amostra, mutação permanente, V4 em 3 dias | ✅ em produção |
+| V6a (histórico de cálculo) | ✅ em produção |
+| V7 (vigia do gatilho) | ✅ em produção; avaliação diária no branch, aguarda ok |
+| Inventário por tier + caminhos ambíguos decididos | ✅ |
+| Login, jobs, SQL bruto preparados pra policy | ✅ no branch; migration com GRANT aguarda ok |
+| Semana de observação pronta (desligada) | ✅ no branch, aguarda ok pra subir e pra ligar |
+| Helper de fixtures pra RLS | ✅ no branch (migração das suítes acontece grupo a grupo) |
+| Alerta: segredos configurados + disparo real com e-mail recebido | ⏳ token no GitHub e Resend na função faltando |
+| Alerta: gatilho confiável (plano B) | ⏳ decisão pendente (recomendado cron-job.org + GitHub) |
+| Staging reconstruída por replay + mutação real da V3 contra ela | ⏳ aguarda `.env.staging` |
 
 ---
 
