@@ -92,3 +92,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Prova por escrito do oráculo (ressalva aberta desde 2026-10): roda de
+      # novo, isoladas e com o nome de cada teste no log, as mutações da V3
+      # (motor de multa/mora/dias) e da V6a (histórico de cálculo), contra o
+      # banco deste job — cada arquivo com o seu controle sem mutação, que
+      # precisa dar OK. Fica no fim do log de propósito (fácil de achar).
+      - name: Oráculo — mutações da V3 e da V6a (controle sem mutação precisa dar OK)
+        run: npx vitest run --config vitest.integration.config.ts --reporter=verbose tests/integration/audit-v3-mutation.test.ts tests/integration/audit-v6-history.test.ts
