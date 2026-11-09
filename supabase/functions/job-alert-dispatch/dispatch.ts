@@ -1,6 +1,6 @@
 // Núcleo do despacho de alertas de falha de job — roda na Edge Function
-// `job-alert-dispatch` (Supabase), chamada a cada 15 min pelo GitHub Actions
-// (.github/workflows/job-alert-dispatch.yml).
+// `job-alert-dispatch` (Supabase), chamada a cada 15 min pelo cron-job.org
+// (gatilho principal) e pelo GitHub Actions (.github/workflows/job-alert-dispatch.yml).
 // Independente da Vercel e do banco por desenho: nada aqui depende do runtime do
 // Next.js nem de um cron da Vercel disparar (o incidente de 2026-09-02 era
 // exatamente o cron/função da Vercel morrendo em silêncio).
