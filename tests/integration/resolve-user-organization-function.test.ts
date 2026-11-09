@@ -48,6 +48,32 @@ describe("resolve_user_organization() — login sem leitura cross-tenant", () =>
     }
   });
 
+  it("travas permanentes: SECURITY DEFINER, search_path fixo e vazio, um único parâmetro uuid, retorno só uuid, sem EXECUTE pra PUBLIC", async () => {
+    const rows = await prisma.$queryRawUnsafe<
+      { secdef: boolean; config: string[] | null; args: string; returns: string; retset: boolean; public_execute: boolean }[]
+    >(`
+      SELECT p.prosecdef AS secdef,
+             p.proconfig AS config,
+             pg_get_function_identity_arguments(p.oid) AS args,
+             format_type(p.prorettype, NULL) AS returns,
+             p.proretset AS retset,
+             EXISTS (
+               SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+             ) AS public_execute
+        FROM pg_proc p
+       WHERE p.proname = 'resolve_user_organization'
+    `);
+    expect(rows).toHaveLength(1); // nenhuma sobrecarga com outra assinatura
+    const fn = rows[0];
+    expect(fn.secdef).toBe(true);
+    expect(fn.config).toEqual(['search_path=""']);
+    expect(fn.args).toBe("p_user_id uuid");
+    expect(fn.returns).toBe("uuid");
+    expect(fn.retset).toBe(false); // um único valor, nunca um conjunto de linhas
+    expect(fn.public_execute).toBe(false);
+  });
+
   it("app_user consegue executar a função (privilégio concedido explicitamente)", async () => {
     const rows = await prisma.$queryRawUnsafe<{ ok: boolean }[]>(
       `SELECT has_function_privilege(current_user, 'resolve_user_organization(uuid)', 'EXECUTE') AS ok`,

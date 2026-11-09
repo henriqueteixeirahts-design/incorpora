@@ -10,7 +10,13 @@
 -- código já aplica), e nada mais. Com esse id, a aplicação define o
 -- contexto e faz a leitura completa dos vínculos sob a policy normal.
 --
--- MUDANÇA DE PRIVILÉGIO EM PRODUÇÃO (GRANT EXECUTE a app_user; REVOKE de
+-- Travas (iguais às de list_active_org_ids, aprovadas em 2026-11-08): REVOKE
+-- de PUBLIC, anon, authenticated e service_role; search_path vazio (tabela
+-- totalmente qualificada — nenhum objeto de outro schema se passa por
+-- access_grants); retorno só o uuid da organização. Travadas por teste de
+-- regressão (tests/integration/resolve-user-organization-function.test.ts).
+--
+-- MUDANÇA DE PRIVILÉGIO EM PRODUÇÃO (aprovada em 2026-11-08 com as travas acima) (GRANT EXECUTE a app_user; REVOKE de
 -- PUBLIC/anon/authenticated/service_role) — só vai pra produção com
 -- aprovação explícita. Não ativa RLS em tabela nenhuma.
 CREATE FUNCTION resolve_user_organization(p_user_id uuid)
@@ -18,9 +24,9 @@ RETURNS uuid
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
-  SELECT "organizationId" FROM "access_grants"
+  SELECT "organizationId" FROM "public"."access_grants"
   WHERE "userId" = p_user_id
   ORDER BY "createdAt" ASC
   LIMIT 1;
