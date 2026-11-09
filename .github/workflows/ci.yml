@@ -86,7 +86,9 @@ jobs:
         run: node scripts/ci-set-app-user-password.js
 
       - name: Testes de integração (isolamento entre organizações, CRUD, regras — como app_user, sem BYPASSRLS)
-        run: npm run test:integration
+        # --reporter=verbose: nome e resultado de cada teste no log do CI (prova
+        # por escrito dos controles e mutações da V3/V6, não só "N tests" por arquivo).
+        run: npm run test:integration -- --reporter=verbose
 
       - name: Build
         run: npm run build
