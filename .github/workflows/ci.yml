@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    # `sprint-**`: desde 2026-11-09 o desenvolvimento roda na nuvem em
+    # branches de sprint, e a staging foi aposentada — o CI é onde as
+    # migrations são replayadas e as travas provadas. Rodar o CI no push
+    # desses branches não tem efeito colateral (banco efêmero do próprio
+    # job, sem deploy; previews da Vercel estão desligados).
+    branches: [master, "sprint-**"]
   pull_request:
     branches: [master]
 
@@ -10,32 +15,46 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
+      # Imagem do Supabase (mesma versão da produção, incorpora-cl: Postgres
+      # 17.6.1.147) no lugar do `postgres:17` puro — desde 2026-11-09. Motivo:
+      # no postgres puro as roles anon/authenticated/service_role não
+      # existiam, então as travas "nenhuma role do PostgREST consegue X"
+      # (tests/integration/*-function.test.ts, no-public-schema-access-*)
+      # passavam VAZIAS, e o watchdog do pg_cron era pulado pela guarda da
+      # migration. Aqui o banco nasce como o da produção: `postgres` sem
+      # superusuário (só BYPASSRLS), roles do Supabase com os default
+      # privileges do Supabase, pg_cron disponível. A staging
+      # (incorpora-staging-rls) está pausada — este é o ambiente de replay.
+      #
+      # Banco `postgres` (não um banco `incorpora`): o pg_cron da imagem só
+      # aceita CREATE EXTENSION no banco de `cron.database_name` = postgres,
+      # igual à produção.
       postgres:
-        image: postgres:17
+        image: supabase/postgres:17.6.1.147
         env:
-          POSTGRES_USER: incorpora
           POSTGRES_PASSWORD: incorpora
-          POSTGRES_DB: incorpora
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U incorpora"
+          --health-cmd "pg_isready -U postgres -h localhost"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 30
     env:
       # RLS Pilar 2, Etapa 2.5/3 — DATABASE_URL (o que a aplicação e os
       # testes usam de verdade, via src/lib/prisma.ts) conecta como
-      # `app_user`, NUNCA como a role superusuária do serviço Postgres do
-      # CI (`incorpora`, criada superusuário pela imagem oficial — ignora
-      # RLS incondicionalmente). Sem isso, os futuros testes de bypass de
-      # RLS (Etapa 4+) dariam falso-verde no CI pelo mesmo motivo que
-      # dariam localmente/produção sem essa mesma correção (já aplicada
-      # nesses dois ambientes). DIRECT_URL continua em `incorpora` — só
-      # `prisma migrate deploy` e o script de senha abaixo usam essa
-      # credencial, nunca os testes.
-      DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:5432/incorpora?schema=public"
-      DIRECT_URL: "postgresql://incorpora:incorpora@localhost:5432/incorpora?schema=public"
+      # `app_user` (sem superusuário, sem BYPASSRLS). DIRECT_URL conecta
+      # como `postgres` — a mesma role que aplica migrations na produção
+      # (sem superusuário na imagem do Supabase; BYPASSRLS sim) — usada só
+      # por `prisma migrate deploy`, pelo script de senha e pelos testes que
+      # precisam da role de migration (checagem de default privileges,
+      # mutações das travas), nunca pela aplicação.
+      DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:5432/postgres?schema=public"
+      DIRECT_URL: "postgresql://postgres:incorpora@localhost:5432/postgres?schema=public"
+      # Com a imagem do Supabase, as 3 roles do PostgREST são obrigatórias:
+      # as travas falham (em vez de passar vazias) se alguma faltar.
+      # Ver tests/integration/helpers/supabase-roles.ts.
+      EXPECT_SUPABASE_ROLES: "1"
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
       SUPABASE_SERVICE_ROLE_KEY: "placeholder"
@@ -60,7 +79,7 @@ jobs:
       - name: Testes de unidade
         run: npm test
 
-      - name: Aplicar migrations no Postgres de teste (como incorpora, via DIRECT_URL — cria app_user, grants e statement_timeout, tudo já versionado nas migrations da Etapa 2.5/3)
+      - name: Aplicar migrations no Postgres de teste (como postgres, via DIRECT_URL — cria app_user, grants, statement_timeout e o watchdog do pg_cron, tudo já versionado nas migrations)
         run: npx prisma migrate deploy
 
       - name: Habilitar login pra app_user (a migration cria ela NOLOGIN de propósito — senha real nunca fica versionada)

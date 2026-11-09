@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { expectNoSupabaseRoleCanExecute } from "./helpers/supabase-roles";
 
 /**
  * RLS Pilar 2, preparação da Etapa 4 — `resolve_user_organization()`
@@ -82,14 +83,8 @@ describe("resolve_user_organization() — login sem leitura cross-tenant", () =>
   });
 
   it("nenhuma role do PostgREST/Supabase (anon, authenticated, service_role) consegue executar", async () => {
-    const rows = await prisma.$queryRawUnsafe<{ rolname: string; has_execute: boolean }[]>(`
-      SELECT r.rolname, has_function_privilege(r.rolname, 'resolve_user_organization(uuid)', 'EXECUTE') AS has_execute
-      FROM pg_roles r
-      WHERE r.rolname IN ('anon', 'authenticated', 'service_role')
-    `);
-    // Em Postgres local/CI essas roles não existem; no Supabase, toda linha precisa vir false.
-    for (const row of rows) {
-      expect(row.has_execute, `${row.rolname} não deveria conseguir executar resolve_user_organization()`).toBe(false);
-    }
+    // CI (imagem supabase/postgres, EXPECT_SUPABASE_ROLES=1): exige as 3
+    // linhas, todas false. Postgres puro local: roles não existem, nada a afirmar.
+    await expectNoSupabaseRoleCanExecute("resolve_user_organization(uuid)");
   });
 });
