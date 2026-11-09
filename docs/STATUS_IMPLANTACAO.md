@@ -898,7 +898,7 @@ Até os segredos existirem (Resend nos segredos da Edge Function — **não** ma
 
 **V7 — achado**: a regra era "sem despacho bem-sucedido em 1h → ALERT", mas a V7 só era avaliada quando a auditoria rodava (semanal + dias 1-2) — um gatilho morto levava até 7 dias pra aparecer. Corrigido no branch: o cron diário do recálculo encadeia a auditoria por amostragem nos dias fora da janela mensal (só se o recálculo terminou em menos de 20s). Limite que continua: a V7 aparece na tela de auditoria/selo; o e-mail sobre ela depende do próprio despacho estar vivo — por isso o plano B precisa de um agendador que avise sozinho quando falha.
 
-**Plano B do gatilho — proposta (decisão pendente)**:
+**Plano B do gatilho — proposta (aprovada em 2026-11-08: cron-job.org + GitHub)**:
 | Opção | Prós | Contras |
 |---|---|---|
 | Só aumentar a cadência (30/60 min) | Simples, menos execuções | Não resolve: o problema é o GitHub descartar disparos, não a frequência; com ~5%, 60 min dá ~1 disparo a cada 20h |
@@ -916,18 +916,34 @@ Recomendação: cron-job.org a cada 15 min como gatilho principal + GitHub manti
 
 **Nada desta retomada está em produção.** O branch `sprint-nov-etapa4-prep` não foi enviado ao GitHub: push no `master` aplica migrations em produção, e push em qualquer branch dispara preview da Vercel apontando pro banco de produção. CI não rodou; validado localmente com tipos, lint e testes de unidade (191/191).
 
+**Decisões do usuário em 2026-11-08 (segunda rodada)**:
+- **Plano B aprovado**: cron-job.org como gatilho principal, GitHub Actions em paralelo.
+- **GRANT EXECUTE da `resolve_user_organization()` aprovado, com travas** — REVOKE de PUBLIC/anon/authenticated/service_role; `search_path` fixo (agora vazio, com `public.access_grants` totalmente qualificado); retorno só o uuid; teste de regressão permanente (`SECURITY DEFINER`, `proconfig = search_path=""`, assinatura única `p_user_id uuid`, retorno `uuid` escalar, sem EXECUTE pra PUBLIC). Ensaiado no Postgres local em transação com rollback: todas as travas conferem.
+- **Correção 1 — 503 só antes do primeiro despacho**: canal de e-mail sem configuração é "configuração pendente" (503, workflow falha no máximo 1x/dia) só enquanto nunca houve batimento SUCCESS; depois disso é quebra (500, falha em toda execução).
+- **Correção 2 — vigia de atraso fora da Vercel**: a Edge Function avalia, a cada chamada, alerta pendente há mais de 1h, buraco no gatilho (despacho bem-sucedido anterior há mais de 1h) e job sem SUCCESS na janela por organização ativa (`recalculate-installments` 26h, `sync-index-values` 8 dias); qualquer atraso responde 500 e o cron-job.org/GitHub avisam por e-mail. A V7 continua no banco como registro, não é mais a única rede. A auditoria diária pelo cron da Vercel (commit `f174f4f`) fica como redundância.
+- **Prioridade antes de qualquer push**: resolver o preview da Vercel apontando pro banco de produção (ver abaixo).
+
+**Preview da Vercel — situação e opções (2026-11-08)**. Não foi possível ler a configuração do projeto: o conector da Vercel não tem acesso ao projeto `incorpora` (404 no time `hts8`), e não se entrou no dashboard com a conta do usuário. Fatos verificáveis: o `vercel.json` não restringe deploys por branch (sem `git.deploymentEnabled`); o GitHub registra 88 deploys, **todos de produção** — nenhum preview foi criado até hoje porque nenhum branch foi enviado; o build roda `prisma migrate deploy && next build`, então um preview aplicaria as migrations do branch no banco para onde as variáveis de Preview apontam. O risco "preview aponta pro banco de produção" vem do registro anterior deste documento (seção 4), não de uma leitura atual.
+| Opção | O que faz | Prós | Contras |
+|---|---|---|---|
+| (a) Só construir produção | Settings → Build and Deployment → Ignored Build Step → "Only build production"; e tirar o escopo Preview de `DATABASE_URL`/`DIRECT_URL` | Imediato, risco zero: branch nunca mais toca produção; sem credencial de banco no Preview mesmo se alguém religar | Sem ambiente de preview pra testar branch |
+| (b) Preview → staging | Variáveis do ambiente Preview com os valores da staging (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) | Ensaio real da Etapa 4 por branch, contra banco descartável | Depende da staging reconstruída; cada preview migra a staging (aceitável — o bootstrap a recria) |
+| (c) Branch protegido no GitHub | Regras de branch | — | Não impede o deploy de preview da Vercel; não resolve |
+Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a staging estiver reconstruída, pra servir de ensaio da Etapa 4.
+
 **Pré-requisitos da Etapa 4 (2026-11-08)**:
 | Pré-requisito | Situação |
 |---|---|
 | V3: vencidas na amostra, mutação permanente, V4 em 3 dias | ✅ em produção |
 | V6a (histórico de cálculo) | ✅ em produção |
-| V7 (vigia do gatilho) | ✅ em produção; avaliação diária no branch, aguarda ok |
+| V7 (vigia do gatilho) | ✅ em produção; vigia de atraso na Edge Function no branch |
 | Inventário por tier + caminhos ambíguos decididos | ✅ |
-| Login, jobs, SQL bruto preparados pra policy | ✅ no branch; migration com GRANT aguarda ok |
-| Semana de observação pronta (desligada) | ✅ no branch, aguarda ok pra subir e pra ligar |
+| Login, jobs, SQL bruto preparados pra policy | ✅ no branch; GRANT aprovado com travas |
+| Semana de observação pronta (desligada) | ✅ no branch, aguarda push e ok pra ligar |
 | Helper de fixtures pra RLS | ✅ no branch (migração das suítes acontece grupo a grupo) |
-| Alerta: segredos configurados + disparo real com e-mail recebido | ⏳ token no GitHub e Resend na função faltando |
-| Alerta: gatilho confiável (plano B) | ⏳ decisão pendente (recomendado cron-job.org + GitHub) |
+| Preview da Vercel isolado do banco de produção | ⏳ configuração do usuário — bloqueia qualquer push |
+| Alerta: segredos configurados + disparo real com e-mail recebido | ⏳ Resend e token |
+| Alerta: gatilho confiável (cron-job.org + GitHub) | ⏳ aprovado; configuração do usuário |
 | Staging reconstruída por replay + mutação real da V3 contra ela | ⏳ aguarda `.env.staging` |
 
 ---
