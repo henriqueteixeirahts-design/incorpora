@@ -931,6 +931,8 @@ Recomendação: cron-job.org a cada 15 min como gatilho principal + GitHub manti
 | (c) Branch protegido no GitHub | Regras de branch | — | Não impede o deploy de preview da Vercel; não resolve |
 Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a staging estiver reconstruída, pra servir de ensaio da Etapa 4.
 
+**ACHADO (confirmado pelo usuário no dashboard da Vercel em 2026-11-08) — preview com escrita em produção desde a criação do projeto.** `DATABASE_URL` e `DIRECT_URL` estavam com escopo **Production + Preview**: qualquer deploy de preview (de qualquer branch) teria rodado `prisma migrate deploy` e a aplicação inteira contra o banco de produção. O risco era real, não teórico. Nunca houve preview porque nunca houve branch enviado ao GitHub — a ausência de dano foi sorte de processo, não proteção. **Corrigido pelo usuário em 2026-11-08**: preview deployments desativados no projeto (`previewDeploymentsDisabled`); `DATABASE_URL` e `DIRECT_URL` só com escopo Production; `CRON_SECRET` já era só Production. **Pendência menor**: `SUPABASE_SERVICE_ROLE_KEY` continua com escopo Production + Preview — sem preview deployments não é usada, mas deve sair do Preview (ou apontar pra staging quando a opção (b) for adotada).
+
 **Pré-requisitos da Etapa 4 (2026-11-08)**:
 | Pré-requisito | Situação |
 |---|---|
@@ -941,7 +943,7 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 | Login, jobs, SQL bruto preparados pra policy | ✅ no branch; GRANT aprovado com travas |
 | Semana de observação pronta (desligada) | ✅ no branch, aguarda push e ok pra ligar |
 | Helper de fixtures pra RLS | ✅ no branch (migração das suítes acontece grupo a grupo) |
-| Preview da Vercel isolado do banco de produção | ⏳ configuração do usuário — bloqueia qualquer push |
+| Preview da Vercel isolado do banco de produção | ✅ 2026-11-08 (preview desativado; banco só Production). Pendência menor: SUPABASE_SERVICE_ROLE_KEY ainda em Preview |
 | Alerta: segredos configurados + disparo real com e-mail recebido | ⏳ Resend e token |
 | Alerta: gatilho confiável (cron-job.org + GitHub) | ⏳ aprovado; configuração do usuário |
 | Staging reconstruída por replay + mutação real da V3 contra ela | ⏳ aguarda `.env.staging` |
@@ -1011,7 +1013,7 @@ A Sprint 10 é a última do plano original. A regressão técnica (seção 1) n�
 | ~~Sistema nunca foi testado com os dados reais dos empreendimentos-piloto~~ | TSH Laguna e Condomínio Lake House já estão cadastrados em produção (ver seção 1). | Resolvido — próximo teste real é o uso comercial de fato (primeira reserva/proposta/venda real). |
 | ~~Pendências técnicas acumuladas (seção 3) ainda em aberto~~ | Upload real de contrato, worker assíncrono — resolvidos e testados pós-Sprint 10 (ver seção 1). Motor de template segue fora de escopo por decisão consciente. | Resolvido — nenhuma ação pendente aqui. |
 | ~~`CRON_SECRET` ainda não cadastrado na Vercel~~ | Confirmado em produção em 2026-07-26 (ver seção 1) — chamada real ao endpoint com o segredo correto retornou 200. | Resolvido — nenhuma ação pendente aqui. |
-| Ambiente de preview da Vercel aponta para o mesmo banco de produção | Sem banco de staging separado — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; separar um projeto Supabase de staging se for abrir acesso a mais gente. |
+| ~~Ambiente de preview da Vercel aponta para o mesmo banco de produção~~ | Confirmado em 2026-11-08: `DATABASE_URL`/`DIRECT_URL` estavam em Production + Preview desde a criação do projeto. | ✅ Corrigido em 2026-11-08: preview deployments desativados, banco só em Production. Pendência menor: `SUPABASE_SERVICE_ROLE_KEY` ainda em Preview. |
 | Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Configurações → Usuários. |
 | ~~UX mínima (HTML simples, sem design system)~~ | Identidade visual da TSH aplicada e padrão de UI profissional (lista+filtro+modal) replicado em todos os módulos de cadastro (ver seção 1). | Resolvido para a estrutura geral. Ajustes finos de UX ficam para feedback específico durante o uso comercial real. |
 
