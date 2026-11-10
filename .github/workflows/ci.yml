@@ -130,3 +130,79 @@ jobs:
       # precisa dar OK. Fica no fim do log de propósito (fácil de achar).
       - name: Oráculo — mutações da V3 e da V6a (controle sem mutação precisa dar OK)
         run: npx vitest run --config vitest.integration.config.ts --reporter=verbose tests/integration/audit-v3-mutation.test.ts tests/integration/audit-v6-history.test.ts
+
+  # RLS Etapa 4 (2026-11-10) — a Etapa 4 INTEIRA provada no CI antes de
+  # produção ver qualquer policy: mesma imagem do Supabase, banco descartável,
+  # os 17 grupos de prisma/rls-etapa4/ aplicados (84 tabelas), e a suíte
+  # completa rodando com RLS LIGADO — mais a fronteira tabela por tabela
+  # (tests/integration/rls-fronteira.test.ts), a reversão de cada grupo, a
+  # prova do pooler e o oráculo. Nada daqui toca produção.
+  test-rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.6.1.147
+        env:
+          POSTGRES_PASSWORD: incorpora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h localhost"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.26.1-p0
+        env:
+          DATABASE_URL: "postgres://app_user:app_user_ci_pw@postgres:5432/postgres"
+          POOL_MODE: transaction
+          DEFAULT_POOL_SIZE: "2"
+          MAX_CLIENT_CONN: "100"
+          AUTH_TYPE: scram-sha-256
+        ports:
+          - 6432:5432
+    env:
+      DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:5432/postgres?schema=public"
+      DIRECT_URL: "postgresql://postgres:incorpora@localhost:5432/postgres?schema=public"
+      EXPECT_SUPABASE_ROLES: "1"
+      # Liga os testes que só fazem sentido com as policies aplicadas.
+      RLS_ETAPA4_ENABLED: "1"
+      NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+      SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: SQLs do RLS conferem com o inventário e o schema (gerador)
+        run: node scripts/rls-generate-policies.mjs --check
+
+      - name: Aplicar migrations (como postgres)
+        run: npx prisma migrate deploy
+
+      - name: Habilitar login pra app_user
+        run: node scripts/ci-set-app-user-password.js
+
+      - name: Ativar o RLS — grupo 00 + grupos 1 a 17 (84 tabelas)
+        run: node scripts/rls-apply-etapa4.mjs
+
+      - name: Testes de integração com RLS LIGADO (suíte completa + fronteira das 84 tabelas + reversão)
+        run: npm run test:integration -- --reporter=verbose
+
+      - name: Prova do pooler com RLS ligado (PgBouncer em modo transação)
+        env:
+          DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:6432/postgres"
+          POOLER_PROOF_PORT: "6432"
+          POOLER_PROOF_REQUIRE_LEAK_DETECTION: "1"
+        run: npx tsx scripts/prove-pooler-tenant-context.ts
+
+      - name: Oráculo com RLS ligado — mutações da V3 e da V6a
+        run: npx vitest run --config vitest.integration.config.ts --reporter=verbose tests/integration/audit-v3-mutation.test.ts tests/integration/audit-v6-history.test.ts
