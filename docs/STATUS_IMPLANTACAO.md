@@ -954,6 +954,30 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 
 ---
 
+### 2026-11-10 (tarde) — correções antes do merge + decisões do usuário
+
+**Decisões do usuário (2026-11-10)**:
+- **Merge**: o branch `sprint-nov-etapa4-prep-sp39ea` entra no PR #1, e vai tudo num deploy só (a correção da comissão é pré-requisito do Grupo 1). O merge no master só com autorização explícita, junto com o checklist pós-deploy do login.
+- **Mudanças de privilégio APROVADAS para produção**: `resolve_user_organization()` e `count_user_access_grants()` (com as travas abaixo).
+- **Alerta de falha no login**: fica só no log (`login-org-resolution-failed`), conferido a cada grupo pelo roteiro.
+- **Varredura de campos (`isActive`, campos de `Unit`) — ADIADA**: nenhuma mudança de schema no meio da fase de segurança; volta depois que a Etapa 4 terminar. Ver `docs/VARREDURA_CAMPOS_SEM_TELA.md`.
+- **Desempenho**: aceito sem índice; reavaliar no Grupo 16 com `pg_stat_statements`.
+
+**Correção 1 — causa raiz da comissão** (não só o sintoma). Código usando o `prisma` GLOBAL dentro de `prisma.$transaction` é errado mesmo sem RLS: a consulta sai por outra conexão, fora da transação — não vê o que não foi commitado e não participa do rollback.
+- 8 funções consultavam pelo global e eram chamadas dentro de transação; passam a receber o cliente explicitamente (`DbClient`, sem valor padrão — impossível esquecer em silêncio): `getEffectiveDistratoRule`, `getEffectiveCommissionRule`, `getEffectiveCommissionReleaseRule`, `getEffectiveProposalEvaluationRule`, `getEffectiveRenegotiationRule`, `getEffectiveReservationRule`, `resolveExternalSplitsForSale`, `resolveInternalSplitForSale`.
+- 16 chamadas dentro de transação passam `tx`: `contract-distratos.ts` (3), `contracts.ts` (2, uma via `tryReleaseCommissions`), `proposals.ts` (2), `receivables.ts` (1, via `tryReleaseCommissions`), `renegotiations.ts` (1), `reservations.ts` (4, uma via `releaseUnitAndPromoteWaitlist`), `sales.ts` (1), `commissions.ts` (2). Fora de transação (telas, testes e 3 chamadas de `src/server`) passam `prisma`.
+- **Travas permanentes**: (1) em tempo de execução, na extensão do Prisma: como o `tx` vem do cliente base, qualquer chamada que chegue à extensão durante um callback de transação é o cliente global (ou um `$transaction` aninhado) — fora de produção lança erro; em produção registra `prisma-global-client-in-transaction` e segue, ainda com o contexto certo; (2) estática, com o compilador do TypeScript, sobre todo `src/` (uso direto, `prisma` passado como cliente, função chamada que usa o global, inclusive em outro arquivo). Controle negativo: `tx` → `prisma` em `convertProposalToSale` → a estática acusa e os 8 testes do fluxo de venda falham com `CommissionRule.findUnique`.
+
+**Correção 2 — `count_user_access_grants()`**: as travas já eram as mesmas da `resolve_user_organization()` (SECURITY DEFINER, `search_path` vazio, um parâmetro uuid, retorno inteiro escalar sem id de organização, REVOKE de PUBLIC/anon/authenticated/service_role, EXECUTE só para `app_user`, teste estrito com `EXPECT_SUPABASE_ROLES`). Controle negativo das travas: EXECUTE para `anon` → 2 testes falham; para PUBLIC → 3; `search_path = public` → 1; SECURITY INVOKER → 1.
+
+**Correção 3 — prova do Pilar 1 (filtro da aplicação)**. Medido com o filtro de organização removido de `createReservation`:
+- RLS desligado: o teste falha (a reserva cruzada é criada) → prova o Pilar 1.
+- RLS ligado: o teste **passa** mesmo sem o filtro → no job `test-rls` ele só prova o RLS.
+- **Achado**: a checagem de vazamento, sozinha, passava mesmo com o filtro removido e RLS desligado — **vazia desde sempre**, não por causa da troca para a role de migrations: procurava `unitId` = unidade da Org A, e a linha vazada fica na unidade da Org B. Mesmo defeito em `org-scope.test.ts` (proposta). As duas agora procuram o que de fato vazaria (corretor/cliente da Org A numa linha da Org B), pela role de migrations; com o filtro removido, as duas falham.
+- O job `test` (sem RLS) é a prova do Pilar 1 e o `test-rls`, do Pilar 2 — registrado no `ci.yml` para nenhum dos dois ser removido como redundante.
+
+---
+
 ### 2026-11-10 — sprint noturna: Etapa 4 inteira provada no CI (nada em produção)
 
 Tudo no branch `sprint-nov-etapa4-prep-sp39ea` (o PR #1, branch `sprint-nov-etapa4-prep`, ficou intocado). Nenhuma escrita, migration ou configuração em produção; nenhuma leitura em produção.

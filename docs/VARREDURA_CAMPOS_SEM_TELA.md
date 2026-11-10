@@ -1,5 +1,7 @@
 # Varredura: campos do schema sem tela e `isActive` sem caminho de desativação
 
+> **ADIADA (decisão do usuário, 2026-11-10)**: nenhuma mudança de schema no meio da fase de segurança — volta depois que a Etapa 4 do RLS terminar.
+>
 > 2026-11-10, sprint noturna (Bloco 4). Pendência antiga do STATUS ("campo existe no schema, nunca exposto em tela" — apareceu 3 vezes em fases diferentes). **Só registro: decidir o que expor é decisão de produto; nada foi implementado.**
 > Método: script sobre `prisma/schema.prisma` — para cada campo escalar/enum de cada modelo (fora id, datas automáticas, `organizationId`, autoria e FKs), procurar o nome do campo em `src/app` e `src/components`. Limite do método: busca por nome; um nome comum usado em outra tela (ex.: `status`) esconde o campo. A lista abaixo é o piso, não o teto.
 
