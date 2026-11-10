@@ -950,6 +950,35 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 | Alerta: gatilho confiável (cron-job.org + GitHub) | ⏳ aprovado; configuração do usuário |
 | Staging reconstruída por replay + mutação real da V3 contra ela | ✅ substituído em 2026-11-09: CI na imagem `supabase/postgres` faz o replay e roda as mutações (staging pausada) |
 | **Pooler em modo transação: contexto de organização sobrevive (novo, 2026-11-09)** | ⏳ script pronto e aprovado no CI (PgBouncer); falta o usuário rodar contra a produção pelo Supavisor. Nenhuma policy ativa antes desta prova |
+| **Etapa 4 inteira provada no CI (17 grupos, 84 tabelas, fronteira, reversão, desempenho)** | ✅ 2026-11-10, job `test-rls` — roteiro em `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`; correção da extensão do Prisma precisa estar no ar antes do Grupo 1 |
+
+---
+
+### 2026-11-10 — sprint noturna: Etapa 4 inteira provada no CI (nada em produção)
+
+Tudo no branch `sprint-nov-etapa4-prep-sp39ea` (o PR #1, branch `sprint-nov-etapa4-prep`, ficou intocado). Nenhuma escrita, migration ou configuração em produção; nenhuma leitura em produção.
+
+**Bloco 1 — travas**
+- **SET de sessão**: `src/lib/no-session-set-guard.test.ts` + regra `no-restricted-syntax` (eslint) — falham com `set_config` fora de `src/lib/prisma.ts`, sem o terceiro argumento `true`, ou `SET [SESSION|LOCAL] app.*`. Controle negativo: arquivo plantado com as 3 formas → teste e lint acusam as 3; `TRUE`→`FALSE` no `prisma.ts` → teste acusa.
+- **Login barulhento**: `src/server/login-organization.ts`. Resolução nula para usuário COM vínculo registra `login-org-resolution-failed` (JSON no log da Vercel), distinguível de "sem vínculo". Nova `count_user_access_grants()` (SECURITY DEFINER, só a contagem, mesmas travas) — migration `20261110090000` (**mudança de privilégio: só com aprovação**). Controle negativo: comportamento antigo → exatamente os 2 testes do caso de falha falham. **Alertável — avaliado, não implementado**: dá para gravar um `job_runs` FAILURE (o despacho já envia), mas isso põe escrita no caminho do login e precisa de limite por usuário; recomendação: primeiro ver o log por uma semana com o Grupo 17 ativo.
+
+**Bloco 2 — Etapa 4 no CI** (job `test-rls`, paralelo ao `test`)
+- `prisma/rls-etapa4/`: função `app_current_org_id()` + ativação/reversão dos 17 grupos (84 tabelas), gerados de `docs/RLS_INVENTARIO_TIERS.md` + schema por `scripts/rls-generate-policies.mjs` (o CI confere com `--check`). **Fora de `prisma/migrations`**: merge não ativa nada; cada grupo vira migration só por `scripts/rls-promote-group.mjs`, um por deploy.
+- Policy: FOR ALL, TO app_user, USING = WITH CHECK, ENABLE + FORCE. Tier 2/3 pela cadeia de FKs obrigatórias do inventário, com `(SELECT app_current_org_id())` (calculado uma vez por consulta).
+- **Suíte completa com RLS ligado: 455/455** (+ 86 de fronteira/reversão = 541). Sem RLS: 455/455.
+- **Fronteira, tabela por tabela (84)**: `tests/integration/rls-fronteira.test.ts`, fixtures genéricas lidas do catálogo (`helpers/rls-fixtures.ts`), linha da Org A e da Org B com a cadeia de pais inteira (Tier 2/3 pelo caminho indireto real). Leitura, update, delete, escrita (inserir apontando para B; mover A para B → 42501) e fail-closed (sem contexto e placeholder → zero). Controle negativo: `installments` sem policy, `financial_calculations` com `USING (true)`, `customers` com `WITH CHECK (true)` → os três pegos (mais catálogo e reversão).
+- **Reversão**: o `.down.sql` de cada grupo desliga exatamente as tabelas do grupo (teste em transação desfeita). Promoção testada com `prisma migrate deploy` num banco limpo.
+- **O que quebrou com RLS ligado**:
+  1. **App — comissão sumia em silêncio.** Chamada pelo `prisma` GLOBAL dentro do callback de `prisma.$transaction` rodava sem organização: um flag da extensão pulava o `set_config`, mas a chamada ia por outra conexão, fora da transação. `convertProposalToSale` → `resolveExternalSplitsForSale` não achava a regra de comissão e não criava split, sem erro (7 testes de comissão + 13 em cascata). Corrigido removendo o flag (o `tx` vem do cliente base, nunca passou pela extensão). Teste reproduzia (`null`).
+  2. **App (achado na prova do pooler, 2026-11-10)**: `withOrgContext` com promessa preguiçosa — já corrigido, ver acima.
+  3. **Arnês de teste**: os testes montam `AccessContext` à mão e não definiam contexto. `tests/integration/setup.ts` reproduz a invariante de produção (todo `AccessContext` nasce no `getAccessContext`, que define o contexto — conferido: nenhum código de produção monta `AccessContext`): funções de `src/server` chamadas com `AccessContext` rodam em `withOrgContext`. Jobs (recebem id, não `AccessContext`) passam pelo caminho real. Suítes: contexto no `beforeAll` e por teste (`aroundEach`), limpeza pela role de migrations.
+  4. **Testes com segunda organização** liam/limpavam a outra organização no contexto errado (o RLS funcionando). A checagem de vazamento de `org-scope-full` ficaria **vazia** sob RLS — passou para a role de migrations.
+  - Jobs (recálculo, sync, auditoria V1-V7), login, `list_active_org_ids()`, `resolve_user_organization()`, `count_user_access_grants()`, oráculo (V3/V6) e prova do pooler: verdes com RLS ligado.
+- **Desempenho** (`scripts/rls-benchmark.ts`, 3 organizações × 20 mil parcelas, mediana de 5): Tier 2 ~1,0×; Tier 3 pontual +0,3 ms; soma de Tier 3 por carteira até 5,3× (22 → 120 ms); suíte 92 s → 96-101 s. Forma `IN` descartada (busca pontual 670× pior); índices de cobertura sem efeito; índice em `installment_payments.installmentId` piora com RLS (38 → 111 ms). **Nenhum índice proposto**; reavaliar com `pg_stat_statements` de produção depois do Grupo 16.
+
+**Bloco 3** — `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`: pré-requisitos, passo a passo por grupo, telas, esperas (~19 dias), sinais de parada, reversão em menos de 1 minuto (SQL Editor) + registro por migration.
+
+**Bloco 4** — PgBouncer no CI já roda a prova do pooler nos dois jobs. Varredura de campos sem tela em `docs/VARREDURA_CAMPOS_SEM_TELA.md`: 10 modelos com `isActive` que nunca muda; 53 campos sem tela (15 sem uso nem no servidor, 8 deles em `Unit`).
 
 ---
 
@@ -1035,7 +1064,7 @@ Como a mutação entra: na V3, o motor é alterado dentro do processo de teste (
 | Alerta independente da Vercel (GitHub Actions → Edge Function) | Detecção de falha silenciosa | Código no master (2026-10-22), pg_net recusado; falta configurar segredos (Edge Function + GitHub), publicar a função e o disparo real |
 | Inventário de tabelas por tier | Etapa 4 do RLS | ✅ Versionado em `docs/RLS_INVENTARIO_TIERS.md` (2026-10-22); 3 caminhos ambíguos decididos pelo caminho da aplicação (40/26/18/6) |
 | ~~Staging sem `_prisma_migrations`~~ | Ensaio da Etapa 4 do RLS | ✅ Substituído em 2026-11-09: staging pausada por decisão do usuário; o replay do zero passa a ser o CI na imagem `supabase/postgres` (mesma versão da produção), com as travas das roles do Supabase estritas. `scripts/staging-bootstrap.js` removido |
-| Padrão recorrente "campo existe no schema, nunca exposto em tela" | Todo o app | Já apareceu 3 vezes em fases diferentes: área da unidade (Sprint V1), campos legais do `Development` (Fase C Etapa 1), `isActive` de SPE/Imobiliária/Corretor (Fase C Etapa 5). Não é urgente, mas vale uma varredura dedicada (todos os models × todos os campos × forms/actions correspondentes) numa passada futura de higiene, em vez de continuar achando um de cada vez de forma incidental |
+| Padrão recorrente "campo existe no schema, nunca exposto em tela" | Todo o app | Varredura feita em 2026-11-10: `docs/VARREDURA_CAMPOS_SEM_TELA.md` (10 modelos com `isActive` sem desativação, 53 campos sem tela, 15 sem uso nem no servidor). Aguarda decisão de produto |
 
 ---
 
