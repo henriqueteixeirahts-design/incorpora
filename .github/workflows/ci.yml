@@ -12,6 +12,12 @@ on:
     branches: [master]
 
 jobs:
+  # Este job roda SEM RLS e é a prova do PILAR 1 (filtro por organização da
+  # APLICAÇÃO, src/server/scope.ts e os `where: { organizationId }`): com RLS
+  # ligado, um filtro removido da aplicação fica escondido pela policy e os
+  # testes de isolamento passam mesmo assim (medido em 2026-11-10 — ver
+  # docs/STATUS_IMPLANTACAO.md). O job `test-rls` prova o PILAR 2 (as
+  # policies). Os dois são obrigatórios; não remover este achando redundante.
   test:
     runs-on: ubuntu-latest
     services:

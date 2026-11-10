@@ -208,8 +208,12 @@ describe("Proposta — Org B não consegue referenciar unidade/cliente de outra 
       }),
     ).rejects.toThrow("Cliente inválido.");
 
-    // Confirma que nenhuma proposta cross-org foi criada
-    const leaked = await prisma.proposal.findFirst({ where: { unitId: unitA.id, organizationId: orgB.id } });
+    // Confirma que nenhuma proposta cross-org foi criada. Procura o que de
+    // fato vazaria: proposta da Org B com o CLIENTE da Org A (a versão anterior
+    // procurava unitId = unidade da A, que nunca bate, e lia no contexto da A —
+    // vazia com RLS; achado em 2026-11-10). Pela role de migrations (sem RLS);
+    // no job `test` (RLS desligado) é prova do filtro da APLICAÇÃO (Pilar 1).
+    const leaked = await fixturePrisma().proposal.findFirst({ where: { organizationId: orgB.id, customerId: customerA.id } });
     expect(leaked).toBeNull();
     // Limpeza fica a cargo do afterAll (escopado por organizationId, cobre todas as tabelas tocadas aqui)
   });

@@ -311,9 +311,13 @@ describe("Reservation — Org B não cria reserva referenciando unidade/cliente/
       }),
     ).rejects.toThrow("Corretor inválido.");
 
-    // Confirma que nenhuma reserva cross-org foi criada — pela role de migrations
-    // (sem RLS): lida no contexto da Org A, a checagem nunca veria nada da Org B.
-    const leaked = await fixturePrisma().reservation.findFirst({ where: { unitId: unitA.id, organizationId: orgB.id } });
+    // Confirma que nenhuma reserva cross-org foi criada. Procura o que de fato
+    // vazaria: reserva da Org B apontando para o CORRETOR da Org A (a versão
+    // anterior procurava unitId = unidade da A, que nunca bate — a reserva
+    // vazada fica na unidade da B — e passava sempre; achado em 2026-11-10).
+    // Pela role de migrations (sem RLS), para valer nos dois jobs; no job
+    // `test` (RLS desligado) é prova do filtro da APLICAÇÃO (Pilar 1).
+    const leaked = await fixturePrisma().reservation.findFirst({ where: { organizationId: orgB.id, brokerId: brokerA.id } });
     expect(leaked).toBeNull();
 
     // cleanup local (não coberto pelo afterAll, que só limpa fixtures nomeados acima)
