@@ -954,6 +954,14 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 
 ---
 
+### Aprendizado da fase de segurança — regra do projeto (2026-11-10)
+
+**Quatro testes verdes que não testavam nada**, e nenhum achado lendo código — todos apareceram quando se plantou um erro de propósito: (1) CI conectando como superusuário (set/2026), em que todo teste de RLS daria verde; (2) auditoria V3 comparando grandezas diferentes (valor corrigido sem multa/mora contra o valor final); (3) teste de ambiente pulando em silêncio (Postgres puro sem as roles do Supabase); (4) duas checagens de vazamento entre organizações vazias desde sempre (2026-11-10). Virou regra no `CLAUDE.md`: **toda verificação que serve de prova precisa de controle negativo documentado; teste que nunca falhou não conta como prova** — e um teste que passa com e sem a proteção que diz provar não a prova (por isso os jobs `test`/Pilar 1 e `test-rls`/Pilar 2, nenhum removível como redundante).
+
+**Checklist pós-deploy do login** (merge do PR #1): `docs/CHECKLIST_POS_DEPLOY_LOGIN.md`. Merge adiado por decisão do usuário (precisa de atenção inteira; a correção da comissão só muda comportamento quando o RLS ligar). Consultas de conferência com controle negativo feito. **Pendente de decisão**: no plano Hobby da Vercel os logs de execução ficam disponíveis por menos de 1 hora — monitorar `prisma-global-client-in-transaction` e `login-org-resolution-failed` por 7 dias pelo log não funciona; opções no checklist (recomendado: persistir no banco e usar a corrente do alerta).
+
+---
+
 ### 2026-11-10 (tarde) — correções antes do merge + decisões do usuário
 
 **Decisões do usuário (2026-11-10)**:
