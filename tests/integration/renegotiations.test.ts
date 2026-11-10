@@ -444,7 +444,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Renegociação Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    const rule = await getEffectiveRenegotiationRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual(DEFAULT_RENEGOTIATION_RULE);
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -474,7 +474,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(Number(general?.maxDiscountOnChargesPercent)).toBe(15);
 
-    const effective = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    const effective = await getEffectiveRenegotiationRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({
       maxDiscountOnChargesPercent: 15,
       maxTermMonths: 12,
@@ -514,7 +514,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       approvalLevels: ["SALES_MANAGER"],
     });
 
-    const effective = await getEffectiveRenegotiationRule(org2.id, dev2.id);
+    const effective = await getEffectiveRenegotiationRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({
       maxDiscountOnChargesPercent: 25,
       maxTermMonths: 30,

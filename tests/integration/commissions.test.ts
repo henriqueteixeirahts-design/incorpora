@@ -299,7 +299,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Comissão Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    const rule = await getEffectiveCommissionReleaseRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual(DEFAULT_COMMISSION_RELEASE_RULE);
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -326,7 +326,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(general?.trigger).toBe("ON_DOWN_PAYMENT_RECEIVED");
 
-    const effective = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    const effective = await getEffectiveCommissionReleaseRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({ trigger: "ON_DOWN_PAYMENT_RECEIVED", installmentsPaidPercent: 50 });
 
     await prisma.commissionReleaseRule.deleteMany({ where: { organizationId: org2.id } });
@@ -354,7 +354,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       installmentsPaidPercent: 75,
     });
 
-    const effective = await getEffectiveCommissionReleaseRule(org2.id, dev2.id);
+    const effective = await getEffectiveCommissionReleaseRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({ trigger: "ON_INSTALLMENTS_PAID_PERCENT", installmentsPaidPercent: 75 });
 
     const overrides = await listCommissionReleaseRuleOverrides(ctx2);

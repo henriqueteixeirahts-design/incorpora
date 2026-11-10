@@ -4,6 +4,7 @@ import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { getEffectiveRenegotiationRule, getRenegotiationRule } from "@/server/renegotiation-rules";
 import { RenegotiationRuleForm } from "./renegotiation-rule-form";
+import { prisma } from "@/lib/prisma";
 
 export default async function RenegotiationRulePage({
   params,
@@ -17,7 +18,7 @@ export default async function RenegotiationRulePage({
   if (!development) notFound();
 
   const [rule, ownRule] = await Promise.all([
-    getEffectiveRenegotiationRule(context.organizationId, id),
+    getEffectiveRenegotiationRule(prisma, context.organizationId, id),
     getRenegotiationRule(context, id),
   ]);
   const canEdit = hasPermission(context, "development", "EDIT");

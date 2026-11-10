@@ -91,7 +91,7 @@ afterAll(async () => {
 
 describe("Regra de reserva — defaults e configuração", () => {
   it("usa os defaults sugeridos quando o empreendimento não tem regra configurada", async () => {
-    const rule = await getEffectiveReservationRule(orgA.id, developmentId);
+    const rule = await getEffectiveReservationRule(prisma, orgA.id, developmentId);
     expect(rule.validityHours).toBe(48);
     expect(rule.maxActiveReservationsPerBroker).toBe(3);
     expect(rule.waitlistEnabled).toBe(true);
@@ -136,7 +136,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Reserva Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveReservationRule(org2.id, dev2.id);
+    const rule = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual(DEFAULT_RESERVATION_RULE);
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -164,7 +164,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(general?.validityHours).toBe(72);
 
-    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    const effective = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(effective.validityHours).toBe(72);
     expect(effective.maxActiveReservationsPerBroker).toBe(5);
 
@@ -187,7 +187,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     await upsertReservationRule(ctx2, null, { ...DEFAULT_RESERVATION_RULE, validityHours: 72 });
     await upsertReservationRule(ctx2, dev2.id, { ...DEFAULT_RESERVATION_RULE, validityHours: 24 });
 
-    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    const effective = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(effective.validityHours).toBe(24);
 
     const overrides = await listReservationRuleOverrides(ctx2);

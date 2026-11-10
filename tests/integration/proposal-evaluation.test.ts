@@ -463,7 +463,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Avaliação Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    const rule = await getEffectiveProposalEvaluationRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual({ ...DEFAULT_PROPOSAL_EVALUATION_RULE, analysisApprovalLevels: DEFAULT_ANALYSIS_APPROVAL_LEVELS });
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -498,7 +498,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(Number(general?.vplTolerancePercent)).toBe(5);
 
-    const effective = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    const effective = await getEffectiveProposalEvaluationRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual(generalInput);
 
     await prisma.proposalEvaluationRule.deleteMany({ where: { organizationId: org2.id } });
@@ -542,7 +542,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     await upsertProposalEvaluationRule(ctx2, null, generalInput);
     await upsertProposalEvaluationRule(ctx2, dev2.id, overrideInput);
 
-    const effective = await getEffectiveProposalEvaluationRule(org2.id, dev2.id);
+    const effective = await getEffectiveProposalEvaluationRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual(overrideInput);
 
     const overrides = await listProposalEvaluationRuleOverrides(ctx2);

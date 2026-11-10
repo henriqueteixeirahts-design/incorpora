@@ -305,7 +305,7 @@ export async function confirmSignature(
       // bloco legado acima, pra nunca aparecer em contract.sale.commissionSplits
       // (snapshot pré-transação) e ser decrementado por engano pelo abate de
       // entrada-como-comissão do fluxo legado.
-      const internalSplit = await resolveInternalSplitForSale({
+      const internalSplit = await resolveInternalSplitForSale(tx, {
         organizationId: context.organizationId,
         developmentId: contract.developmentId,
         salePrice: Number(contract.sale.salePrice),

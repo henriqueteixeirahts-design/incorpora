@@ -136,7 +136,7 @@ describe("Regra de retenção — teto legal", () => {
   it("aceita até 25% sem patrimônio de afetação, rejeita acima", async () => {
     const development = await createDevelopment(context, { speId: (await prisma.development.findFirstOrThrow({ where: { id: developmentId } })).speId, name: "Dev sem afetação", type: "RESIDENTIAL_BUILDING" });
     await upsertDistratoRule(context, development.id, { retentionPercent: 25, reverseCommissionOnDistrato: true });
-    const rule = await getEffectiveDistratoRule(context.organizationId, development.id);
+    const rule = await getEffectiveDistratoRule(prisma, context.organizationId, development.id);
     expect(rule.retentionPercent).toBe(25);
 
     await expect(
@@ -150,7 +150,7 @@ describe("Regra de retenção — teto legal", () => {
     await prisma.development.update({ where: { id: development.id }, data: { hasPropertyAffectation: true } });
 
     await upsertDistratoRule(context, development.id, { retentionPercent: 50, reverseCommissionOnDistrato: true });
-    const rule = await getEffectiveDistratoRule(context.organizationId, development.id);
+    const rule = await getEffectiveDistratoRule(prisma, context.organizationId, development.id);
     expect(rule.retentionPercent).toBe(50);
 
     await expect(
@@ -176,7 +176,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Distrato Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveDistratoRule(org2.id, dev2.id);
+    const rule = await getEffectiveDistratoRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual(DEFAULT_DISTRATO_RULE);
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -200,7 +200,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(Number(general?.retentionPercent)).toBe(18);
 
-    const effective = await getEffectiveDistratoRule(org2.id, dev2.id);
+    const effective = await getEffectiveDistratoRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({ retentionPercent: 18, reverseCommissionOnDistrato: false });
 
     await prisma.distratoRule.deleteMany({ where: { organizationId: org2.id } });
@@ -222,7 +222,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     await upsertDistratoRule(ctx2, null, { retentionPercent: 18, reverseCommissionOnDistrato: false });
     await upsertDistratoRule(ctx2, dev2.id, { retentionPercent: 22, reverseCommissionOnDistrato: true });
 
-    const effective = await getEffectiveDistratoRule(org2.id, dev2.id);
+    const effective = await getEffectiveDistratoRule(prisma, org2.id, dev2.id);
     expect(effective).toEqual({ retentionPercent: 22, reverseCommissionOnDistrato: true });
 
     const overrides = await listDistratoRuleOverrides(ctx2);

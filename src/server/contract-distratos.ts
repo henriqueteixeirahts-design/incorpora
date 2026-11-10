@@ -54,7 +54,7 @@ export async function createDistrato(context: AccessContext, contractId: string,
     if (contract.status !== "SIGNED") throw new Error("Só é possível distratar contrato assinado.");
     if (contract.distrato) throw new Error("Este contrato já tem um distrato — rescisão é terminal, não é possível criar outro.");
 
-    const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
+    const rule = await getEffectiveDistratoRule(tx, context.organizationId, contract.developmentId);
     const totalPaid = sumPaid(contract.portfolio?.installments ?? []);
 
     // Comissão interna (Natureza 2, "integra o preço" —
@@ -181,14 +181,14 @@ export async function signDistrato(context: AccessContext, distratoId: string, s
       await tx.installment.update({ where: { id: installment.id }, data: { status: "CANCELLED" } });
     }
 
-    const rule = await getEffectiveDistratoRule(context.organizationId, contract.developmentId);
+    const rule = await getEffectiveDistratoRule(tx, context.organizationId, contract.developmentId);
     // Splits MANAGER (Natureza 2) do modelo novo nunca são estornados aqui —
     // o que já foi acumulado (accruedAmount) reflete dinheiro que o cliente
     // já pagou e não volta (mesmo "sem estorno" da comissão externa); o que
     // ainda não foi pago simplesmente para de acumular sozinho, porque as
     // parcelas em aberto acabam de virar CANCELLED (não é possível registrar
     // pagamento nelas — ver registerInstallmentPayment).
-    const commissionRule = await getEffectiveCommissionRule(context.organizationId, contract.developmentId);
+    const commissionRule = await getEffectiveCommissionRule(tx, context.organizationId, contract.developmentId);
     const usesNewInternalModel = commissionRule.internalCommissionPercent !== null;
 
     let reversedCommissions = 0;

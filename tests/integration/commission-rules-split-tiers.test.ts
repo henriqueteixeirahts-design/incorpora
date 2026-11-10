@@ -48,7 +48,7 @@ afterAll(async () => {
 
 describe("CommissionRule — cascata empreendimento → geral → default", () => {
   it("sem regra nenhuma, resolve pro default (percentuais nulos)", async () => {
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBeNull();
     expect(effective.internalCommissionPercent).toBeNull();
   });
@@ -60,7 +60,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
       internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null,
     });
 
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBe(6);
     expect(effective.internalCommissionPercent).toBe(2);
   });
@@ -72,7 +72,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
       internalCommissionAppliesTo: "PARTICIPATED_ONLY", internalManagerBrokerId: null,
     });
 
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBe(8);
     expect(effective.internalCommissionAppliesTo).toBe("PARTICIPATED_ONLY");
 

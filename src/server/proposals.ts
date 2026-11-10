@@ -227,7 +227,7 @@ export async function createProposal(context: AccessContext, input: CreatePropos
       include: { postHabiteSeIndexRule: { include: { values: true } } },
     });
     const phases = buildProposalCorrectionPhases(salesTable, development);
-    const rule = await getEffectiveProposalEvaluationRule(context.organizationId, input.developmentId);
+    const rule = await getEffectiveProposalEvaluationRule(tx, context.organizationId, input.developmentId);
 
     const evaluation = evaluateProposal({
       standardFlow,
@@ -336,7 +336,7 @@ export async function getProposalReferenceData(
     include: { postHabiteSeIndexRule: { include: { values: true } } },
   });
   const phases = buildProposalCorrectionPhases(salesTable, development);
-  const rule = await getEffectiveProposalEvaluationRule(context.organizationId, input.developmentId);
+  const rule = await getEffectiveProposalEvaluationRule(prisma, context.organizationId, input.developmentId);
 
   return {
     listPrice,
@@ -426,7 +426,7 @@ export async function submitProposalForApproval(context: AccessContext, proposal
     }
 
     // PENDING_ANALYSIS — segue pro módulo de aprovação existente.
-    const rule = await getEffectiveProposalEvaluationRule(context.organizationId, proposal.developmentId);
+    const rule = await getEffectiveProposalEvaluationRule(tx, context.organizationId, proposal.developmentId);
     const levels: ApprovalLevel[] = rule.analysisApprovalLevels;
 
     for (const level of levels) {
