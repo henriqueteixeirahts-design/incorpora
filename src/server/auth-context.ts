@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { setCurrentOrgId } from "@/lib/tenant-context";
+import { resolveLoginOrganization } from "@/server/login-organization";
 
 /**
  * Escopo de empreendimento do usuário (docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md,
@@ -48,11 +49,11 @@ export async function getAccessContext(): Promise<AccessContext | null> {
   // ler `access_grants` antes de existir contexto não veria nada com a
   // policy ativa. Com o id em mãos, o contexto é definido ANTES da leitura
   // completa dos vínculos, que passa a valer sob a policy normal.
-  const [resolved] = await prisma.$queryRaw<{ organization_id: string | null }[]>`
-    SELECT resolve_user_organization(${authUser.id}::uuid) AS organization_id
-  `;
-  const organizationId = resolved?.organization_id ?? null;
-  if (!organizationId) return null;
+  // Nulo com vínculo existente registra erro explícito
+  // (`login-org-resolution-failed`) — ver src/server/login-organization.ts.
+  const resolution = await resolveLoginOrganization(authUser.id);
+  if (resolution.status !== "RESOLVED") return null;
+  const { organizationId } = resolution;
   setCurrentOrgId(organizationId);
 
   const grants = await prisma.accessGrant.findMany({
