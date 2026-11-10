@@ -40,6 +40,24 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 30
+      # Pooler em modo transação (pré-requisito da Etapa 4, aprovado em
+      # 2026-11-09): a produção conecta pelo Supavisor em modo transação
+      # (porta 6543), onde a conexão física é reaproveitada a cada transação
+      # e um SET de sessão escorrega entre clientes. O CI não tem o
+      # Supavisor; o PgBouncer em modo transação é a mesma classe de pooling.
+      # Pool de 2 conexões físicas, de propósito: força o reuso entre
+      # organizações que scripts/prove-pooler-tenant-context.ts exige (sem
+      # reuso, a prova é inconclusiva e falha).
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.26.1-p0
+        env:
+          DATABASE_URL: "postgres://app_user:app_user_ci_pw@postgres:5432/postgres"
+          POOL_MODE: transaction
+          DEFAULT_POOL_SIZE: "2"
+          MAX_CLIENT_CONN: "100"
+          AUTH_TYPE: scram-sha-256
+        ports:
+          - 6432:5432
     env:
       # RLS Pilar 2, Etapa 2.5/3 — DATABASE_URL (o que a aplicação e os
       # testes usam de verdade, via src/lib/prisma.ts) conecta como
@@ -89,6 +107,18 @@ jobs:
         # --reporter=verbose: nome e resultado de cada teste no log do CI (prova
         # por escrito dos controles e mutações da V3/V6, não só "N tests" por arquivo).
         run: npm run test:integration -- --reporter=verbose
+
+      # Prova do pooler: contexto de organização (SET LOCAL via a extensão de
+      # src/lib/prisma.ts) visível em toda a transação, sem vazamento entre
+      # clientes, policy de RLS filtrando (tabela temporária) — com reuso de
+      # conexão física comprovado e o controle negativo (SET de sessão vaza)
+      # obrigatório. Contra a produção, o mesmo script roda pelo Supavisor.
+      - name: Prova do pooler (PgBouncer em modo transação — contexto de organização não vaza)
+        env:
+          DATABASE_URL: "postgresql://app_user:app_user_ci_pw@localhost:6432/postgres"
+          POOLER_PROOF_PORT: "6432"
+          POOLER_PROOF_REQUIRE_LEAK_DETECTION: "1"
+        run: npx tsx scripts/prove-pooler-tenant-context.ts
 
       - name: Build
         run: npm run build
