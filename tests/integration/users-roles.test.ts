@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -10,6 +10,8 @@ import {
   duplicateRoleForCustomization,
   deleteCustomRole,
 } from "@/server/roles";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Etapa 5 — cobertura da camada de UI
@@ -35,6 +37,7 @@ let permEditId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Usuários e Perfis" } });
+  setCurrentOrgId(org.id);
   otherOrg = await prisma.organization.create({ data: { name: "Org — Usuários e Perfis (outra)" } });
   const actor = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "actor-users-roles@teste.local", fullName: "Ator" },
@@ -70,18 +73,20 @@ beforeAll(async () => {
   });
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id, otherOrg.id];
-  await prisma.rolePermission.deleteMany({ where: { permissionId: { in: [permViewId, permEditId] } } });
-  await prisma.permission.deleteMany({ where: { id: { in: [permViewId, permEditId] } } });
-  await prisma.accessGrant.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.role.deleteMany({ where: { OR: [{ organizationId: { in: orgIds } }, { id: systemRole.id }] } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { email: { contains: "-users-roles@teste.local" } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().rolePermission.deleteMany({ where: { permissionId: { in: [permViewId, permEditId] } } });
+  await fixturePrisma().permission.deleteMany({ where: { id: { in: [permViewId, permEditId] } } });
+  await fixturePrisma().accessGrant.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().role.deleteMany({ where: { OR: [{ organizationId: { in: orgIds } }, { id: systemRole.id }] } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { email: { contains: "-users-roles@teste.local" } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("listOrganizationUsersPaged — agrega múltiplos AccessGrant numa linha por usuário", () => {

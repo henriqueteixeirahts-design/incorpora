@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import {
+  classifyMissingEmailConfig,
   dispatchPendingJobAlerts,
+  evaluateStaleness,
   recordDispatchHeartbeat,
   type DispatchConfig,
   type DispatchDb,
@@ -109,15 +111,21 @@ describe("Alerta de job — sem pg_net", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("o workflow do GitHub Actions é agendado, lê o token de um secret e falha em qualquer resposta que não seja 200", () => {
+  it("o workflow do GitHub Actions é agendado, lê o token de um secret, separa configuração (1 falha/dia) de alerta não entregue (falha sempre)", () => {
     const workflow = fs.readFileSync(path.resolve(__dirname, "../../.github/workflows/job-alert-dispatch.yml"), "utf8");
     expect(workflow).toMatch(/schedule:\s*\n\s*- cron: "5,20,35,50 \* \* \* \*"/);
     expect(workflow).toContain("${{ secrets.JOB_ALERT_DISPATCH_TOKEN }}");
-    // Sem chave de liga/desliga: secret ou variável ausente falha o job, nunca "skipped".
+    // Nunca "skipped": nenhuma condição no job.
     expect(workflow).not.toMatch(/^\s+if:/m);
-    expect(workflow).toMatch(/if \[ -z "\$\{TOKEN\}" \]; then[\s\S]*?exit 1/);
-    expect(workflow).toMatch(/if \[ -z "\$\{URL\}" \]; then[\s\S]*?exit 1/);
-    expect(workflow).toMatch(/if \[ "\$\{status\}" != "200" \]; then[\s\S]*?exit 1/);
+    // Configuração ausente/recusada passa por config_problem (falha no máximo 1x/24h, senão aviso).
+    expect(workflow).toMatch(/if \[ -z "\$\{TOKEN\}" \]; then\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/if \[ -z "\$\{URL\}" \]; then\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/401\)\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/503\)\s*\n\s*config_problem/);
+    expect(workflow).toMatch(/config_problem\(\) \{[\s\S]*?created=%3E%3D\$\{since\}[\s\S]*?exit 0[\s\S]*?exit 1/);
+    // Qualquer outra resposta que não seja 200 (502 = alerta não entregue, 500, rede) falha toda vez.
+    expect(workflow).toMatch(/200\)\s*\n\s*exit 0 ;;/);
+    expect(workflow).toMatch(/\*\)\s*\n\s*echo "::error::ALERTA NÃO ENTREGUE[^\n]*\n\s*exit 1 ;;/);
     expect(workflow).not.toMatch(/Bearer [A-Za-z0-9]{16,}/); // token nunca escrito no repo
   });
 });
@@ -208,5 +216,89 @@ describe("Alerta de job — despacho pela Edge Function, independente da Vercel"
 
     await dispatchPendingJobAlerts(db, config, fetchMock as unknown as typeof fetch);
     expect(callsFor(fetchMock, historical)).toHaveLength(0);
+  });
+});
+
+describe("Canal de e-mail sem configuração — pendente x quebrado (503 x 500)", () => {
+  const clearBeats = () => client.query(`DELETE FROM job_runs WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL`);
+
+  it("nunca houve despacho bem-sucedido: configuração pendente (a função responde 503, 1 falha/dia no workflow)", async () => {
+    await clearBeats();
+    await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
+    expect(await classifyMissingEmailConfig(db)).toBe("pending_setup");
+    await clearBeats();
+  });
+
+  it("já houve despacho bem-sucedido e o canal sumiu: quebra (a função responde 500, falha em toda execução)", async () => {
+    await clearBeats();
+    await recordDispatchHeartbeat(db, { success: true, summary: { pending: 0, delivered: 0, failed: [] } });
+    await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
+    expect(await classifyMissingEmailConfig(db)).toBe("broken");
+    await clearBeats();
+  });
+});
+
+describe("Vigia de atraso na própria Edge Function (fora da Vercel, do banco e do GitHub)", () => {
+  async function beat(minutesAgo: number) {
+    await client.query(
+      `INSERT INTO job_runs (id, "jobName", "organizationId", status, "triggeredBy", "startedAt", "finishedAt", "alertSuppressed")
+       VALUES (gen_random_uuid(), 'job-alert-dispatch', NULL, 'SUCCESS', 'CRON', now() - make_interval(mins => $1), now() - make_interval(mins => $1), true)`,
+      [minutesAgo],
+    );
+  }
+  async function jobSuccess(jobName: string, hoursAgo: number) {
+    await client.query(
+      `INSERT INTO job_runs (id, "jobName", "organizationId", status, "triggeredBy", "startedAt", "finishedAt")
+       VALUES (gen_random_uuid(), $1, $2, 'SUCCESS', 'CRON', now() - make_interval(hours => $3), now() - make_interval(hours => $3))`,
+      [jobName, orgId, hoursAgo],
+    );
+  }
+  const clearBeats = () => client.query(`DELETE FROM job_runs WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL`);
+  const clearOrgRuns = () => client.query(`DELETE FROM job_runs WHERE "organizationId" = $1`, [orgId]);
+
+  it("Vercel parada: recalculate-installments sem sucesso há mais de 26h vira atraso; dentro da janela, não", async () => {
+    await clearOrgRuns();
+    await jobSuccess("recalculate-installments", 30);
+    await jobSuccess("sync-index-values", 24);
+    let problems = await evaluateStaleness(db);
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "job_overdue", organizationId: orgId, jobName: "recalculate-installments" }));
+    expect(problems).not.toContainEqual(expect.objectContaining({ kind: "job_overdue", organizationId: orgId, jobName: "sync-index-values" }));
+
+    await jobSuccess("recalculate-installments", 2);
+    problems = await evaluateStaleness(db);
+    expect(problems.filter((p) => p.kind === "job_overdue" && p.organizationId === orgId)).toEqual([]);
+    await clearOrgRuns();
+  });
+
+  it("sync-index-values sem sucesso há mais de 8 dias vira atraso", async () => {
+    await clearOrgRuns();
+    await jobSuccess("recalculate-installments", 1);
+    await jobSuccess("sync-index-values", 9 * 24);
+    const problems = await evaluateStaleness(db);
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "job_overdue", organizationId: orgId, jobName: "sync-index-values" }));
+    await clearOrgRuns();
+  });
+
+  it("alerta pendente há mais de 1h vira atraso; pendente recente, não", async () => {
+    await clearOrgRuns();
+    const old = await insertJobRun({ jobName: "audit-update", status: "FAILURE", minutesAgo: 90, error: "ALERT" });
+    const recent = await insertJobRun({ jobName: "audit-update", status: "FAILURE", minutesAgo: 5, error: "ALERT" });
+    const problems = await evaluateStaleness(db);
+    expect(problems).toContainEqual(expect.objectContaining({ kind: "old_pending_alert", jobRunId: old }));
+    expect(problems).not.toContainEqual(expect.objectContaining({ kind: "old_pending_alert", jobRunId: recent }));
+    await client.query(`UPDATE job_runs SET "alertSuppressed" = true WHERE id IN ($1, $2)`, [old, recent]);
+    await clearOrgRuns();
+  });
+
+  it("buraco no gatilho: último despacho bem-sucedido há mais de 1h vira atraso; há 10 min, não; nunca houve (configuração inicial), não", async () => {
+    await clearBeats();
+    expect((await evaluateStaleness(db)).some((p) => p.kind === "dispatch_gap")).toBe(false);
+
+    await beat(90);
+    expect(await evaluateStaleness(db)).toContainEqual(expect.objectContaining({ kind: "dispatch_gap" }));
+
+    await beat(10);
+    expect((await evaluateStaleness(db)).some((p) => p.kind === "dispatch_gap")).toBe(false);
+    await clearBeats();
   });
 });

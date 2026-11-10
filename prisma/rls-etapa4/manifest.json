@@ -1,0 +1,541 @@
+[
+  {
+    "group": 1,
+    "title": "Configurações e regras",
+    "file": "01_grupo_configuracoes_e_regras",
+    "tables": [
+      {
+        "table": "settings",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "collection_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "collection_rule_steps",
+        "tier": 2,
+        "path": "collectionRuleId → collection_rules"
+      },
+      {
+        "table": "commission_release_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "commission_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "distrato_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "renegotiation_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "reservation_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "proposal_evaluation_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "allocation_templates",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "allocation_template_destinations",
+        "tier": 2,
+        "path": "templateId → allocation_templates"
+      },
+      {
+        "table": "scheduled_reports",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 2,
+    "title": "Modelos de documento e documentos",
+    "file": "02_grupo_modelos_de_documento_e_documentos",
+    "tables": [
+      {
+        "table": "document_templates",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "document_template_developments",
+        "tier": 2,
+        "path": "documentTemplateId → document_templates"
+      },
+      {
+        "table": "documents",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 3,
+    "title": "Cadastros de terceiros",
+    "file": "03_grupo_cadastros_de_terceiros",
+    "tables": [
+      {
+        "table": "suppliers",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "cost_centers",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "bank_accounts",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "real_estate_agencies",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "agency_split_tiers",
+        "tier": 2,
+        "path": "agencyId → real_estate_agencies"
+      },
+      {
+        "table": "brokers",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "partnership_agreements",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 4,
+    "title": "Clientes",
+    "file": "04_grupo_clientes",
+    "tables": [
+      {
+        "table": "customers",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "customer_contacts",
+        "tier": 2,
+        "path": "customerId → customers"
+      }
+    ]
+  },
+  {
+    "group": 5,
+    "title": "SPEs",
+    "file": "05_grupo_spes",
+    "tables": [
+      {
+        "table": "special_purpose_entities",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "spe_bank_accounts",
+        "tier": 2,
+        "path": "speId → special_purpose_entities"
+      },
+      {
+        "table": "spe_lands",
+        "tier": 2,
+        "path": "speId → special_purpose_entities"
+      },
+      {
+        "table": "spe_partners",
+        "tier": 2,
+        "path": "speId → special_purpose_entities"
+      }
+    ]
+  },
+  {
+    "group": 6,
+    "title": "Investidores das SPEs",
+    "file": "06_grupo_investidores_das_spes",
+    "tables": [
+      {
+        "table": "spe_investors",
+        "tier": 2,
+        "path": "speId → special_purpose_entities"
+      },
+      {
+        "table": "spe_investor_contribution_forecasts",
+        "tier": 3,
+        "path": "investorId → spe_investors → special_purpose_entities"
+      },
+      {
+        "table": "spe_capital_calls",
+        "tier": 3,
+        "path": "forecastId → forecasts → spe_investors → special_purpose_entities"
+      },
+      {
+        "table": "spe_investor_contributions",
+        "tier": 3,
+        "path": "investorId → spe_investors → special_purpose_entities"
+      },
+      {
+        "table": "spe_investor_returns",
+        "tier": 3,
+        "path": "investorId → spe_investors → special_purpose_entities"
+      },
+      {
+        "table": "spe_investor_loan_calculations",
+        "tier": 3,
+        "path": "investorId → spe_investors → special_purpose_entities"
+      }
+    ]
+  },
+  {
+    "group": 7,
+    "title": "Índices",
+    "file": "07_grupo_indices",
+    "tables": [
+      {
+        "table": "index_rules",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "index_values",
+        "tier": 2,
+        "path": "indexRuleId → index_rules"
+      }
+    ]
+  },
+  {
+    "group": 8,
+    "title": "Auditoria e trilha",
+    "file": "08_grupo_auditoria_e_trilha",
+    "tables": [
+      {
+        "table": "audit_events",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "audit_runs",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "audit_check_results",
+        "tier": 2,
+        "path": "auditRunId → audit_runs"
+      },
+      {
+        "table": "notifications",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 9,
+    "title": "Empreendimentos e estrutura física",
+    "file": "09_grupo_empreendimentos_e_estrutura_fisica",
+    "tables": [
+      {
+        "table": "developments",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "development_events",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "buildings",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "floors",
+        "tier": 3,
+        "path": "buildingId → buildings → developments"
+      },
+      {
+        "table": "units",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "unit_links",
+        "tier": 3,
+        "path": "principalUnitId → units → developments"
+      },
+      {
+        "table": "unit_status_history",
+        "tier": 3,
+        "path": "unitId → units → developments"
+      },
+      {
+        "table": "construction_phases",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "construction_measurements",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "construction_phase_measurement_values",
+        "tier": 3,
+        "path": "measurementId → construction_measurements → developments"
+      }
+    ]
+  },
+  {
+    "group": 10,
+    "title": "Comercial: tabela de vendas, reservas, propostas",
+    "file": "10_grupo_comercial_tabela_de_vendas_reservas_prop",
+    "tables": [
+      {
+        "table": "sales_tables",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "sales_table_units",
+        "tier": 3,
+        "path": "salesTableId → sales_tables → developments"
+      },
+      {
+        "table": "reservations",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "reservation_waitlist_entries",
+        "tier": 2,
+        "path": "customerId → customers"
+      },
+      {
+        "table": "proposals",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "proposal_approvals",
+        "tier": 2,
+        "path": "proposalId → proposals"
+      }
+    ]
+  },
+  {
+    "group": 11,
+    "title": "Vendas e contratos",
+    "file": "11_grupo_vendas_e_contratos",
+    "tables": [
+      {
+        "table": "sales",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "contracts",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "contract_amendments",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "contract_assignments",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "contract_distratos",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 12,
+    "title": "Comissões",
+    "file": "12_grupo_comissoes",
+    "tables": [
+      {
+        "table": "commission_splits",
+        "tier": 2,
+        "path": "saleId → sales"
+      },
+      {
+        "table": "external_commission_splits",
+        "tier": 2,
+        "path": "saleId → sales"
+      },
+      {
+        "table": "commission_split_payables",
+        "tier": 2,
+        "path": "payableId → payables"
+      }
+    ]
+  },
+  {
+    "group": 13,
+    "title": "Contas a pagar",
+    "file": "13_grupo_contas_a_pagar",
+    "tables": [
+      {
+        "table": "payables",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "payable_items",
+        "tier": 2,
+        "path": "payableId → payables"
+      },
+      {
+        "table": "payable_allocations",
+        "tier": 2,
+        "path": "payableId → payables"
+      }
+    ]
+  },
+  {
+    "group": 14,
+    "title": "Permutas",
+    "file": "14_grupo_permutas",
+    "tables": [
+      {
+        "table": "permutantes",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "exchange_contracts",
+        "tier": 2,
+        "path": "developmentId → developments"
+      },
+      {
+        "table": "exchange_contract_lands",
+        "tier": 3,
+        "path": "exchangeContractId → exchange_contracts → developments"
+      },
+      {
+        "table": "exchange_contract_financial_terms",
+        "tier": 3,
+        "path": "exchangeContractId → exchange_contracts → developments"
+      },
+      {
+        "table": "exchange_contract_financial_units",
+        "tier": 3,
+        "path": "unitId → units → developments"
+      },
+      {
+        "table": "exchange_apuration_periods",
+        "tier": 3,
+        "path": "exchangeContractId → exchange_contracts → developments"
+      },
+      {
+        "table": "exchange_repasses",
+        "tier": 3,
+        "path": "exchangeContractId → exchange_contracts → developments"
+      },
+      {
+        "table": "exchange_retention_releases",
+        "tier": 3,
+        "path": "exchangeContractId → exchange_contracts → developments"
+      }
+    ]
+  },
+  {
+    "group": 15,
+    "title": "Cobrança e renegociação",
+    "file": "15_grupo_cobranca_e_renegociacao",
+    "tables": [
+      {
+        "table": "collection_contact_logs",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "renegotiation_agreements",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "renegotiation_approvals",
+        "tier": 2,
+        "path": "agreementId → renegotiation_agreements"
+      }
+    ]
+  },
+  {
+    "group": 16,
+    "title": "Carteira de recebíveis",
+    "file": "16_grupo_carteira_de_recebiveis",
+    "tables": [
+      {
+        "table": "receivable_portfolios",
+        "tier": 1,
+        "path": "organizationId"
+      },
+      {
+        "table": "installments",
+        "tier": 2,
+        "path": "portfolioId → receivable_portfolios"
+      },
+      {
+        "table": "installment_payments",
+        "tier": 3,
+        "path": "installmentId → installments → receivable_portfolios"
+      },
+      {
+        "table": "financial_calculations",
+        "tier": 3,
+        "path": "installmentId → installments → receivable_portfolios"
+      },
+      {
+        "table": "receivables",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  },
+  {
+    "group": 17,
+    "title": "Vínculo de acesso",
+    "file": "17_grupo_vinculo_de_acesso",
+    "tables": [
+      {
+        "table": "access_grants",
+        "tier": 1,
+        "path": "organizationId"
+      }
+    ]
+  }
+]

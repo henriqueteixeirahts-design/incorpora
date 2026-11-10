@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createDevelopment } from "@/server/developments";
@@ -14,6 +14,8 @@ import {
   type CreateReceivableInput,
 } from "@/server/receivables-avulsos";
 import { getCashFlow } from "@/server/cash-flow";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Fase B, etapa 6 (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md, Parte 4.3) —
@@ -42,6 +44,7 @@ function baseInput(overrides: Partial<CreateReceivableInput> = {}): CreateReceiv
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Receivables Avulsos" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "avulsos@teste.local", fullName: "Usuário Avulsos" },
   });
@@ -62,9 +65,11 @@ beforeAll(async () => {
   customerId = customer.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
 });
 
 describe("CRUD básico", () => {

@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
 import { createSpeInvestor } from "@/server/spe-people";
 import { createContributionForecast, createContribution } from "@/server/spe-contributions";
 import { getCashFlow } from "@/server/cash-flow";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_APORTES_INVESTIDORES.md, Etapa 7 — fluxo de caixa discriminado
@@ -21,6 +23,7 @@ let bankAccountId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Fluxo por Origem" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "fluxo-origem@teste.local", fullName: "Usuário Fluxo Origem" },
   });
@@ -55,15 +58,17 @@ beforeAll(async () => {
   });
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: org.id } } } });
-  await prisma.speInvestorContributionForecast.deleteMany({ where: { investor: { spe: { organizationId: org.id } } } });
-  await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: org.id } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
-  await prisma.bankAccount.deleteMany({ where: { organizationId: org.id } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: org.id } });
+  await fixturePrisma().speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: org.id } } } });
+  await fixturePrisma().speInvestorContributionForecast.deleteMany({ where: { investor: { spe: { organizationId: org.id } } } });
+  await fixturePrisma().speInvestor.deleteMany({ where: { spe: { organizationId: org.id } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().bankAccount.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: org.id } });
 });
 
 describe("getCashFlow — discriminação por origem (aporte de investidor)", () => {

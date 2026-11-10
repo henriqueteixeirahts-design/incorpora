@@ -4,6 +4,7 @@ import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { getEffectiveCommissionReleaseRule, getCommissionReleaseRule } from "@/server/commission-release-rules";
 import { CommissionReleaseRuleForm } from "./commission-release-rule-form";
+import { prisma } from "@/lib/prisma";
 
 export default async function CommissionReleaseRulePage({
   params,
@@ -17,7 +18,7 @@ export default async function CommissionReleaseRulePage({
   if (!development) notFound();
 
   const [rule, ownRule] = await Promise.all([
-    getEffectiveCommissionReleaseRule(context.organizationId, id),
+    getEffectiveCommissionReleaseRule(prisma, context.organizationId, id),
     getCommissionReleaseRule(context, id),
   ]);
   const canEdit = hasPermission(context, "development", "EDIT");

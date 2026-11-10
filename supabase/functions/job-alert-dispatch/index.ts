@@ -1,26 +1,31 @@
 // Edge Function `job-alert-dispatch` (Supabase, Deno). Chamada a cada 15
-// min pelo workflow do GitHub Actions .github/workflows/job-alert-dispatch.yml
-// — gatilho fora da Vercel e fora do banco (decisão de 2026-10-22: pg_net
-// recusado, ver docs/STATUS_IMPLANTACAO.md). Entrega os alertas de falha de
-// job pendentes — ver dispatch.ts.
+// min pelo cron-job.org (gatilho principal) e pelo workflow do GitHub
+// Actions .github/workflows/job-alert-dispatch.yml (em paralelo — chamada
+// repetida não duplica e-mail). Gatilhos fora da Vercel e fora do banco
+// (pg_net recusado em 2026-10-22, ver docs/STATUS_IMPLANTACAO.md). Entrega
+// os alertas de falha de job pendentes e vigia atrasos — ver dispatch.ts.
 //
 // Segredos da função (Supabase → Edge Functions → Secrets — NUNCA no banco
 // nem no repo):
-//   JOB_ALERT_DISPATCH_TOKEN  mesmo valor do secret JOB_ALERT_DISPATCH_TOKEN do GitHub
+//   JOB_ALERT_DISPATCH_TOKEN  mesmo valor no GitHub Secrets e no cron-job.org
 //   RESEND_API_KEY            chave de envio do Resend
 //   JOB_ALERT_EMAIL_TO        destinatário do alerta
 //   JOB_ALERT_EMAIL_FROM      remetente (domínio verificado no Resend)
 //   JOB_ALERT_ENV_LABEL       opcional — "produção", "staging"
 // SUPABASE_DB_URL é injetada pelo próprio Supabase em toda Edge Function.
 //
-// Deploy sem verificação de JWT (o GitHub Actions não tem JWT de usuário):
+// Deploy sem verificação de JWT (os agendadores não têm JWT de usuário):
 // a autorização é o token acima, comparado em tempo constante.
 //
-// Nunca falha em silêncio: qualquer alerta não entregue, ou canal sem
-// configuração (mesmo sem nada pendente), responde erro HTTP — o job do
-// Actions falha e o GitHub notifica por e-mail.
+// Nunca falha em silêncio — quem chamou falha e avisa por e-mail:
+//   200  tudo em dia
+//   502  alerta não entregue (Resend recusou)
+//   500  atraso detectado (job parado, buraco no gatilho, alerta antigo sem
+//        entrega), canal de e-mail que já funcionou e parou, ou erro interno
+//   503  canal de e-mail ainda não configurado (nunca houve despacho
+//        bem-sucedido) — o workflow trata como configuração, 1 falha/dia
 import postgres from "npm:postgres@3.4.5";
-import { dispatchPendingJobAlerts, recordDispatchHeartbeat } from "./dispatch.ts";
+import { classifyMissingEmailConfig, dispatchPendingJobAlerts, evaluateStaleness, recordDispatchHeartbeat } from "./dispatch.ts";
 
 function safeEqual(a: string, b: string) {
   if (a.length !== b.length) return false;
@@ -47,18 +52,32 @@ Deno.serve(async (request) => {
   const db = { query: (text: string, params: unknown[] = []) => sql.unsafe(text, params as never[]) as never };
   try {
     if (!config.resendApiKey || !config.to || !config.from) {
-      console.error(JSON.stringify({ event: "job-alert-dispatch-misconfigured" }));
-      await recordDispatchHeartbeat(db, { success: false, summary: {}, error: "missing_email_config" });
-      return Response.json({ error: "missing_email_config" }, { status: 500 });
+      // Configuração pendente (nunca funcionou) = 503, o workflow falha no
+      // máximo 1x/dia. Já funcionou e parou = quebra = 500, falha sempre.
+      const kind = await classifyMissingEmailConfig(db);
+      console.error(JSON.stringify({ event: "job-alert-dispatch-misconfigured", kind }));
+      await recordDispatchHeartbeat(db, { success: false, summary: { kind }, error: "missing_email_config" });
+      return kind === "broken"
+        ? Response.json({ error: "email_config_lost" }, { status: 500 })
+        : Response.json({ error: "missing_email_config" }, { status: 503 });
     }
 
     const result = await dispatchPendingJobAlerts(db, config, fetch);
-    // Só contagens e ids opacos — o log do Actions é público num repo público.
-    const body = { pending: result.pending, delivered: result.delivered.length, failed: result.failed };
-    const ok = result.failed.length === 0;
-    await recordDispatchHeartbeat(db, { success: ok, summary: body, error: ok ? undefined : "alerta(s) não entregue(s)" });
+    // Vigia de atraso: antes de gravar o batimento desta execução (o buraco
+    // no gatilho é medido contra o despacho bem-sucedido ANTERIOR).
+    const stale = await evaluateStaleness(db);
+    // Só contagens, ids opacos e nomes de job — o log do Actions é público num repo público.
+    const body = { pending: result.pending, delivered: result.delivered.length, failed: result.failed, stale };
+    const delivered = result.failed.length === 0;
+    await recordDispatchHeartbeat(db, {
+      success: delivered,
+      summary: body,
+      error: delivered ? undefined : "alerta(s) não entregue(s)",
+    });
     console.log(JSON.stringify({ event: "job-alert-dispatch", ...body }));
-    return Response.json(body, { status: ok ? 200 : 502 });
+    // 502 = alerta não entregue; 500 = atraso detectado (job parado, gatilho
+    // com buraco, alerta antigo sem entrega); 200 = tudo em dia.
+    return Response.json(body, { status: !delivered ? 502 : stale.length > 0 ? 500 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(JSON.stringify({ event: "job-alert-dispatch-error", message }));

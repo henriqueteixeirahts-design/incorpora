@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type DbClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { maxRetentionPercent } from "@/lib/distrato-settlement";
 import { canAccessDevelopment } from "@/server/scope";
@@ -27,11 +27,11 @@ function toValues(rule: { retentionPercent: unknown; reverseCommissionOnDistrato
   return { retentionPercent: Number(rule.retentionPercent), reverseCommissionOnDistrato: rule.reverseCommissionOnDistrato };
 }
 
-export async function getEffectiveDistratoRule(organizationId: string, developmentId: string): Promise<DistratoRuleValues> {
-  const rule = await prisma.distratoRule.findUnique({ where: { developmentId } });
+export async function getEffectiveDistratoRule(db: DbClient, organizationId: string, developmentId: string): Promise<DistratoRuleValues> {
+  const rule = await db.distratoRule.findUnique({ where: { developmentId } });
   if (rule) return toValues(rule);
 
-  const general = await prisma.distratoRule.findFirst({ where: { organizationId, developmentId: null } });
+  const general = await db.distratoRule.findFirst({ where: { organizationId, developmentId: null } });
   if (general) return toValues(general);
 
   return DEFAULT_DISTRATO_RULE;

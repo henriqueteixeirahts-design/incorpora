@@ -1,6 +1,7 @@
 # RLS — Inventário de tabelas por tier e grupos de ativação
 
 > Pilar 2 de `docs/ESPEC_MULTITENANT_FUNDACOES.md`. Pré-requisito da Etapa 4. Versionado em 2026-10-22.
+> Policies geradas deste documento por `node scripts/rls-generate-policies.mjs` (2026-11-10) → `prisma/rls-etapa4/` (inclui a função `app_current_org_id()`); roteiro em `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`.
 > Gerado a partir do `prisma/schema.prisma` por `node scripts/rls-tier-inventory.mjs prisma/schema.prisma` — rodar de novo a cada tabela nova e atualizar este documento. **Toda tabela do schema precisa aparecer aqui, num grupo ou nas exceções.**
 
 ## Como os tiers são definidos

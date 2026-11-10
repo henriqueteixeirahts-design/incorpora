@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createDevelopment } from "@/server/developments";
@@ -12,6 +12,8 @@ import {
   countPendingApproval,
   type CreatePayableInput,
 } from "@/server/payables";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Fase B, etapa 4 (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md, Parte 4.1) —
@@ -40,6 +42,7 @@ function baseInput(overrides: Partial<CreatePayableInput> = {}): CreatePayableIn
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Payables" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "payables@teste.local", fullName: "Usuário Financeiro" },
   });
@@ -60,9 +63,11 @@ beforeAll(async () => {
   supplierId = supplier.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
 });
 
 describe("Itens da conta a pagar — soma centavo a centavo", () => {

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type DbClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
@@ -27,14 +27,14 @@ function toValues(rule: { trigger: CommissionReleaseTrigger; installmentsPaidPer
   return { trigger: rule.trigger, installmentsPaidPercent: rule.installmentsPaidPercent };
 }
 
-export async function getEffectiveCommissionReleaseRule(
+export async function getEffectiveCommissionReleaseRule(db: DbClient, 
   organizationId: string,
   developmentId: string,
 ): Promise<CommissionReleaseRuleValues> {
-  const rule = await prisma.commissionReleaseRule.findUnique({ where: { developmentId } });
+  const rule = await db.commissionReleaseRule.findUnique({ where: { developmentId } });
   if (rule) return toValues(rule);
 
-  const general = await prisma.commissionReleaseRule.findFirst({ where: { organizationId, developmentId: null } });
+  const general = await db.commissionReleaseRule.findFirst({ where: { organizationId, developmentId: null } });
   if (general) return toValues(general);
 
   return DEFAULT_COMMISSION_RELEASE_RULE;

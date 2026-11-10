@@ -81,7 +81,7 @@ async function releaseUnitAndPromoteWaitlist(
   });
   if (!nextInLine) return null;
 
-  const rule = await getEffectiveReservationRule(organizationId, unit.developmentId);
+  const rule = await getEffectiveReservationRule(tx, organizationId, unit.developmentId);
   const expiresAt = new Date(Date.now() + rule.waitlistPriorityHours * 60 * 60 * 1000);
 
   const promoted = await tx.reservation.create({
@@ -193,7 +193,7 @@ export async function createReservation(
     });
     if (!unit || !canAccessDevelopment(context, unit.developmentId)) throw new Error("Unidade inválida.");
 
-    const rule = await getEffectiveReservationRule(context.organizationId, unit.developmentId);
+    const rule = await getEffectiveReservationRule(tx, context.organizationId, unit.developmentId);
 
     if (rule.allowedReserverRoles.length > 0) {
       const allowed = context.roleNames.some((role) => rule.allowedReserverRoles.includes(role));
@@ -403,7 +403,7 @@ export async function reservationRequiresApprovalToRenew(
     include: { unit: true },
   });
   if (!reservation || !canAccessDevelopment(context, reservation.unit.developmentId)) throw new Error("Reserva inválida.");
-  const rule = await getEffectiveReservationRule(context.organizationId, reservation.unit.developmentId);
+  const rule = await getEffectiveReservationRule(prisma, context.organizationId, reservation.unit.developmentId);
   return rule.requiresApprovalForRenewal;
 }
 
@@ -416,7 +416,7 @@ export async function renewReservation(context: AccessContext, reservationId: st
     if (!reservation || !canAccessDevelopment(context, reservation.unit.developmentId)) throw new Error("Reserva inválida.");
     if (reservation.status !== "ACTIVE") throw new Error("Reserva não está ativa.");
 
-    const rule = await getEffectiveReservationRule(context.organizationId, reservation.unit.developmentId);
+    const rule = await getEffectiveReservationRule(tx, context.organizationId, reservation.unit.developmentId);
     if (!rule.renewalAllowed) throw new Error("Este empreendimento não permite renovação de reserva.");
     if (reservation.renewalCount >= rule.maxRenewals) {
       throw new Error(`Limite de ${rule.maxRenewals} renovação(ões) já atingido.`);

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -21,6 +21,8 @@ import {
   expireReservationsForOrganization,
 } from "@/server/reservations";
 import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_MODULO_COMERCIAL.md, Parte 2 (Módulo Comercial etapa 3): regras
@@ -41,6 +43,7 @@ let developmentId: string;
 
 beforeAll(async () => {
   orgA = await prisma.organization.create({ data: { name: "Org A — Regras de Reserva" } });
+  setCurrentOrgId(orgA.id);
   orgB = await prisma.organization.create({ data: { name: "Org B — Regras de Reserva" } });
 
   userA = await prisma.user.create({
@@ -68,25 +71,27 @@ beforeAll(async () => {
   developmentId = development.id;
 });
 
+aroundEach((runTest) => withOrgContext(orgA.id, runTest));
+
 afterAll(async () => {
   const orgIds = [orgA.id, orgB.id];
-  await prisma.reservationWaitlistEntry.deleteMany({ where: { unit: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.reservation.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.reservationRule.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.broker.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.jobRun.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().reservationWaitlistEntry.deleteMany({ where: { unit: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().reservation.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().reservationRule.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().jobRun.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Regra de reserva — defaults e configuração", () => {
   it("usa os defaults sugeridos quando o empreendimento não tem regra configurada", async () => {
-    const rule = await getEffectiveReservationRule(orgA.id, developmentId);
+    const rule = await getEffectiveReservationRule(prisma, orgA.id, developmentId);
     expect(rule.validityHours).toBe(48);
     expect(rule.maxActiveReservationsPerBroker).toBe(3);
     expect(rule.waitlistEnabled).toBe(true);
@@ -122,6 +127,7 @@ describe("Regra de reserva — defaults e configuração", () => {
 describe("Regra geral × por empreendimento (Parte 1.3)", () => {
   it("sem regra geral nem específica, cai no default do código", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 1" } });
+    setCurrentOrgId(org2.id);
     const spe2 = await createSpe({ ...contextA, organizationId: org2.id }, {
       name: "SPE Reserva Geral 1", document: "63265390000141", status: "ACTIVE",
       email: "spe-reserva-geral-1@teste.local", phone: "62999990300",
@@ -130,7 +136,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
       speId: spe2.id, name: "Dev Reserva Geral 1", type: "RESIDENTIAL_BUILDING",
     });
 
-    const rule = await getEffectiveReservationRule(org2.id, dev2.id);
+    const rule = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(rule).toEqual(DEFAULT_RESERVATION_RULE);
 
     await prisma.development.deleteMany({ where: { organizationId: org2.id } });
@@ -140,6 +146,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
 
   it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 2" } });
+    setCurrentOrgId(org2.id);
     const ctx2 = { ...contextA, organizationId: org2.id };
     const spe2 = await createSpe(ctx2, {
       name: "SPE Reserva Geral 2", document: "63265390000141", status: "ACTIVE",
@@ -157,7 +164,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     expect(general?.developmentId).toBeNull();
     expect(general?.validityHours).toBe(72);
 
-    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    const effective = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(effective.validityHours).toBe(72);
     expect(effective.maxActiveReservationsPerBroker).toBe(5);
 
@@ -169,6 +176,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
 
   it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Reserva Geral 3" } });
+    setCurrentOrgId(org2.id);
     const ctx2 = { ...contextA, organizationId: org2.id };
     const spe2 = await createSpe(ctx2, {
       name: "SPE Reserva Geral 3", document: "63265390000141", status: "ACTIVE",
@@ -179,7 +187,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
     await upsertReservationRule(ctx2, null, { ...DEFAULT_RESERVATION_RULE, validityHours: 72 });
     await upsertReservationRule(ctx2, dev2.id, { ...DEFAULT_RESERVATION_RULE, validityHours: 24 });
 
-    const effective = await getEffectiveReservationRule(org2.id, dev2.id);
+    const effective = await getEffectiveReservationRule(prisma, org2.id, dev2.id);
     expect(effective.validityHours).toBe(24);
 
     const overrides = await listReservationRuleOverrides(ctx2);

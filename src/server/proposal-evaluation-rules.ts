@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type DbClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
@@ -57,14 +57,14 @@ function toValues(rule: {
 }
 
 /** Regra efetiva — a do empreendimento, ou a geral da organização, ou os defaults sugeridos quando nenhuma foi configurada. */
-export async function getEffectiveProposalEvaluationRule(
+export async function getEffectiveProposalEvaluationRule(db: DbClient, 
   organizationId: string,
   developmentId: string,
 ): Promise<FullProposalEvaluationRuleValues> {
-  const rule = await prisma.proposalEvaluationRule.findUnique({ where: { developmentId } });
+  const rule = await db.proposalEvaluationRule.findUnique({ where: { developmentId } });
   if (rule) return toValues(rule);
 
-  const general = await prisma.proposalEvaluationRule.findFirst({ where: { organizationId, developmentId: null } });
+  const general = await db.proposalEvaluationRule.findFirst({ where: { organizationId, developmentId: null } });
   if (general) return toValues(general);
 
   return { ...DEFAULT_PROPOSAL_EVALUATION_RULE, analysisApprovalLevels: DEFAULT_ANALYSIS_APPROVAL_LEVELS };

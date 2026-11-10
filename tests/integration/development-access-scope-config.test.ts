@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -17,6 +17,8 @@ import {
   getExchangeContractDetail,
   listExchangeContracts,
 } from "@/server/exchange-contracts";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5 — mesmo padrão de
@@ -39,6 +41,7 @@ let devY: { id: string };
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Escopo por Empreendimento (config)" } });
+  setCurrentOrgId(org.id);
   adminUser = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "admin-escopo-config@teste.local", fullName: "Admin Escopo Config" },
   });
@@ -63,21 +66,23 @@ beforeAll(async () => {
   };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id];
-  await prisma.unit.updateMany({ where: { development: { organizationId: { in: orgIds } } }, data: { exchangeContractId: null } });
-  await prisma.exchangeContractLand.deleteMany({ where: { exchangeContract: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.exchangeContract.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.permutante.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.payable.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.costCenter.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.distratoRule.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [adminUser.id, restrictedUser.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().unit.updateMany({ where: { development: { organizationId: { in: orgIds } } }, data: { exchangeContractId: null } });
+  await fixturePrisma().exchangeContractLand.deleteMany({ where: { exchangeContract: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().exchangeContract.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().permutante.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().payable.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().costCenter.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().distratoRule.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [adminUser.id, restrictedUser.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Regra de distrato — cascata geral × empreendimento respeita o escopo do usuário", () => {

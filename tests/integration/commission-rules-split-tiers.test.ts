@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -10,6 +10,8 @@ import {
   listCommissionRuleOverrides,
 } from "@/server/commission-rules";
 import { upsertSplitTiers, listSplitTiers } from "@/server/agency-split-tiers";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 let org: { id: string };
 let context: AccessContext;
@@ -17,6 +19,7 @@ let dev: { id: string };
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Regras de Comissão" } });
+  setCurrentOrgId(org.id);
   const actor = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "actor-commission-rules@teste.local", fullName: "Ator Regras" },
   });
@@ -29,21 +32,23 @@ beforeAll(async () => {
   dev = await createDevelopment(context, { speId: spe.id, name: "Development Regras Comissão", type: "RESIDENTIAL_BUILDING" });
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.agencySplitTier.deleteMany({ where: { agency: { organizationId: org.id } } });
-  await prisma.broker.deleteMany({ where: { organizationId: org.id } });
-  await prisma.realEstateAgency.deleteMany({ where: { organizationId: org.id } });
-  await prisma.commissionRule.deleteMany({ where: { organizationId: org.id } });
-  await prisma.development.deleteMany({ where: { organizationId: org.id } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { email: "actor-commission-rules@teste.local" } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().agencySplitTier.deleteMany({ where: { agency: { organizationId: org.id } } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().realEstateAgency.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().commissionRule.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { email: "actor-commission-rules@teste.local" } });
 });
 
 describe("CommissionRule — cascata empreendimento → geral → default", () => {
   it("sem regra nenhuma, resolve pro default (percentuais nulos)", async () => {
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBeNull();
     expect(effective.internalCommissionPercent).toBeNull();
   });
@@ -55,7 +60,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
       internalCommissionAppliesTo: "ALL_SALES", internalManagerBrokerId: null,
     });
 
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBe(6);
     expect(effective.internalCommissionPercent).toBe(2);
   });
@@ -67,7 +72,7 @@ describe("CommissionRule — cascata empreendimento → geral → default", () =
       internalCommissionAppliesTo: "PARTICIPATED_ONLY", internalManagerBrokerId: null,
     });
 
-    const effective = await getEffectiveCommissionRule(org.id, dev.id);
+    const effective = await getEffectiveCommissionRule(prisma, org.id, dev.id);
     expect(effective.externalCommissionPercent).toBe(8);
     expect(effective.internalCommissionAppliesTo).toBe("PARTICIPATED_ONLY");
 

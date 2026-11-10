@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { runJobForAllOrganizations, recalculateInstallmentsJob, auditUpdateFullJob } from "@/server/jobs";
+import { runJobForAllOrganizations, recalculateInstallmentsJob, auditUpdateJob, auditUpdateFullJob } from "@/server/jobs";
 
 export const maxDuration = 60; // teto do plano Hobby da Vercel — se ficar apertado com o volume real de dados, é o sinal pra migrar pro serviço de fila (Parte 1.3 da especificação)
 
@@ -25,7 +25,16 @@ export const maxDuration = 60; // teto do plano Hobby da Vercel — se ficar ape
  * com o cron agora disparando diariamente. Encadeada nesta mesma rota (em
  * vez de um cron próprio) porque o plano Hobby limita o número de cron
  * jobs do projeto. Ver docs/STATUS_IMPLANTACAO.md.
+ *
+ * Nos demais dias, dispara a auditoria por AMOSTRAGEM (desde 2026-11-08):
+ * sem isso a V7 (vigia do gatilho de alerta) só era avaliada na auditoria
+ * semanal — um gatilho morto levava até 7 dias pra aparecer. Só roda se o
+ * recálculo terminou cedo (dia de no-op); no dia em que o recálculo usa o
+ * orçamento de tempo, a amostragem fica pro dia seguinte em vez de arriscar
+ * o teto de 60s.
  */
+const DAILY_AUDIT_MAX_ELAPSED_MS = 20_000;
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -34,10 +43,15 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
+  const startedAt = Date.now();
   const results = await runJobForAllOrganizations(recalculateInstallmentsJob, "CRON");
 
   const isMonthlyAuditWindow = new Date().getDate() <= 2;
-  const auditResults = isMonthlyAuditWindow ? await runJobForAllOrganizations(auditUpdateFullJob, "CRON") : null;
+  const auditResults = isMonthlyAuditWindow
+    ? await runJobForAllOrganizations(auditUpdateFullJob, "CRON")
+    : Date.now() - startedAt < DAILY_AUDIT_MAX_ELAPSED_MS
+      ? await runJobForAllOrganizations(auditUpdateJob, "CRON")
+      : null;
 
   return NextResponse.json({
     success: true,

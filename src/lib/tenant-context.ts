@@ -41,7 +41,21 @@ export function setCurrentOrgId(organizationId: string) {
  * `fn` termina.
  */
 export function withOrgContext<T>(organizationId: string, fn: () => T): T {
-  return orgContextStorage.run(organizationId, fn);
+  return orgContextStorage.run(organizationId, () => {
+    const result = fn();
+    // Promessa PREGUIÇOSA (a PrismaPromise só executa quando alguém chama
+    // `.then`): sem isto, `withOrgContext(org, () => prisma.x.findMany())`
+    // executava a consulta no `await` de quem chamou — já fora do `.run()`,
+    // sem organização no contexto (placeholder). Achado pela prova do pooler
+    // (scripts/prove-pooler-tenant-context.ts, 2026-11-10), igual com e sem
+    // pooler. `Promise.resolve` chama o `.then` num job agendado AQUI
+    // dentro, que herda o contexto. Promessa comum (função async) passa
+    // inalterada — `Promise.resolve(p) === p`.
+    if (result !== null && typeof result === "object" && typeof (result as { then?: unknown }).then === "function") {
+      return Promise.resolve(result) as T;
+    }
+    return result;
+  });
 }
 
 /** `null` quando nenhuma requisição setou contexto ainda — a extensão do Prisma trata isso como "sem organização" (fail-closed, nunca abre RLS por omissão). */

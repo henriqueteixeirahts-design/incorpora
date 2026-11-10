@@ -22,6 +22,7 @@ import {
 } from "./actions";
 import { formatCurrencyBRL, formatDateTimeBR, formatPercent } from "@/lib/format";
 import { UNIT_STATUS_META } from "@/lib/unit-status";
+import { prisma } from "@/lib/prisma";
 
 const RESERVATION_STATUS_CHIP: Record<string, string> = {
   ACTIVE: "inc-chip--reserva",
@@ -96,7 +97,7 @@ export default async function CommercialPage({
       listReservations(context),
       listProposals(context),
       listWaitlistForOrganization(context),
-      getEffectiveReservationRule(context.organizationId, id),
+      getEffectiveReservationRule(prisma, context.organizationId, id),
     ]);
 
   const reservations = allReservations.filter((r) => r.unit.developmentId === id);

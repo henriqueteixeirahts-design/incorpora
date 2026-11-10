@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -29,6 +29,8 @@ import {
 } from "@/server/finance-setup";
 import { createPayable, getPayableDetail, updatePayable, cancelPayable } from "@/server/payables";
 import { createBankAccount, updateBankAccount, deleteBankAccount, linkSpeBankAccount } from "@/server/bank-accounts";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Teste de fronteira pleno (Pilar 1.4, etapa 3 de
@@ -69,6 +71,7 @@ let installmentA: { id: string };
 
 beforeAll(async () => {
   orgA = await prisma.organization.create({ data: { name: "Org A — Fronteira Plena" } });
+  setCurrentOrgId(orgA.id);
   orgB = await prisma.organization.create({ data: { name: "Org B — Fronteira Plena" } });
 
   userA = await prisma.user.create({
@@ -178,35 +181,37 @@ beforeAll(async () => {
   installmentA = installment;
 });
 
+aroundEach((runTest) => withOrgContext(orgA.id, runTest));
+
 afterAll(async () => {
   const orgIds = [orgA.id, orgB.id];
-  await prisma.installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
-  await prisma.financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
-  await prisma.installment.deleteMany({ where: { portfolio: { organizationId: { in: orgIds } } } });
-  await prisma.receivablePortfolio.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.contract.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.sale.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.reservation.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.proposalApproval.deleteMany({ where: { proposal: { organizationId: { in: orgIds } } } });
-  await prisma.proposal.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.commissionSplit.deleteMany({ where: { sale: { organizationId: { in: orgIds } } } });
-  await prisma.payable.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.broker.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.realEstateAgency.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.supplier.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.costCenter.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.speBankAccount.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
-  await prisma.bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.indexValue.deleteMany({ where: { indexRule: { organizationId: { in: orgIds } } } });
-  await prisma.indexRule.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().installment.deleteMany({ where: { portfolio: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().receivablePortfolio.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().contract.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().sale.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().reservation.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().proposalApproval.deleteMany({ where: { proposal: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().proposal.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().commissionSplit.deleteMany({ where: { sale: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().payable.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().realEstateAgency.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().supplier.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().costCenter.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().speBankAccount.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().indexValue.deleteMany({ where: { indexRule: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().indexRule.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Development — Org B não acessa o empreendimento da Org A", () => {
@@ -306,17 +311,22 @@ describe("Reservation — Org B não cria reserva referenciando unidade/cliente/
       }),
     ).rejects.toThrow("Corretor inválido.");
 
-    // Confirma que nenhuma reserva cross-org foi criada
-    const leaked = await prisma.reservation.findFirst({ where: { unitId: unitA.id, organizationId: orgB.id } });
+    // Confirma que nenhuma reserva cross-org foi criada. Procura o que de fato
+    // vazaria: reserva da Org B apontando para o CORRETOR da Org A (a versão
+    // anterior procurava unitId = unidade da A, que nunca bate — a reserva
+    // vazada fica na unidade da B — e passava sempre; achado em 2026-11-10).
+    // Pela role de migrations (sem RLS), para valer nos dois jobs; no job
+    // `test` (RLS desligado) é prova do filtro da APLICAÇÃO (Pilar 1).
+    const leaked = await fixturePrisma().reservation.findFirst({ where: { organizationId: orgB.id, brokerId: brokerA.id } });
     expect(leaked).toBeNull();
 
     // cleanup local (não coberto pelo afterAll, que só limpa fixtures nomeados acima)
-    await prisma.unit.deleteMany({ where: { developmentId: developmentB.id } });
-    await prisma.developmentEvent.deleteMany({ where: { developmentId: developmentB.id } });
-    await prisma.auditEvent.deleteMany({ where: { entityId: { in: [developmentB.id, speB.id, customerB.id] } } });
-    await prisma.development.delete({ where: { id: developmentB.id } });
-    await prisma.specialPurposeEntity.delete({ where: { id: speB.id } });
-    await prisma.customer.delete({ where: { id: customerB.id } });
+    await fixturePrisma().unit.deleteMany({ where: { developmentId: developmentB.id } });
+    await fixturePrisma().developmentEvent.deleteMany({ where: { developmentId: developmentB.id } });
+    await fixturePrisma().auditEvent.deleteMany({ where: { entityId: { in: [developmentB.id, speB.id, customerB.id] } } });
+    await fixturePrisma().development.delete({ where: { id: developmentB.id } });
+    await fixturePrisma().specialPurposeEntity.delete({ where: { id: speB.id } });
+    await fixturePrisma().customer.delete({ where: { id: customerB.id } });
   });
 });
 
