@@ -954,11 +954,37 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 
 ---
 
+### 2026-11-10 (noite) — alertas operacionais gravados no banco
+
+**Decisão do usuário**: opção (a). E **revisão de decisão anterior**: o alerta de falha no login também grava (antes: "fica só no log"). Motivo: aquela decisão pressupunha que o log existia; com menos de 1 hora de retenção na Vercel (Hobby), "só no log" é invisível, e uma falha silenciosa de login de madrugada some antes de alguém ver. Fato novo, decisão nova.
+
+**Onde ficam — `job_runs`, com nome de job próprio** (`jobName = 'alerta:<evento>'`, status FAILURE, `triggeredBy = EVENT`, sem organização, ponto de chamada em `summary.callSite`, mensagem em `error`). Critério: chegar pela corrente do alerta sem virar ruído. A Edge Function já publicada entrega toda FAILURE não alertada — **nada muda nela, nem em produção além do deploy**; tela de jobs, auditoria (V4/V7) e vigia de atraso filtram por nome de job ou organização e não são afetadas. Descartadas: tabela nova (exigiria mudar e republicar a Edge Function) e `Notification` (é por organização e não está na corrente). Sem ruído: linha só quando o evento acontece; uma por ponto de chamada (no login, por usuário) por dia; no máximo 20 por evento por dia + 1 de "teto atingido".
+
+**Implementação**: `src/lib/operational-alerts.ts` (gravador), ligado em `src/lib/prisma.ts` (trava em modo produção) e `src/server/login-organization.ts`. Migration `20261110160000_operational_alert_dedup` — só um índice único parcial (deduplicação no banco, vale entre processos); nenhuma mudança de privilégio. Grava só em produção.
+
+**Travas, com controle negativo** (`tests/integration/operational-alerts.test.ts`, 10 testes):
+1. **Cliente base, sem recursão** — a gravação usa `base.$executeRawUnsafe` (o cliente base não é exportado). Teste: a trava dispara uma vez e grava uma linha, mesmo com a gravação feita ainda dentro do callback da transação. Sabotagem (gravar pelo cliente estendido) → 2 testes falham.
+2. **Disparar e esquecer** — nunca lança nem rejeita; falha vira `operational-alert-write-failed` no console; quem chama não espera (na Vercel, `waitUntil` mantém a função viva até terminar). Teste: com o INSERT em `job_runs` revogado do `app_user`, a consulta e o login seguem normais e nada é gravado. Sabotagem (erro propaga) → 2 testes falham.
+3. **Deduplicação e teto** — 10 mil ocorrências no mesmo ponto → 1 linha e 1 ida ao banco; 10 mil pontos distintos → 20 linhas + 1 de teto; dois gravadores ("processos") → o banco deduplica e respeita o teto. Sabotagem (sem dedup/teto) → 3 testes falham; sem o índice único → o teste de dois processos falha.
+- **Plantado de cada evento**: global dentro de transação em modo produção → 1 linha `alerta:prisma-global-client-in-transaction` com o ponto `Customer.count @ ...`; login com vínculo e organização nula → 1 linha `alerta:login-org-resolution-failed` com `user:<id>`.
+- **Ponta a ponta**: o alerta gravado vira exatamente 1 e-mail pelo código real da Edge Function, sem reenvio.
+- Consulta E do checklist (alertas gravados) validada: vazia → 0 linhas; linha plantada → aparece.
+
+**Pendência registrada**: `job_runs` é uma das 6 exceções do RLS. Quando ganhar policy, esta gravação (sem organização, pelo cliente base, sem contexto) precisa de caminho próprio — provavelmente uma função SECURITY DEFINER mínima, com as mesmas travas das outras.
+
+**Pedágios do plano gratuito na fase de segurança** (registro para a avaliação dos planos pagos — **pedida pelo usuário para quando a Etapa 4 terminar, com números**):
+1. Supabase: log de ~1 dia (na prática, ~2h30 observadas no incidente de 16/09) — sem como verificar exploração antiga.
+2. Supabase: sem branching — staging separada e manual.
+3. Supabase: pause/restore da staging não confiável (dados "sumidos" no restore de 16/09) — staging aposentada, papel passou para o CI.
+4. Vercel: log de execução com menos de 1 hora — alertas operacionais precisaram ir para o banco.
+
+---
+
 ### Aprendizado da fase de segurança — regra do projeto (2026-11-10)
 
 **Quatro testes verdes que não testavam nada**, e nenhum achado lendo código — todos apareceram quando se plantou um erro de propósito: (1) CI conectando como superusuário (set/2026), em que todo teste de RLS daria verde; (2) auditoria V3 comparando grandezas diferentes (valor corrigido sem multa/mora contra o valor final); (3) teste de ambiente pulando em silêncio (Postgres puro sem as roles do Supabase); (4) duas checagens de vazamento entre organizações vazias desde sempre (2026-11-10). Virou regra no `CLAUDE.md`: **toda verificação que serve de prova precisa de controle negativo documentado; teste que nunca falhou não conta como prova** — e um teste que passa com e sem a proteção que diz provar não a prova (por isso os jobs `test`/Pilar 1 e `test-rls`/Pilar 2, nenhum removível como redundante).
 
-**Checklist pós-deploy do login** (merge do PR #1): `docs/CHECKLIST_POS_DEPLOY_LOGIN.md`. Merge adiado por decisão do usuário (precisa de atenção inteira; a correção da comissão só muda comportamento quando o RLS ligar). Consultas de conferência com controle negativo feito. **Pendente de decisão**: no plano Hobby da Vercel os logs de execução ficam disponíveis por menos de 1 hora — monitorar `prisma-global-client-in-transaction` e `login-org-resolution-failed` por 7 dias pelo log não funciona; opções no checklist (recomendado: persistir no banco e usar a corrente do alerta).
+**Checklist pós-deploy do login** (merge do PR #1): `docs/CHECKLIST_POS_DEPLOY_LOGIN.md`. Merge adiado por decisão do usuário (precisa de atenção inteira; a correção da comissão só muda comportamento quando o RLS ligar). Consultas de conferência com controle negativo feito. **Decidido (opção a)**: no plano Hobby da Vercel os logs de execução ficam disponíveis por menos de 1 hora; os dois eventos agora gravam no banco e chegam por e-mail (ver seção seguinte acima).
 
 ---
 
@@ -967,7 +993,7 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 **Decisões do usuário (2026-11-10)**:
 - **Merge**: o branch `sprint-nov-etapa4-prep-sp39ea` entra no PR #1, e vai tudo num deploy só (a correção da comissão é pré-requisito do Grupo 1). O merge no master só com autorização explícita, junto com o checklist pós-deploy do login.
 - **Mudanças de privilégio APROVADAS para produção**: `resolve_user_organization()` e `count_user_access_grants()` (com as travas abaixo).
-- **Alerta de falha no login**: fica só no log (`login-org-resolution-failed`), conferido a cada grupo pelo roteiro.
+- **Alerta de falha no login**: ~~fica só no log~~ — **revisto no mesmo dia**: também grava no banco (ver "alertas operacionais gravados no banco").
 - **Varredura de campos (`isActive`, campos de `Unit`) — ADIADA**: nenhuma mudança de schema no meio da fase de segurança; volta depois que a Etapa 4 terminar. Ver `docs/VARREDURA_CAMPOS_SEM_TELA.md`.
 - **Desempenho**: aceito sem índice; reavaliar no Grupo 16 com `pg_stat_statements`.
 

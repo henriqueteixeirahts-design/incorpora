@@ -40,12 +40,13 @@
 
 ## 3. Consultas de leitura no Supabase (eu rodo na hora, só leitura)
 
-**A — migrations aplicadas** (esperado: as 2 linhas com `finished_at` preenchido e `rolled_back_at` nulo; total 58):
+**A — migrations aplicadas** (esperado: as 3 linhas com `finished_at` preenchido e `rolled_back_at` nulo; total 59):
 ```sql
 SELECT migration_name, finished_at, rolled_back_at
   FROM _prisma_migrations
  WHERE migration_name IN ('20261108120000_rls_etapa4_resolve_user_organization',
-                          '20261110090000_rls_etapa4_count_user_access_grants');
+                          '20261110090000_rls_etapa4_count_user_access_grants',
+                          '20261110160000_operational_alert_dedup');
 SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
 ```
 
@@ -100,7 +101,7 @@ SELECT count(*) AS usuarios,
 ```
 Qualquer `divergentes > 0` ou `contagem_zero > 0` → **rollback**.
 
-**Controle negativo destas consultas** (2026-11-10, banco local com as 58 migrations — regra do CLAUDE.md): as quatro rodam sem erro; **D** com `resolve_user_organization()` sabotada para devolver o vínculo mais NOVO → `divergentes` 0 → 1; com `count_user_access_grants()` sabotada para devolver 0 → `contagem_zero` 0 → 1; **C** com 1 centavo a mais num split → soma 1.00 → 1.01 e a assinatura muda. Restaurado, tudo volta a zero.
+**Controle negativo destas consultas** (2026-11-10, banco local com as 58 migrations de então — regra do CLAUDE.md): as quatro rodam sem erro; **D** com `resolve_user_organization()` sabotada para devolver o vínculo mais NOVO → `divergentes` 0 → 1; com `count_user_access_grants()` sabotada para devolver 0 → `contagem_zero` 0 → 1; **C** com 1 centavo a mais num split → soma 1.00 → 1.01 e a assinatura muda. Restaurado, tudo volta a zero.
 
 ## 4. Logs nos primeiros 15 minutos
 
@@ -110,15 +111,19 @@ Vercel → projeto → **Logs** (ambiente Production), um termo de cada vez:
 |---|---|---|
 | `login-org-resolution-failed` | zero | **Rollback** — alguém com vínculo não conseguiu entrar |
 | `42501` e `permission denied` | zero | **Rollback** se citar `resolve_user_organization` ou `count_user_access_grants`; outro objeto → me mande a linha |
-| `prisma-global-client-in-transaction` | zero | **Não é rollback**: em produção a trava só registra e a consulta segue com o contexto certo (sem RLS, o comportamento é o de antes). É um caminho que a varredura estática não pegou → me mande a linha inteira (traz a pilha); corrijo para a próxima |
+| `prisma-global-client-in-transaction` | zero | **Não é rollback**: em produção a trava registra, grava o alerta e a consulta segue com o contexto certo (sem RLS, o comportamento é o de antes). É um caminho que a varredura estática não pegou → me mande a linha inteira (traz a pilha) ou o e-mail; corrijo para a próxima |
 | filtro **Level: Error** | nada novo em relação a antes | me mande o que for novo |
 
 Supabase → **Logs** → **Postgres**: buscar `permission denied` e `resolve_user_organization` → zero.
 
-**Atenção — retenção curta dos logs no plano Hobby da Vercel**: a janela de busca dos logs de execução é de menos de 1 hora. Os 15 minutos acima funcionam. **Monitorar `prisma-global-client-in-transaction` (e `login-org-resolution-failed`) por uma semana só pelo log da Vercel não funciona**: o que acontecer de madrugada some antes de alguém olhar. Opções, para você decidir (nada implementado):
-- **(a) Persistir no banco** — a trava grava uma linha (ex.: `job_runs` com status FAILURE e `jobName` próprio) e a corrente do alerta manda o e-mail. Recomendado: usa o canal que você já está montando e vale para as duas buscas. Mudança pequena de código, com teste e controle negativo; entraria antes do merge.
-- **(b) Olhar à mão** a cada ~50 minutos durante o horário de uso, por 7 dias — frágil.
-- **(c) Log Drain para um serviço externo** — exige plano pago da Vercel.
+**Gravado no banco, não só no log** (decisão de 2026-11-10): o log de execução da Vercel no plano Hobby fica disponível por menos de 1 hora, então `prisma-global-client-in-transaction` e `login-org-resolution-failed` também viram uma linha em `job_runs` (`jobName = 'alerta:<evento>'`) e **chegam por e-mail pela corrente do alerta**, sem ninguém olhar o log. Uma linha por ponto de chamada (ou por usuário, no login) por dia; no máximo 20 por evento por dia, mais uma de "teto atingido". Para ver a qualquer momento:
+
+**E — alertas operacionais gravados** (esperado depois do deploy: nenhuma linha):
+```sql
+SELECT "jobName", summary ->> 'callSite' AS ponto, "startedAt", "alertSentAt", error
+  FROM job_runs WHERE "jobName" LIKE 'alerta:%'
+ ORDER BY "startedAt" DESC LIMIT 50;
+```
 
 ## 5. Gatilhos de rollback (qualquer um)
 
@@ -147,6 +152,6 @@ Supabase → **Logs** → **Postgres**: buscar `permission denied` e `resolve_us
 | 0–15 min | Seções 1 a 4 completas | tudo como esperado |
 | +1 h | Login de novo em janela anônima; buscas da seção 4 de novo (a janela de logs ainda cobre o deploy) | zero ocorrências |
 | Dia seguinte, depois das 03:00 UTC | Tela de Jobs: `recalculate-installments` com SUCCESS; auditoria diária gerada (a V7 pode estar em ALERT se a corrente do alerta ainda não tiver despachado — isso é esperado e não é deste deploy) | jobs com SUCCESS |
-| 7 dias | `prisma-global-client-in-transaction` e `login-org-resolution-failed` — **pela opção escolhida na seção 4** | zero |
+| 7 dias | `prisma-global-client-in-transaction` e `login-org-resolution-failed` — **chegam por e-mail** (corrente do alerta); conferência a qualquer hora pela consulta E | zero |
 
 **Estável** = os três primeiros itens limpos (~24 h). A vigilância da trava segue por 7 dias, mas, sem RLS ativo, uma ocorrência dela não muda comportamento — é aviso de caminho a corrigir, não motivo de rollback.
