@@ -18,14 +18,16 @@
  *      vira um console.error. Quem chama não espera.
  *   3. Deduplicação e teto: uma linha por (evento, ponto de chamada, dia), no
  *      máximo `cap` pontos distintos por evento por dia + uma linha de
- *      "teto atingido". Em memória (evita ir ao banco a cada ocorrência) e no
+ *      "teto atingido". Teto 5 (decisão do usuário): a Edge Function manda 1
+ *      e-mail por linha pendente, então o pior dia são 2 × (5 + 1) = 12 e-mails
+ *      — ainda legíveis; o detalhe continua nas linhas do banco. Em memória (evita ir ao banco a cada ocorrência) e no
  *      banco (índice único parcial, migration 20261110160000 — vale entre
  *      processos).
  * Só grava em produção (fora dela, a trava lança erro e o login registra no
  * console) — a não ser que `enabled` diga outra coisa (testes).
  */
 export const OPERATIONAL_ALERT_JOB_PREFIX = "alerta:";
-export const OPERATIONAL_ALERT_CAP_PER_DAY = 20;
+export const OPERATIONAL_ALERT_CAP_PER_DAY = 5;
 export const OPERATIONAL_ALERT_OVERFLOW_CALL_SITE = "__teto__";
 
 type Execute = (sql: string, ...params: unknown[]) => Promise<number>;

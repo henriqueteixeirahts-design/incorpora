@@ -189,7 +189,7 @@ describe("Trava 3 — deduplicação e teto", () => {
     const rows = await alertRows("alerta:teste-teto");
     expect(rows).toHaveLength(OPERATIONAL_ALERT_CAP_PER_DAY + 1);
     expect(rows.filter((r) => r.summary.callSite === OPERATIONAL_ALERT_OVERFLOW_CALL_SITE)).toHaveLength(1);
-    expect(rows.find((r) => r.summary.callSite === OPERATIONAL_ALERT_OVERFLOW_CALL_SITE)?.error).toMatch(/Teto de 20 pontos/);
+    expect(rows.find((r) => r.summary.callSite === OPERATIONAL_ALERT_OVERFLOW_CALL_SITE)?.error).toMatch(new RegExp(`Teto de ${OPERATIONAL_ALERT_CAP_PER_DAY} pontos`));
     expect(calls).toBeLessThanOrEqual(OPERATIONAL_ALERT_CAP_PER_DAY + 2);
   });
 

@@ -116,7 +116,7 @@ Vercel → projeto → **Logs** (ambiente Production), um termo de cada vez:
 
 Supabase → **Logs** → **Postgres**: buscar `permission denied` e `resolve_user_organization` → zero.
 
-**Gravado no banco, não só no log** (decisão de 2026-11-10): o log de execução da Vercel no plano Hobby fica disponível por menos de 1 hora, então `prisma-global-client-in-transaction` e `login-org-resolution-failed` também viram uma linha em `job_runs` (`jobName = 'alerta:<evento>'`) e **chegam por e-mail pela corrente do alerta**, sem ninguém olhar o log. Uma linha por ponto de chamada (ou por usuário, no login) por dia; no máximo 20 por evento por dia, mais uma de "teto atingido". Para ver a qualquer momento:
+**Gravado no banco, não só no log** (decisão de 2026-11-10): o log de execução da Vercel no plano Hobby fica disponível por menos de 1 hora, então `prisma-global-client-in-transaction` e `login-org-resolution-failed` também viram uma linha em `job_runs` (`jobName = 'alerta:<evento>'`) e **chegam por e-mail pela corrente do alerta**, sem ninguém olhar o log. Uma linha por ponto de chamada (ou por usuário, no login) por dia; no máximo 5 por evento por dia, mais uma de "teto atingido" (pior dia: 12 e-mails). Para ver a qualquer momento:
 
 **E — alertas operacionais gravados** (esperado depois do deploy: nenhuma linha):
 ```sql
