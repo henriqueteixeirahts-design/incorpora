@@ -45,6 +45,18 @@ describe("RLS — plumbing do contexto de tenant (Etapa 1, sem policy ativa aind
     expect(result.second).toBe("33333333-3333-3333-3333-333333333333");
   });
 
+  it("consulta pelo `prisma` GLOBAL dentro do callback de um $transaction também carrega o contexto — achado da Etapa 4 no CI (2026-11-10)", async () => {
+    // Padrão real: convertProposalToSale abre prisma.$transaction(async tx => ...)
+    // e, lá dentro, resolveExternalSplitsForSale consulta pelo `prisma` global.
+    // Essa consulta roda em OUTRA conexão, fora da transação; antes da
+    // correção, a extensão pulava o set_config nela ("já estou numa transação
+    // preparada") e ela rodava SEM organização — com RLS ligado, a regra de
+    // comissão sumia e nenhum split era criado, sem erro.
+    setCurrentOrgId("77777777-7777-7777-7777-777777777777");
+    const seenInside = await prisma.$transaction(async () => readCurrentOrgSetting());
+    expect(seenInside).toBe("77777777-7777-7777-7777-777777777777");
+  });
+
   it("uma segunda chamada com organizationId diferente não vaza pra chamada anterior (sem contaminação entre \"requests\" sequenciais)", async () => {
     setCurrentOrgId("44444444-4444-4444-4444-444444444444");
     const first = await readCurrentOrgSetting();

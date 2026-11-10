@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 import { getCurrentOrgId } from "@/lib/tenant-context";
@@ -26,19 +25,20 @@ function currentOrgIdOrPlaceholder() {
   return getCurrentOrgId() ?? NO_ORG_PLACEHOLDER;
 }
 
-/**
- * Marca "já estou dentro de uma transação que a extensão já preparou com
- * SET LOCAL" — evita que `$allOperations` abra uma SEGUNDA transação (via
- * `base.$transaction([...])`) por cima de uma já aberta pelo override de
- * `$transaction` abaixo, o que quebraria a atomicidade (cada operação
- * comitando sozinha em vez de fazer parte da transação real do chamador).
- * Achado num spike antes de codar: a primeira versão desta extensão (sem
- * este flag) passava em todos os testes de "o valor certo aparece", mas
- * quebrava silenciosamente o rollback de `prisma.$transaction(async tx =>
- * {...})` — uma criação sobrevivia mesmo depois de um erro lançado dentro da
- * mesma transação. Nunca subiu pra produção; pego antes de qualquer commit.
+/*
+ * Removido em 2026-11-10 (RLS Etapa 4, achado no CI com RLS ligado): havia
+ * aqui um flag "já estou dentro de uma transação preparada", setado durante
+ * todo o callback de `prisma.$transaction(async tx => ...)`, que fazia
+ * `$allOperations` pular o set_config. Mas o `tx` vem de `base.$transaction`
+ * (cliente SEM a extensão): operações via `tx` nunca passam por
+ * `$allOperations`. O flag só afetava chamadas pelo `prisma` GLOBAL dentro do
+ * callback — que rodam em OUTRA conexão, fora da transação — e as fazia rodar
+ * SEM organização. Com RLS ligado: convertProposalToSale não achava a regra de
+ * comissão (resolveExternalSplitsForSale usa o `prisma` global) e não criava
+ * split nenhum, sem erro. A atomicidade não muda sem o flag: a chamada global
+ * nunca fez parte da transação do chamador. Teste:
+ * tests/integration/rls-context-plumbing.test.ts.
  */
-const insidePrimedTransaction = new AsyncLocalStorage<boolean>();
 
 /**
  * RLS (docs/ESPEC_MULTITENANT_FUNDACOES.md, Pilar 2) — toda query passa a
@@ -56,9 +56,9 @@ const insidePrimedTransaction = new AsyncLocalStorage<boolean>();
  * - `client.$transaction` — intercepta a chamada de `$transaction` em si
  *   (forma callback OU array) e injeta o SET LOCAL como a PRIMEIRA operação
  *   da transação real do chamador — nunca uma transação separada.
- * - `query.$allOperations` — só entra em ação pra chamadas FORA de uma
- *   transação já preparada pelo item acima (senão dá dupla-transação e
- *   quebra rollback — ver o comentário do flag acima). Usa a forma array de
+ * - `query.$allOperations` — toda chamada pelo client estendido (inclusive
+ *   uma chamada pelo `prisma` global feita DENTRO do callback de uma
+ *   transação interativa, que roda em outra conexão). Usa a forma array de
  *   `$transaction([...])` pra garantir a mesma conexão física.
  */
 type TransactionOptions = { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel };
@@ -80,7 +80,7 @@ const $transaction = ((...txArgs: unknown[]) => {
         `SELECT set_config('app.current_org_id', $1, TRUE)`,
         orgId,
       );
-      return insidePrimedTransaction.run(true, () => userCallback(tx));
+      return userCallback(tx);
     };
     return base.$transaction(primed, options);
   }
@@ -110,9 +110,6 @@ export const prisma = base.$extends({
       // Semana de observação da Etapa 4 (desligada sem RLS_OBSERVE=1): só
       // registra, nunca altera a consulta. Ver src/lib/rls-observe.ts.
       observeQueryWithoutOrg(model, operation, getCurrentOrgId());
-      if (insidePrimedTransaction.getStore()) {
-        return query(args);
-      }
       const orgId = currentOrgIdOrPlaceholder();
       return base
         .$transaction([base.$executeRawUnsafe(`SELECT set_config('app.current_org_id', $1, TRUE)`, orgId), query(args)])
