@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -11,6 +11,8 @@ import { createProposal, submitProposalForApproval, getProposal } from "@/server
 import { convertProposalToSale, getSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature, getContract } from "@/server/contracts";
 import { registerInstallmentPayment } from "@/server/receivables";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Suíte de regressão de fluxo completo (Pilar 3.2 de
@@ -32,6 +34,7 @@ let salesTableId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Regressão de Fluxo Completo" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "fluxo-completo@teste.local", fullName: "Usuário Fluxo Completo" },
   });
@@ -78,27 +81,29 @@ beforeAll(async () => {
   await setSalesTableUnitPrice(context, salesTableId, unitId, 500000);
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: org.id } } } });
-  await prisma.financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: org.id } } } });
-  await prisma.installment.deleteMany({ where: { portfolio: { organizationId: org.id } } });
-  await prisma.receivablePortfolio.deleteMany({ where: { organizationId: org.id } });
-  await prisma.contract.deleteMany({ where: { organizationId: org.id } });
-  await prisma.commissionSplit.deleteMany({ where: { sale: { organizationId: org.id } } });
-  await prisma.sale.deleteMany({ where: { organizationId: org.id } });
-  await prisma.reservation.deleteMany({ where: { organizationId: org.id } });
-  await prisma.proposalApproval.deleteMany({ where: { proposal: { organizationId: org.id } } });
-  await prisma.proposal.deleteMany({ where: { organizationId: org.id } });
-  await prisma.salesTableUnit.deleteMany({ where: { salesTableId } });
-  await prisma.salesTable.deleteMany({ where: { developmentId } });
-  await prisma.unit.deleteMany({ where: { developmentId } });
-  await prisma.customer.deleteMany({ where: { organizationId: org.id } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.development.deleteMany({ where: { organizationId: org.id } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: org.id } });
+  await fixturePrisma().installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: org.id } } } });
+  await fixturePrisma().financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: org.id } } } });
+  await fixturePrisma().installment.deleteMany({ where: { portfolio: { organizationId: org.id } } });
+  await fixturePrisma().receivablePortfolio.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().contract.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().commissionSplit.deleteMany({ where: { sale: { organizationId: org.id } } });
+  await fixturePrisma().sale.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().reservation.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().proposalApproval.deleteMany({ where: { proposal: { organizationId: org.id } } });
+  await fixturePrisma().proposal.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().salesTableUnit.deleteMany({ where: { salesTableId } });
+  await fixturePrisma().salesTable.deleteMany({ where: { developmentId } });
+  await fixturePrisma().unit.deleteMany({ where: { developmentId } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: org.id } });
 });
 
 describe("Ciclo completo: reserva → proposta → aprovação → venda → contrato → assinatura → carteira → recebimento", () => {

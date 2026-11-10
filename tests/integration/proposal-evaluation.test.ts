@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -19,6 +19,8 @@ import {
 import { createProposal, submitProposalForApproval, decideProposalApproval, getProposal } from "@/server/proposals";
 import { convertProposalToSale } from "@/server/sales";
 import { createContract, markAwaitingSignature, confirmSignature, getContract } from "@/server/contracts";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_MODULO_COMERCIAL.md, Parte 4.2 + Parte 5 (Módulo Comercial
@@ -35,6 +37,7 @@ let developmentId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Avaliação de Propostas" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "avaliacao-propostas@teste.local", fullName: "Usuário Avaliação" },
   });
@@ -55,29 +58,31 @@ beforeAll(async () => {
   developmentId = development.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id];
-  await prisma.installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
-  await prisma.financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
-  await prisma.installment.deleteMany({ where: { portfolio: { organizationId: { in: orgIds } } } });
-  await prisma.receivablePortfolio.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.commissionSplit.deleteMany({ where: { sale: { organizationId: { in: orgIds } } } });
-  await prisma.contract.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.sale.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.proposalApproval.deleteMany({ where: { proposal: { organizationId: { in: orgIds } } } });
-  await prisma.proposal.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.salesTable.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.broker.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.proposalEvaluationRule.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.indexValue.deleteMany({ where: { indexRule: { organizationId: { in: orgIds } } } });
-  await prisma.indexRule.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().installmentPayment.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().financialCalculation.deleteMany({ where: { installment: { portfolio: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().installment.deleteMany({ where: { portfolio: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().receivablePortfolio.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().commissionSplit.deleteMany({ where: { sale: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().contract.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().sale.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().proposalApproval.deleteMany({ where: { proposal: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().proposal.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().salesTable.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().proposalEvaluationRule.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().indexValue.deleteMany({ where: { indexRule: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().indexRule.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Avaliação automática — 3 status", () => {
@@ -449,6 +454,7 @@ describe("Isolamento entre organizações", () => {
 describe("Regra geral × por empreendimento (Parte 1.3)", () => {
   it("sem regra geral nem específica, cai no default do código", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 1" } });
+    setCurrentOrgId(org2.id);
     const spe2 = await createSpe({ ...context, organizationId: org2.id }, {
       name: "SPE Avaliação Geral 1", document: "63265390000141", status: "ACTIVE",
       email: "spe-avaliacao-geral-1@teste.local", phone: "62999990300",
@@ -467,6 +473,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
 
   it("regra geral configurada vale pra empreendimento sem regra própria", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 2" } });
+    setCurrentOrgId(org2.id);
     const ctx2 = { ...context, organizationId: org2.id };
     const spe2 = await createSpe(ctx2, {
       name: "SPE Avaliação Geral 2", document: "63265390000141", status: "ACTIVE",
@@ -502,6 +509,7 @@ describe("Regra geral × por empreendimento (Parte 1.3)", () => {
 
   it("regra do empreendimento sobrescreve a geral, e aparece na lista de sobrescrições", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Avaliação Geral 3" } });
+    setCurrentOrgId(org2.id);
     const ctx2 = { ...context, organizationId: org2.id };
     const spe2 = await createSpe(ctx2, {
       name: "SPE Avaliação Geral 3", document: "63265390000141", status: "ACTIVE",

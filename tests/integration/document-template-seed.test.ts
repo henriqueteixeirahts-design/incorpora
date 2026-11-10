@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { seedDefaultDocumentTemplates } from "@/server/document-template-seed";
 import { createDocumentTemplate } from "@/server/document-templates";
 import { isDraftTemplateName } from "@/lib/document-template-draft";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Biblioteca-padrão de modelos por organização (docs/RELATORIO_TESTDRIVE.md,
@@ -16,19 +18,22 @@ let context: AccessContext;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Seed de Modelos" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "seed-modelos@teste.local", fullName: "Usuário Seed Modelos" },
   });
   context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id];
-  await prisma.documentTemplateDevelopment.deleteMany({ where: { documentTemplate: { organizationId: { in: orgIds } } } });
-  await prisma.documentTemplate.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().documentTemplateDevelopment.deleteMany({ where: { documentTemplate: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().documentTemplate.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("seedDefaultDocumentTemplates", () => {
@@ -88,6 +93,7 @@ describe("seedDefaultDocumentTemplates", () => {
 
   it("não sobrescreve um modelo já cadastrado manualmente pra um tipo", async () => {
     const org2 = await prisma.organization.create({ data: { name: "Org — Seed com Modelo Manual" } });
+    setCurrentOrgId(org2.id);
     const user2 = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "seed-manual@teste.local", fullName: "Usuário Seed Manual" },
     });

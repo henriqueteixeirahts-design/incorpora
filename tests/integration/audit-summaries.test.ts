@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createAgency, updateAgency, listAgenciesPaged } from "@/server/crm";
 import { createSupplier, listSuppliersPaged } from "@/server/finance-setup";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Sprint V3 (R2 — auditoria universal) — Imobiliárias/Corretores e
@@ -21,6 +23,7 @@ let contextB: AccessContext;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Auditoria em Listagens" } });
+  setCurrentOrgId(org.id);
   userA = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "auditoria-a@teste.local", fullName: "Usuária A" },
   });
@@ -31,12 +34,14 @@ beforeAll(async () => {
   contextB = { userId: userB.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.realEstateAgency.deleteMany({ where: { organizationId: org.id } });
-  await prisma.supplier.deleteMany({ where: { organizationId: org.id } });
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().realEstateAgency.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().supplier.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
 });
 
 describe("listAgenciesPaged — audit summary", () => {

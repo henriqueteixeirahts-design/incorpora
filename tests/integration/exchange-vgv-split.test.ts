@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -12,6 +12,8 @@ import { convertProposalToSale } from "@/server/sales";
 import { createPermutante } from "@/server/permutantes";
 import { createExchangeContract, destacarUnidade } from "@/server/exchange-contracts";
 import { getSalesSummary } from "@/server/reports";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_PERMUTANTES.md, Etapa 6 — VGV separa receita própria de VGV
@@ -26,6 +28,7 @@ let developmentId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — VGV Permuta" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "vgv-permuta@teste.local", fullName: "Usuário VGV Permuta" },
   });
@@ -39,22 +42,24 @@ beforeAll(async () => {
   developmentId = development.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.exchangeContract.deleteMany({ where: { development: { organizationId: org.id } } });
-  await prisma.permutante.deleteMany({ where: { organizationId: org.id } });
-  await prisma.contract.deleteMany({ where: { organizationId: org.id } });
-  await prisma.sale.deleteMany({ where: { organizationId: org.id } });
-  await prisma.proposal.deleteMany({ where: { organizationId: org.id } });
-  await prisma.salesTable.deleteMany({ where: { development: { organizationId: org.id } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: org.id } } });
-  await prisma.customer.deleteMany({ where: { organizationId: org.id } });
-  await prisma.broker.deleteMany({ where: { organizationId: org.id } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.development.deleteMany({ where: { organizationId: org.id } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: org.id } });
+  await fixturePrisma().exchangeContract.deleteMany({ where: { development: { organizationId: org.id } } });
+  await fixturePrisma().permutante.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().contract.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().sale.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().proposal.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().salesTable.deleteMany({ where: { development: { organizationId: org.id } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: org.id } } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: org.id } });
 });
 
 async function sellUnit(unitId: string, label: string, document: string) {

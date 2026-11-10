@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -15,6 +15,8 @@ import { createDevelopment } from "@/server/developments";
 import { createUnit } from "@/server/units";
 import { createCustomer } from "@/server/customers";
 import { createProposal } from "@/server/proposals";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Teste de fronteira entre organizações (Pilar 1.4 de
@@ -35,6 +37,7 @@ let contextB: AccessContext;
 
 beforeAll(async () => {
   orgA = await prisma.organization.create({ data: { name: "Org A — Teste de Fronteira" } });
+  setCurrentOrgId(orgA.id);
   orgB = await prisma.organization.create({ data: { name: "Org B — Teste de Fronteira" } });
 
   userA = await prisma.user.create({
@@ -48,19 +51,21 @@ beforeAll(async () => {
   contextB = { userId: userB.id, organizationId: orgB.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
+aroundEach((runTest) => withOrgContext(orgA.id, runTest));
+
 afterAll(async () => {
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.proposal.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: [orgA.id, orgB.id] } } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.customer.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.spePartner.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
-  await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
-  await prisma.speLand.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().proposal.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: [orgA.id, orgB.id] } } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().spePartner.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
+  await fixturePrisma().speInvestor.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
+  await fixturePrisma().speLand.deleteMany({ where: { spe: { organizationId: { in: [orgA.id, orgB.id] } } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: [orgA.id, orgB.id] } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
 });
 
 describe("Sub-entidades de SPE — Org B não acessa registros da Org A", () => {
