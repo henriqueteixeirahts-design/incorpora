@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 import { getCurrentOrgId } from "@/lib/tenant-context";
 import { observeQueryWithoutOrg } from "@/lib/rls-observe";
+import { callSiteFromStack, createOperationalAlertRecorder } from "@/lib/operational-alerts";
 
 const globalForPrisma = globalThis as unknown as {
   prismaBase: PrismaClient | undefined;
@@ -42,18 +43,32 @@ function currentOrgIdOrPlaceholder() {
  * daqui — então QUALQUER chamada que chegue aqui com este marcador ligado é,
  * por definição, o cliente global dentro de um callback de transação.
  * Fora de produção (testes, `next dev`): lança erro. Em produção: registra
- * `prisma-global-client-in-transaction` no log e segue (não derruba um
- * caminho que os testes não cubram). Teste: tests/integration/prisma-transaction-guard.test.ts.
+ * `prisma-global-client-in-transaction` no log E GRAVA um alerta em
+ * `job_runs` (o log da Vercel no Hobby dura menos de 1 hora) e segue (não
+ * derruba um caminho que os testes não cubram). Testes:
+ * tests/integration/prisma-transaction-guard.test.ts e operational-alerts.test.ts.
  */
 const insideInteractiveTransaction = new AsyncLocalStorage<true>();
 
 export const GLOBAL_CLIENT_IN_TRANSACTION_EVENT = "prisma-global-client-in-transaction";
 
+/**
+ * Gravador de alertas operacionais (src/lib/operational-alerts.ts) pelo
+ * CLIENTE BASE — sem a extensão, então gravar nunca passa pela trava nem pelo
+ * set_config de novo (gravar pela extensão de dentro da extensão seria laço).
+ * `job_runs` está fora do RLS (exceção do inventário); quando entrar, esta
+ * gravação precisa de caminho próprio (ver docs/STATUS_IMPLANTACAO.md).
+ */
+export const recordOperationalAlert = createOperationalAlertRecorder((sql, ...params) => base.$executeRawUnsafe(sql, ...params));
+
 function guardGlobalClientInTransaction(what: string) {
   if (!insideInteractiveTransaction.getStore()) return;
   const message = `Cliente prisma GLOBAL usado dentro de prisma.$transaction (${what}) — passe o \`tx\` do callback.`;
   if (process.env.NODE_ENV === "production") {
-    console.error(JSON.stringify({ event: GLOBAL_CLIENT_IN_TRANSACTION_EVENT, level: "error", what, stack: new Error().stack }));
+    const stack = new Error().stack;
+    const callSite = callSiteFromStack(stack);
+    console.error(JSON.stringify({ event: GLOBAL_CLIENT_IN_TRANSACTION_EVENT, level: "error", what, callSite, stack }));
+    void recordOperationalAlert(GLOBAL_CLIENT_IN_TRANSACTION_EVENT, `${what} @ ${callSite}`, `${message} Ponto de chamada: ${callSite}`);
     return;
   }
   throw new Error(message);

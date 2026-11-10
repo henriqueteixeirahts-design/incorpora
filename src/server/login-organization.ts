@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, recordOperationalAlert } from "@/lib/prisma";
 
 /**
  * Resolução da organização no login (RLS Pilar 2, Etapa 4) — com falha
@@ -15,7 +15,9 @@ import { prisma } from "@/lib/prisma";
  * Agora, quando a resolução devolve nulo, `count_user_access_grants()`
  * (outra SECURITY DEFINER, só a contagem) separa os casos, e o caso de falha
  * registra um erro explícito com evento próprio (`login-org-resolution-failed`),
- * fácil de achar no log da Vercel.
+ * fácil de achar no log da Vercel — e GRAVA um alerta em `job_runs`, que a
+ * corrente do alerta entrega por e-mail (o log da Vercel no Hobby dura menos
+ * de 1 hora; decisão do usuário, 2026-11-10).
  */
 export type LoginOrganizationResult =
   | { status: "RESOLVED"; organizationId: string }
@@ -28,6 +30,8 @@ type Deps = {
   resolve: (userId: string) => Promise<string | null>;
   countGrants: (userId: string) => Promise<number>;
   logError: (payload: Record<string, unknown>) => void;
+  /** Grava o alerta no banco (job_runs) — disparar e esquecer; ver src/lib/operational-alerts.ts. */
+  recordAlert: (event: string, callSite: string, message: string) => Promise<void>;
 };
 
 const defaultDeps: Deps = {
@@ -46,23 +50,22 @@ const defaultDeps: Deps = {
   logError(payload) {
     console.error(JSON.stringify(payload));
   },
+  recordAlert: recordOperationalAlert,
 };
 
 export async function resolveLoginOrganization(userId: string, deps: Partial<Deps> = {}): Promise<LoginOrganizationResult> {
-  const { resolve, countGrants, logError } = { ...defaultDeps, ...deps };
+  const { resolve, countGrants, logError, recordAlert } = { ...defaultDeps, ...deps };
   const organizationId = await resolve(userId);
   if (organizationId) return { status: "RESOLVED", organizationId };
 
   const grantCount = await countGrants(userId);
   if (grantCount === 0) return { status: "NO_GRANT" };
 
-  logError({
-    event: LOGIN_ORG_RESOLUTION_FAILED_EVENT,
-    level: "error",
-    userId,
-    grantCount,
-    message:
-      "resolve_user_organization() devolveu nulo para usuário COM vínculo — login bloqueado. Ver docs/STATUS_IMPLANTACAO.md (plano de reversão do login).",
-  });
+  const message =
+    "resolve_user_organization() devolveu nulo para usuário COM vínculo — login bloqueado. Ver docs/CHECKLIST_POS_DEPLOY_LOGIN.md (rollback).";
+  logError({ event: LOGIN_ORG_RESOLUTION_FAILED_EVENT, level: "error", userId, grantCount, message });
+  // O log da Vercel (Hobby) dura menos de 1 hora: grava também no banco, para
+  // a corrente do alerta entregar. Disparar e esquecer — o login não espera.
+  void recordAlert(LOGIN_ORG_RESOLUTION_FAILED_EVENT, `user:${userId}`, `${message} Usuário: ${userId} (${grantCount} vínculo(s)).`);
   return { status: "RESOLUTION_FAILED", grantCount };
 }

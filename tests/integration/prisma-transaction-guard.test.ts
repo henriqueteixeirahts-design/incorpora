@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GLOBAL_CLIENT_IN_TRANSACTION_EVENT, prisma } from "@/lib/prisma";
 import { setCurrentOrgId } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Trava em tempo de execução: cliente `prisma` GLOBAL dentro de
@@ -16,9 +17,12 @@ async function readCurrentOrgSetting(): Promise<string | null> {
   return rows[0]?.current_org ?? null;
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  // O teste em modo produção grava um alerta em job_runs (ver operational-alerts.test.ts); não deixa resto.
+  await new Promise((r) => setTimeout(r, 300));
+  await fixturePrisma().$executeRawUnsafe(`DELETE FROM job_runs WHERE "jobName" LIKE 'alerta:%'`);
 });
 
 describe("Trava: cliente prisma GLOBAL dentro de prisma.$transaction", () => {
