@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { expectNoSupabaseRoleCanExecute } from "./helpers/supabase-roles";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * RLS Pilar 2, preparação da Etapa 4 — `resolve_user_organization()`
@@ -21,31 +22,32 @@ async function resolve(userId: string) {
 
 describe("resolve_user_organization() — login sem leitura cross-tenant", () => {
   it("devolve a organização do vínculo mais antigo do usuário, e nulo pra quem não tem vínculo", async () => {
-    const orgA = await prisma.organization.create({ data: { name: "Org A — resolve_user_organization" } });
-    const orgB = await prisma.organization.create({ data: { name: "Org B — resolve_user_organization" } });
-    const role = await prisma.role.create({ data: { organizationId: orgA.id, name: `Papel ${crypto.randomUUID()}` } });
-    const roleB = await prisma.role.create({ data: { organizationId: orgB.id, name: `Papel ${crypto.randomUUID()}` } });
-    const user = await prisma.user.create({
+    const db = fixturePrisma();
+    const orgA = await db.organization.create({ data: { name: "Org A — resolve_user_organization" } });
+    const orgB = await db.organization.create({ data: { name: "Org B — resolve_user_organization" } });
+    const role = await db.role.create({ data: { organizationId: orgA.id, name: `Papel ${crypto.randomUUID()}` } });
+    const roleB = await db.role.create({ data: { organizationId: orgB.id, name: `Papel ${crypto.randomUUID()}` } });
+    const user = await db.user.create({
       data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário resolve" },
     });
-    const loner = await prisma.user.create({
+    const loner = await db.user.create({
       data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário sem vínculo" },
     });
     try {
-      await prisma.accessGrant.create({
+      await db.accessGrant.create({
         data: { organizationId: orgA.id, userId: user.id, roleId: role.id, createdAt: new Date("2026-01-01") },
       });
-      await prisma.accessGrant.create({
+      await db.accessGrant.create({
         data: { organizationId: orgB.id, userId: user.id, roleId: roleB.id, createdAt: new Date("2026-06-01") },
       });
 
       expect(await resolve(user.id)).toBe(orgA.id);
       expect(await resolve(loner.id)).toBeNull();
     } finally {
-      await prisma.accessGrant.deleteMany({ where: { userId: user.id } });
-      await prisma.user.deleteMany({ where: { id: { in: [user.id, loner.id] } } });
-      await prisma.role.deleteMany({ where: { id: { in: [role.id, roleB.id] } } });
-      await prisma.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
+      await db.accessGrant.deleteMany({ where: { userId: user.id } });
+      await db.user.deleteMany({ where: { id: { in: [user.id, loner.id] } } });
+      await db.role.deleteMany({ where: { id: { in: [role.id, roleB.id] } } });
+      await db.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
     }
   });
 

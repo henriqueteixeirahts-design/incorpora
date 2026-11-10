@@ -67,6 +67,7 @@ describe("seedDefaultDocumentTemplates", () => {
 
   it("quando o conteúdo real do contrato é passado, cria o modelo de contrato também", async () => {
     const otherOrg = await prisma.organization.create({ data: { name: "Org — Seed de Modelos com Contrato" } });
+    setCurrentOrgId(otherOrg.id);
     const otherUser = await prisma.user.create({
       data: { id: crypto.randomUUID(), email: "seed-modelos-contrato@teste.local", fullName: "Usuário Seed Contrato" },
     });

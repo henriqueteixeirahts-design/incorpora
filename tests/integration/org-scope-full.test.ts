@@ -311,17 +311,18 @@ describe("Reservation — Org B não cria reserva referenciando unidade/cliente/
       }),
     ).rejects.toThrow("Corretor inválido.");
 
-    // Confirma que nenhuma reserva cross-org foi criada
-    const leaked = await prisma.reservation.findFirst({ where: { unitId: unitA.id, organizationId: orgB.id } });
+    // Confirma que nenhuma reserva cross-org foi criada — pela role de migrations
+    // (sem RLS): lida no contexto da Org A, a checagem nunca veria nada da Org B.
+    const leaked = await fixturePrisma().reservation.findFirst({ where: { unitId: unitA.id, organizationId: orgB.id } });
     expect(leaked).toBeNull();
 
     // cleanup local (não coberto pelo afterAll, que só limpa fixtures nomeados acima)
-    await prisma.unit.deleteMany({ where: { developmentId: developmentB.id } });
-    await prisma.developmentEvent.deleteMany({ where: { developmentId: developmentB.id } });
-    await prisma.auditEvent.deleteMany({ where: { entityId: { in: [developmentB.id, speB.id, customerB.id] } } });
-    await prisma.development.delete({ where: { id: developmentB.id } });
-    await prisma.specialPurposeEntity.delete({ where: { id: speB.id } });
-    await prisma.customer.delete({ where: { id: customerB.id } });
+    await fixturePrisma().unit.deleteMany({ where: { developmentId: developmentB.id } });
+    await fixturePrisma().developmentEvent.deleteMany({ where: { developmentId: developmentB.id } });
+    await fixturePrisma().auditEvent.deleteMany({ where: { entityId: { in: [developmentB.id, speB.id, customerB.id] } } });
+    await fixturePrisma().development.delete({ where: { id: developmentB.id } });
+    await fixturePrisma().specialPurposeEntity.delete({ where: { id: speB.id } });
+    await fixturePrisma().customer.delete({ where: { id: customerB.id } });
   });
 });
 
