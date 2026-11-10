@@ -13,6 +13,31 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    // RLS Pilar 2, Etapa 4 (2026-11-10) — o pooler em modo transação vaza
+    // estado de sessão entre clientes (provado por
+    // scripts/prove-pooler-tenant-context.ts). Contexto de organização só
+    // com set_config(..., true), e só na extensão do Prisma. A mesma trava
+    // existe como teste (src/lib/no-session-set-guard.test.ts), que também
+    // confere o `true` no ponto legítimo.
+    files: ["src/**/*.{ts,tsx,js,mjs}"],
+    ignores: ["src/lib/prisma.ts", "src/lib/no-session-set-guard.test.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[value=/set_config\\s*\\(|\\bSET\\s+(SESSION\\s+|LOCAL\\s+)?\"?app\\./i]",
+          message:
+            "Contexto de organização só via set_config(..., true) em src/lib/prisma.ts — SET de sessão vaza entre clientes no pooler em modo transação.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/set_config\\s*\\(|\\bSET\\s+(SESSION\\s+|LOCAL\\s+)?\"?app\\./i]",
+          message:
+            "Contexto de organização só via set_config(..., true) em src/lib/prisma.ts — SET de sessão vaza entre clientes no pooler em modo transação.",
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
