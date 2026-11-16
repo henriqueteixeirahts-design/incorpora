@@ -2,7 +2,7 @@
 
 > Para o dia do merge do PR #1. O deploy muda o login (`resolve_user_organization()`, `count_user_access_grants()`), corrige a causa raiz da comissão (funções recebem o `tx`) e liga a trava `prisma-global-client-in-transaction` em modo produção. Nenhuma policy de RLS é ativada.
 > Quem detecta login quebrado é você abrindo o sistema: reserve ~30 minutos de atenção inteira, sem outra tarefa no meio.
-> **Pré-condição**: a corrente do alerta já funcionando (o deploy liga a auditoria diária encadeada no cron; com a V7 em ALERT, ela gera uma falha por dia).
+> **Pré-condição**: a corrente do alerta já funcionando (o deploy liga a auditoria diária encadeada no cron; com a V7 em ALERT, ela gera uma falha por dia) — ✅ **cumprida em 16/11/2026**. Depois do merge, reativar o workflow "Alerta de jobs" no GitHub (Actions → Alerta de jobs → Enable workflow).
 
 ## 0. Antes do merge (5 min)
 

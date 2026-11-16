@@ -946,11 +946,37 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 | Semana de observação pronta (desligada) | ✅ no branch, aguarda push e ok pra ligar |
 | Helper de fixtures pra RLS | ✅ no branch (migração das suítes acontece grupo a grupo) |
 | Preview da Vercel isolado do banco de produção | ✅ 2026-11-08 (preview desativado; banco só Production). Pendência menor: SUPABASE_SERVICE_ROLE_KEY ainda em Preview |
-| Alerta: segredos configurados + disparo real com e-mail recebido | ⏳ Resend e token |
-| Alerta: gatilho confiável (cron-job.org + GitHub) | ⏳ aprovado; configuração do usuário |
+| Alerta: segredos configurados + disparo real com e-mail recebido | ✅ **CUMPRIDO** 16/11 20:12 UTC — 7 entregues, e-mails recebidos |
+| Alerta: gatilho confiável (cron-job.org + GitHub) | ✅ **CUMPRIDO** — cron-job.org batendo desde 16/11 20:35 UTC; GitHub configurado, workflow desativado até o merge |
 | Staging reconstruída por replay + mutação real da V3 contra ela | ✅ substituído em 2026-11-09: CI na imagem `supabase/postgres` faz o replay e roda as mutações (staging pausada) |
 | **Pooler em modo transação: contexto de organização sobrevive (novo, 2026-11-09)** | ⏳ script pronto e aprovado no CI (PgBouncer); falta o usuário rodar contra a produção pelo Supavisor. Nenhuma policy ativa antes desta prova |
 | **Etapa 4 inteira provada no CI (17 grupos, 84 tabelas, fronteira, reversão, desempenho)** | ✅ 2026-11-10, job `test-rls` — roteiro em `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`; correção da extensão do Prisma precisa estar no ar antes do Grupo 1 |
+
+---
+
+### 2026-11-16 — corrente do alerta COMPLETA e provada em produção (pré-requisito CUMPRIDO)
+
+Configuração feita pelo usuário: 5 segredos na Edge Function `job-alert-dispatch` (`JOB_ALERT_DISPATCH_TOKEN`, `RESEND_API_KEY`, `JOB_ALERT_EMAIL_TO`, `JOB_ALERT_EMAIL_FROM` = `onboarding@resend.dev` por enquanto — só entrega no e-mail da conta do Resend; trocar por domínio verificado antes de ter outro destinatário —, `JOB_ALERT_ENV_LABEL`); cron-job.org com POST + `Authorization: Bearer` + corpo `{}` nos minutos 5/20/35/50, notificação de falha depois de 2 falhas seguidas e de recuperação ligadas; GitHub com o secret `JOB_ALERT_DISPATCH_TOKEN` e a variável `JOB_ALERT_DISPATCH_URL` — **workflow "Alerta de jobs" continua DESATIVADO até o merge do PR #1** (o agendado roda a versão do master).
+
+Conferido no banco de produção (só leitura, 16/11 20:43 UTC):
+- **20:12:04** — primeiro despacho (manual): `pending 7, delivered 7`, `stale []`. Os 7 alertas: `teste-disparo-real-alerta` (22/10), `audit-update` (26/10, 02/11, 09/11, 16/11) e `audit-update-full` (01/11, 02/11) — todos com `alertSentAt` 20:12:03–04. **Os 7 e-mails chegaram.**
+- **20:12:52** — segunda chamada: `pending 0, delivered 0` — idempotência confirmada.
+- **20:35:11** — primeiro batimento **automático** (cron-job.org), SUCCESS, no minuto do agendamento.
+- 0 alertas pendentes. Última V7 registrada: ALERT na auditoria de 16/11 04:17 (antes da corrente existir — é o próprio `audit-update` de 16/11 entre os 7 entregues). Produção com 56 migrations (o PR #1 traz mais 3).
+
+**V7 — quando sai de ALERT** (regra em `src/server/audit.ts`): é avaliada só quando a auditoria roda, e fica OK se o último batimento SUCCESS tiver **no máximo 60 minutos** naquele instante. Não exige sequência de batimentos — um basta, desde que recente. Com o cron-job.org a cada 15 min, sempre haverá um batimento de menos de 15 min. Em produção hoje (sem o PR #1), a auditoria por amostragem roda **semanalmente** (segunda, ~04:17 UTC) e a completa nos dias 1-2: a próxima é **segunda 23/11 ~04:17 UTC → V7 OK**, e o `audit-update` deixa de falhar toda semana. Depois do merge, a auditoria diária encadeada no cron avalia a V7 todo dia. Se o cron-job.org parar, a V7 volta a ALERT na auditoria seguinte e a Edge Function responde 500 (buraco de mais de 1 h entre despachos), o que dispara o e-mail de falha do próprio cron-job.org.
+
+**Chamar a Edge Function do Windows (PowerShell 5.1)** — para não travar de novo:
+- `curl.exe` falha com `CRYPT_E_REVOCATION_OFFLINE` (o Windows não consegue checar a revogação do certificado nessa rede). Não use `--ssl-no-revoke` como solução: desliga uma checagem de TLS.
+- `Invoke-WebRequest` precisa de `-UseBasicParsing` (sem ele, o 5.1 tenta usar o motor do Internet Explorer e falha). Forma que funciona:
+  ```powershell
+  $token = Read-Host "Token"
+  $r = Invoke-WebRequest -UseBasicParsing -Method POST `
+    -Uri "https://mueudgyivnqhhbwkykkq.supabase.co/functions/v1/job-alert-dispatch" `
+    -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body "{}"
+  $r.StatusCode; $r.Content
+  ```
+  No 5.1, resposta 4xx/5xx vira exceção; para ver o código e o corpo de um 401/503: `try { ...comando acima... } catch { $_.Exception.Response.StatusCode.value__; $_.ErrorDetails.Message }`.
 
 ---
 

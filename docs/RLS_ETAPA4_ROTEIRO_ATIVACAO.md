@@ -8,7 +8,7 @@
 
 | # | O quê | Como confirmar |
 |---|---|---|
-| 0.1 | Corrente do alerta funcionando ponta a ponta (6 pendentes entregues) | e-mail recebido; eu confiro `alertSentAt` no banco |
+| 0.1 | Corrente do alerta funcionando ponta a ponta | ✅ **CUMPRIDO** 16/11/2026: 7 alertas entregues às 20:12 UTC, e-mails recebidos, cron-job.org batendo desde 20:35 UTC (ver STATUS) |
 | 0.2 | PR #1 mergeado e no ar (login por `resolve_user_organization()`) | login testado em janela anônima (plano de reversão do login no STATUS) |
 | 0.3 | Prova do pooler contra a produção: **APROVADO** | saída do `scripts/prove-pooler-tenant-context.ts` com a `DATABASE_URL` da Vercel |
 | 0.4 | No ar, vindos deste branch: correção da extensão do Prisma (`prisma` global dentro de `$transaction` sem contexto — **sem ela, a comissão quebra em silêncio no Grupo 1**), login barulhento (`count_user_access_grants`), trava contra SET de sessão | CI verde no master com os jobs `test` e `test-rls` |
