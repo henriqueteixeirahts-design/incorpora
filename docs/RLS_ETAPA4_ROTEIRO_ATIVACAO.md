@@ -63,7 +63,40 @@ A ordem do inventário se manteve: nada no Bloco 2 obrigou a mudar. Os dois acha
 | 16 — Carteira de recebíveis | 5 | Carteira, extrato do cliente, recebíveis avulsos, fluxo de caixa, painel executivo | recálculo diário, auditoria V2/V3/V6 | **48 h**, incluindo uma auditoria **completa** (dias 1-2 do mês, ou disparada à mão) com V3/V6 OK |
 | 17 — Vínculo de acesso | 1 | **Login** em janela anônima, logo depois do deploy; Usuários e papéis | login | 24 h |
 
-Total: ~19 dias corridos (domingo do Grupo 7 e as 48 h do 16 incluídos). Depois do 17, as 6 exceções do inventário (`organizations`, `users`, `permissions`, `roles`, `role_permissions`, `job_runs`), uma a uma, com plano próprio.
+Total: ~19 dias corridos (domingo do Grupo 7 e as 48 h do 16 incluídos). Depois do 17, as 6 exceções do inventário (`organizations`, `users`, `permissions`, `roles`, `role_permissions`, `job_runs`), uma a uma, com plano próprio — **`job_runs` com pré-requisitos bloqueantes (seção 2.1)**.
+
+## 2.1 Exceção `job_runs` — PRÉ-REQUISITOS BLOQUEANTES
+
+> **`job_runs` NÃO recebe policy enquanto os dois itens abaixo não estiverem em produção e verdes no CI.** Não é "resolver depois": sem eles, a ativação quebra em silêncio.
+
+`job_runs` não está em nenhum dos 17 grupos — é uma das 6 exceções (`docs/RLS_INVENTARIO_TIERS.md`), tratadas depois do Grupo 17. Mas recebe policy: "por organização + leitura cross-org só via função dedicada ou pelo `postgres`". Dois caminhos da aplicação usam linhas **sem organização**, como `app_user`, sem contexto, e quebram com essa policy — os dois **sem erro visível**:
+
+| # | Caminho | O que acontece com a policy por organização | Prova (job `test-rls`) |
+|---|---|---|---|
+| 1 | Gravação dos alertas operacionais (`src/lib/operational-alerts.ts`: `prisma-global-client-in-transaction`, `login-org-resolution-failed`) | O INSERT é recusado pelo WITH CHECK; como a gravação é "disparar e esquecer", **o alerta some** — a única pista é um `console.error` num log que dura menos de 1 hora | `tests/integration/rls-job-runs-bloqueantes.test.ts` |
+| 2 | Auditoria V7 lendo o batimento do despacho (`job-alert-dispatch`, sem organização) pelo `prisma` da aplicação | A V7 não enxerga batimento nenhum e fica em **ALERT para sempre**, mesmo com a corrente funcionando | mesmo arquivo |
+
+Os testes ligam a policy planejada e **afirmam o estado atual** (recusado / ALERT), cada um com o controle embutido (sem a policy, funciona). Controle negativo deles: simulando a policy aceitando linha sem organização, os 3 falham. Quando a solução abaixo existir, eles falham e viram os testes positivos.
+
+Não afetados: o watchdog do pg_cron e a Edge Function (`postgres`, com BYPASSRLS); os jobs (gravam `JobRun` com organização, dentro do contexto); a varredura de travados (`sweepStaleJobRuns`) passa a fechar só os da organização do job — já aceito, a global é o watchdog.
+
+### Proposta (não implementada — aguarda aprovação)
+
+**Bloqueante 1 — recomendada: função SECURITY DEFINER mínima `record_operational_alert(p_event text, p_call_site text, p_message text) RETURNS boolean`.**
+- Roda como a dona (role de migrations, com BYPASSRLS): grava a linha sem organização passando pela policy, e faz **a deduplicação e o teto dentro da função**, vendo todas as linhas (contagem correta entre processos).
+- O gravador passa a chamar só `SELECT record_operational_alert($1, $2, $3)` — ainda pelo cliente base (sem passar pela extensão, sem laço).
+- Travas: `search_path` vazio e tabela qualificada; **lista fechada de eventos dentro da função** (só os dois; qualquer outro → erro), para a função não virar um jeito de mandar e-mail arbitrário; tamanhos máximos (`p_call_site` 300, `p_message` 2.000); **teto fixo dentro da função (5)**, não parâmetro (o chamador não consegue aumentar); retorno só booleano (gravou ou não); REVOKE de PUBLIC/anon/authenticated/service_role; EXECUTE só para `app_user`; teste estrito com `EXPECT_SUPABASE_ROLES`.
+- Controles negativos a fazer: EXECUTE para `anon` → teste falha; SECURITY INVOKER → com a policy ligada a gravação volta a ser recusada → teste positivo falha; evento fora da lista → a função recusa; INSERT direto de linha sem organização pelo `app_user` com a policy ligada → recusado (a policy continua fechada; só a função passa).
+
+**Bloqueante 2 — função SECURITY DEFINER mínima `alert_dispatch_heartbeat_status() RETURNS TABLE (last_success_at timestamp, last_attempt_at timestamp, last_attempt_success boolean)`.**
+- Só datas e um booleano, sem o texto do erro (retorno mínimo; a mensagem da V7 passa a dizer "a última tentativa falhou", sem o detalhe). A V7 lê por ela em vez do `prisma`.
+- Mesmas travas (search_path vazio, sem parâmetro, REVOKE das roles do Supabase, EXECUTE só `app_user`, teste estrito). Controles: com a policy ligada, a V7 fica OK com batimento recente e ALERT sem batimento; SECURITY INVOKER → volta a ALERT permanente → teste falha.
+
+**Descartadas:**
+- *Policy aceitando linha sem organização quando `jobName LIKE 'alerta:%'`*: a contagem do teto precisa LER essas linhas — ou a policy também libera leitura (expondo `userId` e pontos de chamada a todas as organizações), ou o teto entre processos deixa de valer. E abre uma exceção na regra de fail-closed da tabela — critério de parada do projeto.
+- *Gravar por uma segunda conexão com BYPASSRLS*: uma credencial privilegiada no runtime da aplicação — exatamente o que a Etapa 3 evitou com `list_active_org_ids()`.
+
+**Quando**: as duas funções funcionam igual com ou sem RLS, então podem ir a produção em qualquer deploy **antes** da ativação de `job_runs` (o mais cedo possível reduz risco). A ativação de `job_runs` só depois de: funções no ar + `rls-job-runs-bloqueantes.test.ts` convertido em teste positivo e verde no `test-rls`.
 
 ## 3. Desempenho esperado (benchmark do CI, 3 organizações × 20 mil parcelas)
 
