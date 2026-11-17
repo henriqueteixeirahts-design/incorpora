@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { runAuditForOrganization } from "@/server/audit";
 import { recalculateInstallment } from "@/server/receivables";
+import { setCurrentOrgId } from "@/lib/tenant-context";
 
 /**
  * V6a — consistência do histórico (src/server/audit.ts,
@@ -20,6 +21,7 @@ type V6Issue = { installmentId: string; problem: string };
 
 async function makeFixture(tag: string) {
   const org = await prisma.organization.create({ data: { name: `Org — V6 — ${tag}` } });
+  setCurrentOrgId(org.id);
   const user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário V6" },
   });
@@ -108,6 +110,7 @@ async function runV6(orgId: string) {
 describe("V6a — consistência do histórico (último FinancialCalculation x valor guardado na parcela)", () => {
   it("controle: parcela gravada pelo motor real fica OK — inclusive recalculada de novo no mesmo mês e num mês novo", async () => {
     const { org, user, installment } = await makeFixture("controle");
+    setCurrentOrgId(org.id);
     try {
       expect((await runV6(org.id)).status).toBe("OK");
 
@@ -127,6 +130,7 @@ describe("V6a — consistência do histórico (último FinancialCalculation x va
 
   it("mutação: valor guardado na parcela escrito por fora do motor (+1 centavo) → VALUE_MISMATCH", async () => {
     const { org, user, installment } = await makeFixture("valor");
+    setCurrentOrgId(org.id);
     try {
       const stored = await prisma.installment.findUniqueOrThrow({ where: { id: installment.id } });
       await prisma.installment.update({ where: { id: installment.id }, data: { correctedValue: Number(stored.correctedValue) + 0.01 } });
@@ -141,6 +145,7 @@ describe("V6a — consistência do histórico (último FinancialCalculation x va
 
   it("mutação: parcela grava o correctedValue do cálculo (sem multa/mora) em vez do resultValue → VALUE_MISMATCH", async () => {
     const { org, user, installment } = await makeFixture("grandeza");
+    setCurrentOrgId(org.id);
     try {
       const latest = await prisma.financialCalculation.findFirstOrThrow({ where: { installmentId: installment.id } });
       expect(Number(latest.correctedValue)).not.toBe(Number(latest.resultValue)); // pré-condição: a parcela está vencida
@@ -156,6 +161,7 @@ describe("V6a — consistência do histórico (último FinancialCalculation x va
 
   it("mutação: memória de cálculo perdida (nenhum FinancialCalculation) → MISSING_CALCULATION", async () => {
     const { org, user, installment } = await makeFixture("sem-memoria");
+    setCurrentOrgId(org.id);
     try {
       await prisma.financialCalculation.deleteMany({ where: { installmentId: installment.id } });
 
@@ -169,6 +175,7 @@ describe("V6a — consistência do histórico (último FinancialCalculation x va
 
   it("mutação: recálculo atualizou a parcela mas não a linha de memória (data defasada) → DATE_MISMATCH", async () => {
     const { org, user, installment } = await makeFixture("data");
+    setCurrentOrgId(org.id);
     try {
       await prisma.installment.update({ where: { id: installment.id }, data: { lastCalculatedAt: new Date("2026-03-20T12:00:00") } });
 

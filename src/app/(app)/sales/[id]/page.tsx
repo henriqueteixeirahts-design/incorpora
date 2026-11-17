@@ -22,6 +22,7 @@ import type { PaymentFlowResult } from "@/lib/payment-flow";
 import { SaleDetailTabs } from "./sale-detail-tabs";
 import { IndexFreshnessBanner } from "@/components/IndexFreshnessBanner";
 import { formatCurrencyBRL, formatDateBR, formatDateTimeBR, formatCalendarDateBR } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
 
 export default async function SaleDetailPage({
   params,
@@ -99,7 +100,7 @@ export default async function SaleDetailPage({
   const distratoTemplates = contract
     ? await listApplicableDocumentTemplates(context.organizationId, sale.developmentId, "RESCISSION")
     : [];
-  const distratoRule = contract ? await getEffectiveDistratoRule(context.organizationId, sale.developmentId) : null;
+  const distratoRule = contract ? await getEffectiveDistratoRule(prisma, context.organizationId, sale.developmentId) : null;
   const distratoDocuments = distrato ? await listDistratoGeneratedDocuments(context.organizationId, distrato.id) : [];
   const distratoDocumentUrls = await Promise.all(
     distratoDocuments.map((doc) => getSignedDocumentUrl(doc.fileUrl).catch(() => null)),

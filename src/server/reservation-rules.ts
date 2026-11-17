@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type DbClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { orgScope, canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
@@ -55,11 +55,11 @@ function toValues(rule: {
 }
 
 /** Regra efetiva: do empreendimento específico → geral da organização → default do código. */
-export async function getEffectiveReservationRule(organizationId: string, developmentId: string): Promise<ReservationRuleValues> {
-  const rule = await prisma.reservationRule.findUnique({ where: { developmentId } });
+export async function getEffectiveReservationRule(db: DbClient, organizationId: string, developmentId: string): Promise<ReservationRuleValues> {
+  const rule = await db.reservationRule.findUnique({ where: { developmentId } });
   if (rule) return toValues(rule);
 
-  const general = await prisma.reservationRule.findFirst({ where: { organizationId, developmentId: null } });
+  const general = await db.reservationRule.findFirst({ where: { organizationId, developmentId: null } });
   if (general) return toValues(general);
 
   return DEFAULT_RESERVATION_RULE;

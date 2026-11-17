@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createCustomer, updateCustomer } from "@/server/customers";
 import { ValidationError } from "@/lib/errors";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/RELATORIO_TESTDRIVE.md, achado 4 — endereço com logradouro mas sem
@@ -18,16 +20,19 @@ let context: AccessContext;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Validação de Endereço" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "endereco@teste.local", fullName: "Usuário Endereço" },
   });
   context = { userId: user.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.customer.deleteMany({ where: { organizationId: org.id } });
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.delete({ where: { id: user.id } });
+  await fixturePrisma().customer.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.delete({ where: { id: user.id } });
 });
 
 describe("createCustomer — número do endereço obrigatório quando há logradouro", () => {

@@ -11,6 +11,7 @@ import { listSalesTables } from "@/server/sales-tables";
 import { runJobForSingleOrganization, expireReservationsJob } from "@/server/jobs";
 import { EspelhoGrid } from "./espelho-grid";
 import { resolveUnitArea } from "@/lib/unit-area";
+import { prisma } from "@/lib/prisma";
 
 export default async function DevelopmentMapPage({
   params,
@@ -35,7 +36,7 @@ export default async function DevelopmentMapPage({
       listBrokers(context.organizationId),
       listAgencies(context.organizationId),
       listSalesTables(context, id),
-      getEffectiveReservationRule(context.organizationId, id),
+      getEffectiveReservationRule(prisma, context.organizationId, id),
     ]);
 
   const principalUnits = units.filter((unit) => !unit.isAccessory);

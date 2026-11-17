@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { expectNoSupabaseRoleCanExecute } from "./helpers/supabase-roles";
 
 /**
  * RLS Pilar 2, Etapa 3 — `list_active_org_ids()` (SECURITY DEFINER) é a
@@ -39,18 +40,8 @@ describe("list_active_org_ids() — função SECURITY DEFINER, sem role BYPASSRL
   });
 
   it("nenhuma role do PostgREST/Supabase (anon, authenticated, service_role) consegue executar — achado corrigido em produção: o default privilege do Supabase concede EXECUTE em função nova do schema public a essas roles por padrão, REVOKE FROM PUBLIC sozinho não bloqueia isso", async () => {
-    const rows = await prisma.$queryRawUnsafe<{ rolname: string; has_execute: boolean }[]>(`
-      SELECT r.rolname, has_function_privilege(r.rolname, 'list_active_org_ids()', 'EXECUTE') AS has_execute
-      FROM pg_roles r
-      WHERE r.rolname IN ('anon', 'authenticated', 'service_role')
-    `);
-
-    // Em Postgres local puro (Docker) essas roles não existem — a query
-    // simplesmente não devolve linha nenhuma, e o teste não tem nada a
-    // afirmar. Em ambiente Supabase (staging/produção), toda linha que
-    // existir precisa ter has_execute = false.
-    for (const row of rows) {
-      expect(row.has_execute, `${row.rolname} não deveria conseguir executar list_active_org_ids()`).toBe(false);
-    }
+    // CI (imagem supabase/postgres, EXPECT_SUPABASE_ROLES=1): exige as 3
+    // linhas, todas false. Postgres puro local: roles não existem, nada a afirmar.
+    await expectNoSupabaseRoleCanExecute("list_active_org_ids()");
   });
 });

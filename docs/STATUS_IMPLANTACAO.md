@@ -2,7 +2,9 @@
 
 > Este documento deve ser atualizado pelo Claude Code ao final de cada sprint concluída, antes de iniciar a próxima. Objetivo: permitir auditoria do progresso por alguém não-técnico, sem precisar acompanhar o desenvolvimento sprint a sprint.
 
-**Última atualização (2026-10-22):** RLS Pilar 2 — **Etapa 3 concluída** e **correção do `recalculate-installments` concluída**, ambas em 2026-09-18 e verificadas em produção (ver seção 1, bloco RLS). Buracos da V3 tapados (amostra com todas as vencidas + sorteio, teste de mutação permanente no CI, V4 em 3 dias); bug "job travado nunca gerava e-mail" corrigido; script de reconstrução da staging pronto. Pendentes antes da Etapa 4: **detecção de falha silenciosa INCOMPLETA** (Resend não configurado, nenhum disparo real), **staging não reconstruída** (precisa de credenciais + aprovação) e o **teste de mutação real contra a staging**. Etapa 4 com plano aguardando revisão — nada codado.
+**Última atualização (2026-11-08):** retomada após pausa — ver seção "Retomada de 2026-11-08" no fim do bloco RLS: gatilho do GitHub entregou ~5% (61 de ~1.150), alerta nunca configurado por completo, preparação da Etapa 4 pronta num branch local sem push, nada novo em produção.
+
+**Atualização (2026-10-22):** RLS Pilar 2 — **Etapa 3 concluída** e **correção do `recalculate-installments` concluída**, ambas em 2026-09-18 e verificadas em produção (ver seção 1, bloco RLS). Buracos da V3 tapados (amostra com todas as vencidas + sorteio, teste de mutação permanente no CI, V4 em 3 dias); bug "job travado nunca gerava e-mail" corrigido; script de reconstrução da staging pronto. Pendentes antes da Etapa 4: **detecção de falha silenciosa INCOMPLETA** (Resend não configurado, nenhum disparo real), **staging não reconstruída** (precisa de credenciais + aprovação) e o **teste de mutação real contra a staging**. Etapa 4 com plano aguardando revisão — nada codado.
 
 **Atualização (2026-10-22, tarde):** V6a no ar (V1-V6); inventário de tabelas por tier versionado (`docs/RLS_INVENTARIO_TIERS.md`); alerta independente da Vercel no master (GitHub Actions → Edge Function; pg_net recusado), aguardando segredos para o disparo real. Staging aguardando credenciais.
 
@@ -880,7 +882,245 @@ Até os segredos existirem (Resend nos segredos da Edge Function — **não** ma
 
 **Caminhos ambíguos do RLS decididos (2026-10-22)**: `spe_investor_contributions`, `spe_investor_returns` e `exchange_retention_releases` seguem o caminho que a aplicação já usa (via investidor → SPE, e via contrato de permuta → empreendimento) — não houve empate. Inventário final 40 / 26 / 18 / 6 exceções = 90, com justificativa em `docs/RLS_INVENTARIO_TIERS.md`. Nenhuma tabela pendente de caminho.
 
-**Próximo**: Bloco B (reconstrução da staging + testes de mutação V3/V6 e despacho do alerta contra ela) quando o `.env.staging` for confirmado; Bloco C (segredos da Edge Function e do GitHub + disparo real) quando os segredos forem confirmados; depois a Etapa 4 (nada codado).
+**Próximo (registrado em 2026-10-22)**: Bloco B (staging) e Bloco C (disparo real) — ver a retomada de 2026-11-08 logo abaixo.
+
+**V7 — vigia do gatilho (2026-10-22)**: cada chamada autorizada da Edge Function grava um batimento em `job_runs` (`jobName = 'job-alert-dispatch'`, sem organização, `alertSuppressed = true`); a verificação `V7_ALERT_DISPATCH_HEARTBEAT` acusa se o último batimento SUCCESS tiver mais de 1 hora, ou se nunca houve um (migration `20261022200000`, em produção).
+
+---
+
+### Retomada de 2026-11-08 — alerta, plano B do gatilho, preparação da Etapa 4
+
+**Estado de produção em 08/11** (conferido no banco): 56 migrations (última `20261022200000_audit_v7_alert_dispatch_heartbeat`); `recalculate-installments` com SUCCESS diário; 0 jobs travados; auditoria de 02/11 com V1-V6 OK e **V7 em ALERT** (correto); **5 alertas pendentes** (`alertSentAt` nulo): o job falso `aefa5f96` de 22/10, `audit-update` de 26/10 e 02/11, `audit-update-full` de 01/11 e 02/11 (as auditorias "falham" como job porque a V7 acusa); Edge Function `job-alert-dispatch` versão 2 ativa em produção; **0 batimentos** — a função nunca recebeu chamada autorizada; nenhum token de alerta no Vault (por desenho: o token vive só no GitHub e nos segredos da função); 0 policies, 0 tabelas com RLS.
+
+**O gatilho do GitHub entregou ~5%.** Entre 22/10 e 03/11 o workflow "Alerta de jobs" rodou 61 vezes (60 agendadas + 1 manual) contra ~1.150 esperadas pelo cron de 15 min. As 60 agendadas falharam todas pelo mesmo motivo — o secret `JOB_ALERT_DISPATCH_TOKEN` nunca foi criado no GitHub, então a função nunca foi chamada — e viraram um e-mail de falha por dia até o workflow ser desativado à mão (`disabled_manually`).
+
+**Workflow revisto (branch local `sprint-nov-etapa4-prep`, sem push)**: dois tipos de falha. CONFIGURAÇÃO (secret/variável ausente, token recusado — 401, Resend sem configurar na função — 503) falha **no máximo 1 vez a cada 24h** (consulta as execuções falhas anteriores; se a consulta falhar, falha) e nas outras execuções só anota aviso, sem e-mail. ALERTA NÃO ENTREGUE (502), função quebrada (500) e rede falham **em toda execução**. A Edge Function passa a responder 503 (era 500) pra canal sem configuração — **republicar a função em produção depende de aprovação**.
+
+**V7 — achado**: a regra era "sem despacho bem-sucedido em 1h → ALERT", mas a V7 só era avaliada quando a auditoria rodava (semanal + dias 1-2) — um gatilho morto levava até 7 dias pra aparecer. Corrigido no branch: o cron diário do recálculo encadeia a auditoria por amostragem nos dias fora da janela mensal (só se o recálculo terminou em menos de 20s). Limite que continua: a V7 aparece na tela de auditoria/selo; o e-mail sobre ela depende do próprio despacho estar vivo — por isso o plano B precisa de um agendador que avise sozinho quando falha.
+
+**Plano B do gatilho — proposta (aprovada em 2026-11-08: cron-job.org + GitHub)**:
+| Opção | Prós | Contras |
+|---|---|---|
+| Só aumentar a cadência (30/60 min) | Simples, menos execuções | Não resolve: o problema é o GitHub descartar disparos, não a frequência; com ~5%, 60 min dá ~1 disparo a cada 20h |
+| **Agendador externo gratuito em paralelo (cron-job.org) — recomendado** | Gratuito, intervalo de minutos, header de autorização, histórico, **e-mail próprio quando o endpoint falha** (avisa mesmo com o despacho morto); endpoint já idempotente e seguro contra chamadas simultâneas | Um terceiro guarda o token (impacto se vazar: alguém dispara o despacho, que só envia alertas pendentes; rotacionar nos 3 lugares) |
+| Caminho pela aplicação como 3ª via (cron diário da Vercel chamando a função) | Reaproveita um cron que já roda todo dia | Só 1x/dia e no mesmo domínio de falha que o incidente de 02/09 (a Vercel); mais uma cópia do token |
+Recomendação: cron-job.org a cada 15 min como gatilho principal + GitHub mantido em paralelo (mesma cadência, idempotente) + V7 avaliada diariamente como rede. A 3ª via pela aplicação não compensa a cópia extra do token.
+
+**Preparação da Etapa 4 (branch local, nada ativado)**:
+- **Caminhos ambíguos**: já decididos em 2026-10-22 (caminho da aplicação) — ver `docs/RLS_INVENTARIO_TIERS.md`. Nenhum pendente.
+- **Login**: `resolve_user_organization()` (SECURITY DEFINER, devolve só o id da organização do vínculo mais antigo); `getAccessContext` define o contexto antes de ler `access_grants`. Migration `20261108120000_rls_etapa4_resolve_user_organization` com `GRANT EXECUTE` a `app_user` e `REVOKE` das roles do Supabase — **mudança de privilégio, só com aprovação**. Teste em `tests/integration/resolve-user-organization-function.test.ts`.
+- **Jobs**: varredura de travados, leitura do checkpoint e criação/fechamento do `JobRun` passam a rodar dentro de `withOrgContext` (antes só o job em si). A varredura global continua no watchdog pg_cron.
+- **SQL bruto**: já coberto pela extensão do Prisma (provado em `rls-context-plumbing.test.ts`); os únicos usos são `list_active_org_ids()` e `resolve_user_organization()`, feitas pra rodar sem contexto.
+- **Dados de teste**: helper `tests/integration/helpers/tenant.ts` (`asOrg`, `fixturePrisma`) pra migrar as suítes grupo a grupo, junto da ativação de cada grupo.
+- **Semana de observação**: `src/lib/rls-observe.ts` registra no log (deduplicado por model/operação/ponto de chamada) toda consulta a tabela protegida sem organização no contexto, sem bloquear nada — **desligada**; liga com `RLS_OBSERVE=1` na Vercel quando aprovado.
+
+**Nada desta retomada está em produção.** O branch `sprint-nov-etapa4-prep` não foi enviado ao GitHub: push no `master` aplica migrations em produção, e push em qualquer branch dispara preview da Vercel apontando pro banco de produção. CI não rodou; validado localmente com tipos, lint e testes de unidade (191/191).
+
+**Decisões do usuário em 2026-11-08 (segunda rodada)**:
+- **Plano B aprovado**: cron-job.org como gatilho principal, GitHub Actions em paralelo.
+- **GRANT EXECUTE da `resolve_user_organization()` aprovado, com travas** — REVOKE de PUBLIC/anon/authenticated/service_role; `search_path` fixo (agora vazio, com `public.access_grants` totalmente qualificado); retorno só o uuid; teste de regressão permanente (`SECURITY DEFINER`, `proconfig = search_path=""`, assinatura única `p_user_id uuid`, retorno `uuid` escalar, sem EXECUTE pra PUBLIC). Ensaiado no Postgres local em transação com rollback: todas as travas conferem.
+- **Correção 1 — 503 só antes do primeiro despacho**: canal de e-mail sem configuração é "configuração pendente" (503, workflow falha no máximo 1x/dia) só enquanto nunca houve batimento SUCCESS; depois disso é quebra (500, falha em toda execução).
+- **Correção 2 — vigia de atraso fora da Vercel**: a Edge Function avalia, a cada chamada, alerta pendente há mais de 1h, buraco no gatilho (despacho bem-sucedido anterior há mais de 1h) e job sem SUCCESS na janela por organização ativa (`recalculate-installments` 26h, `sync-index-values` 8 dias); qualquer atraso responde 500 e o cron-job.org/GitHub avisam por e-mail. A V7 continua no banco como registro, não é mais a única rede. A auditoria diária pelo cron da Vercel (commit `f174f4f`) fica como redundância.
+- **Prioridade antes de qualquer push**: resolver o preview da Vercel apontando pro banco de produção (ver abaixo).
+
+**Preview da Vercel — situação e opções (2026-11-08)**. Não foi possível ler a configuração do projeto: o conector da Vercel não tem acesso ao projeto `incorpora` (404 no time `hts8`), e não se entrou no dashboard com a conta do usuário. Fatos verificáveis: o `vercel.json` não restringe deploys por branch (sem `git.deploymentEnabled`); o GitHub registra 88 deploys, **todos de produção** — nenhum preview foi criado até hoje porque nenhum branch foi enviado; o build roda `prisma migrate deploy && next build`, então um preview aplicaria as migrations do branch no banco para onde as variáveis de Preview apontam. O risco "preview aponta pro banco de produção" vem do registro anterior deste documento (seção 4), não de uma leitura atual.
+| Opção | O que faz | Prós | Contras |
+|---|---|---|---|
+| (a) Só construir produção | Settings → Build and Deployment → Ignored Build Step → "Only build production"; e tirar o escopo Preview de `DATABASE_URL`/`DIRECT_URL` | Imediato, risco zero: branch nunca mais toca produção; sem credencial de banco no Preview mesmo se alguém religar | Sem ambiente de preview pra testar branch |
+| (b) Preview → staging | Variáveis do ambiente Preview com os valores da staging (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) | Ensaio real da Etapa 4 por branch, contra banco descartável | Depende da staging reconstruída; cada preview migra a staging (aceitável — o bootstrap a recria) |
+| (c) Branch protegido no GitHub | Regras de branch | — | Não impede o deploy de preview da Vercel; não resolve |
+Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a staging estiver reconstruída, pra servir de ensaio da Etapa 4.
+
+**ACHADO (confirmado pelo usuário no dashboard da Vercel em 2026-11-08) — preview com escrita em produção desde a criação do projeto.** `DATABASE_URL` e `DIRECT_URL` estavam com escopo **Production + Preview**: qualquer deploy de preview (de qualquer branch) teria rodado `prisma migrate deploy` e a aplicação inteira contra o banco de produção. O risco era real, não teórico. Nunca houve preview porque nunca houve branch enviado ao GitHub — a ausência de dano foi sorte de processo, não proteção. **Corrigido pelo usuário em 2026-11-08**: preview deployments desativados no projeto (`previewDeploymentsDisabled`); `DATABASE_URL` e `DIRECT_URL` só com escopo Production; `CRON_SECRET` já era só Production. **Pendência menor**: `SUPABASE_SERVICE_ROLE_KEY` continua com escopo Production + Preview — sem preview deployments não é usada, mas deve sair do Preview (ou apontar pra staging quando a opção (b) for adotada).
+
+**Push do branch e republicação da função (2026-11-08)**: `sprint-nov-etapa4-prep` enviado ao GitHub — **nenhum deploy criado** (0 deployments e 0 status da Vercel pro commit; total continua 88, todos Production). O CI **não rodou**: `.github/workflows/ci.yml` só dispara em push no `master` ou em pull request pro `master` — os testes de integração novos dependem de abrir um PR (sem merge). Edge Function `job-alert-dispatch` republicada em produção: **versão 3** (503 só antes do primeiro despacho, vigia de atraso). Verificado sem token: chamada sem token e com token errado → 401. O ramo 503 só é alcançável com chamada autorizada (token, que não está com o Claude); a decisão que ele usa (`classifyMissingEmailConfig`) foi rodada só-leitura em produção: 0 batimentos → "configuração pendente" → 503.
+
+**Pré-requisitos da Etapa 4 (2026-11-08)**:
+| Pré-requisito | Situação |
+|---|---|
+| V3: vencidas na amostra, mutação permanente, V4 em 3 dias | ✅ em produção |
+| V6a (histórico de cálculo) | ✅ em produção |
+| V7 (vigia do gatilho) | ✅ em produção; vigia de atraso na Edge Function no branch |
+| Inventário por tier + caminhos ambíguos decididos | ✅ |
+| Login, jobs, SQL bruto preparados pra policy | ✅ no branch; GRANT aprovado com travas |
+| Semana de observação pronta (desligada) | ✅ no branch, aguarda push e ok pra ligar |
+| Helper de fixtures pra RLS | ✅ no branch (migração das suítes acontece grupo a grupo) |
+| Preview da Vercel isolado do banco de produção | ✅ 2026-11-08 (preview desativado; banco só Production). Pendência menor: SUPABASE_SERVICE_ROLE_KEY ainda em Preview |
+| Alerta: segredos configurados + disparo real com e-mail recebido | ✅ **CUMPRIDO** 16/11 20:12 UTC — 7 entregues, e-mails recebidos |
+| Alerta: gatilho confiável (cron-job.org + GitHub) | ✅ **CUMPRIDO** — cron-job.org batendo desde 16/11 20:35 UTC; GitHub configurado, workflow desativado até o merge |
+| Staging reconstruída por replay + mutação real da V3 contra ela | ✅ substituído em 2026-11-09: CI na imagem `supabase/postgres` faz o replay e roda as mutações (staging pausada) |
+| **Pooler em modo transação: contexto de organização sobrevive (novo, 2026-11-09)** | ⏳ script pronto e aprovado no CI (PgBouncer); falta o usuário rodar contra a produção pelo Supavisor. Nenhuma policy ativa antes desta prova |
+| **Etapa 4 inteira provada no CI (17 grupos, 84 tabelas, fronteira, reversão, desempenho)** | ✅ 2026-11-10, job `test-rls` — roteiro em `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`; correção da extensão do Prisma precisa estar no ar antes do Grupo 1 |
+
+---
+
+### 2026-11-17 — troca da senha do `app_user` (preparada, não executada) e registro de credenciais
+
+**Por quê**: para a prova do pooler, o usuário precisa da `DATABASE_URL` de produção, mas `DATABASE_URL` e `DIRECT_URL` estão como *sensitive* na Vercel (o valor não pode mais ser lido, só substituído) — e a senha do `app_user` criada na Etapa 2.5 (set/2026) **não está registrada em lugar nenhum**: o STATUS da época diz só que foi criada "à parte, fora do controle de versão", sem dizer quem gerou nem onde ficou. **Buraco de processo** — virou regra no `CLAUDE.md` ("Credenciais: guarda registrada").
+
+**Busca de vazamento (16/11)**: a senha não aparece no repositório nem em todo o histórico — 163 commits, todos os branches, desde 21/07, incluindo conteúdo apagado (a cópia local era rasa, 78 commits; o histórico foi completado antes de concluir). Nenhum `.env` versionado, nenhuma string de conexão ou `ALTER ROLE` com senha de produção, nenhuma chave com formato de segredo. Só credenciais de CI/local (`app_user_ci_pw`, `incorpora`, `placeholder`). **Sem achado de segurança.**
+
+**Decisão do usuário**: procurar no gerenciador (10 min, no máximo 2 tentativas de conexão); não achando, **trocar a senha** — opção (c), role temporária, descartada (a checagem de porta e usuário sobre a URL real era metade da prova). Sessão única: troca + redeploy (**D1**) → confirmação → prova do pooler → merge (**D2**), com o D1 como alvo de rollback. Roteiro: `docs/ROTEIRO_TROCA_SENHA_APP_USER.md`; checklist do login atualizado (alvo de rollback = D1, não mais o commit `6a60219`: depois da troca, todo deploy anterior ao D1 tem a senha antiga e não conecta).
+
+**Ferramenta**: `scripts/app-user-password.mjs` — `gerar` (senha de 64 hex + `ALTER ROLE` com a senha já cifrada em SCRAM-SHA-256, para o texto puro não ir ao SQL Editor, ao histórico dele nem ao log do Postgres), `cifrar` (refaz o hash de uma senha guardada — para o rollback) e `conferir` (uma conexão pela URL nova; recusa porta ≠ 6543 e usuário ≠ app_user). **Controle negativo** (Postgres local, imagem do Supabase): o hash guardado é idêntico ao enviado; a senha gerada conecta; a senha antiga e uma com 1 dígito errado são recusadas; **um hash malformado é aceito pelo `ALTER ROLE` sem erro e vira a própria "senha"** (o Postgres o trata como texto em claro) — por isso a confirmação no roteiro é sempre conectar (`conferir`), nunca "o comando rodou"; `cifrar` com a mesma senha conecta, com outra não.
+
+**Lacuna registrada (futuro, não bloqueia)**: nada avisa quando o app inteiro fica fora do ar — a corrente do alerta cobre falha de job, não disponibilidade. Durante a janela da troca o esperado é **nenhum** e-mail. Candidato simples: um segundo cronjob no cron-job.org batendo numa rota de saúde da aplicação, com o e-mail de falha do próprio cron-job.org.
+
+#### Registro de credenciais de produção (guarda — NUNCA o valor)
+
+| Credencial | Onde está configurada | Onde está guardada | Quem gerou / quando | Situação |
+|---|---|---|---|---|
+| Senha do `app_user` (Postgres) | Vercel `DATABASE_URL` (Production, *sensitive*) | **desconhecida** (Etapa 2.5) | desconhecido / set/2026 | ⏳ troca preparada — preencher esta linha depois do passo 7 do roteiro |
+| Senha do `postgres` (Postgres, migrations) | Vercel `DIRECT_URL` (Production, *sensitive*) | **desconhecida** | desconhecido | ⚠ mesmo buraco; não tocar na janela do `app_user`. Se precisar ler, é troca (Supabase → Settings → Database → reset da senha do banco + atualizar `DIRECT_URL`) — planejar à parte |
+| `JOB_ALERT_DISPATCH_TOKEN` | segredo da Edge Function, secret do GitHub, cron-job.org | a confirmar com o usuário | usuário / 16/11/2026 | ativo |
+| `RESEND_API_KEY` | segredo da Edge Function | painel do Resend (a chave pode ser recriada lá) — confirmar se há cópia | usuário / 16/11/2026 | ativo |
+| `CRON_SECRET` | Vercel (Production) | a confirmar | desconhecido | ativo |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel (Production + Preview — pendência menor de 08/11) | painel do Supabase (Settings → API; legível lá) | Supabase | ativo |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel | pública por desenho | Supabase | ativo |
+
+---
+
+### 2026-11-16 — corrente do alerta COMPLETA e provada em produção (pré-requisito CUMPRIDO)
+
+Configuração feita pelo usuário: 5 segredos na Edge Function `job-alert-dispatch` (`JOB_ALERT_DISPATCH_TOKEN`, `RESEND_API_KEY`, `JOB_ALERT_EMAIL_TO`, `JOB_ALERT_EMAIL_FROM` = `onboarding@resend.dev` por enquanto — só entrega no e-mail da conta do Resend; trocar por domínio verificado antes de ter outro destinatário —, `JOB_ALERT_ENV_LABEL`); cron-job.org com POST + `Authorization: Bearer` + corpo `{}` nos minutos 5/20/35/50, notificação de falha depois de 2 falhas seguidas e de recuperação ligadas; GitHub com o secret `JOB_ALERT_DISPATCH_TOKEN` e a variável `JOB_ALERT_DISPATCH_URL` — **workflow "Alerta de jobs" continua DESATIVADO até o merge do PR #1** (o agendado roda a versão do master).
+
+Conferido no banco de produção (só leitura, 16/11 20:43 UTC):
+- **20:12:04** — primeiro despacho (manual): `pending 7, delivered 7`, `stale []`. Os 7 alertas: `teste-disparo-real-alerta` (22/10), `audit-update` (26/10, 02/11, 09/11, 16/11) e `audit-update-full` (01/11, 02/11) — todos com `alertSentAt` 20:12:03–04. **Os 7 e-mails chegaram.**
+- **20:12:52** — segunda chamada: `pending 0, delivered 0` — idempotência confirmada.
+- **20:35:11** — primeiro batimento **automático** (cron-job.org), SUCCESS, no minuto do agendamento.
+- 0 alertas pendentes. Última V7 registrada: ALERT na auditoria de 16/11 04:17 (antes da corrente existir — é o próprio `audit-update` de 16/11 entre os 7 entregues). Produção com 56 migrations (o PR #1 traz mais 3).
+
+**V7 — quando sai de ALERT** (regra em `src/server/audit.ts`): é avaliada só quando a auditoria roda, e fica OK se o último batimento SUCCESS tiver **no máximo 60 minutos** naquele instante. Não exige sequência de batimentos — um basta, desde que recente. Com o cron-job.org a cada 15 min, sempre haverá um batimento de menos de 15 min. Em produção hoje (sem o PR #1), a auditoria por amostragem roda **semanalmente** (segunda, ~04:17 UTC) e a completa nos dias 1-2: a próxima é **segunda 23/11 ~04:17 UTC → V7 OK**, e o `audit-update` deixa de falhar toda semana. Depois do merge, a auditoria diária encadeada no cron avalia a V7 todo dia. Se o cron-job.org parar, a V7 volta a ALERT na auditoria seguinte e a Edge Function responde 500 (buraco de mais de 1 h entre despachos), o que dispara o e-mail de falha do próprio cron-job.org.
+
+**Chamar a Edge Function do Windows (PowerShell 5.1)** — para não travar de novo:
+- `curl.exe` falha com `CRYPT_E_REVOCATION_OFFLINE` (o Windows não consegue checar a revogação do certificado nessa rede). Não use `--ssl-no-revoke` como solução: desliga uma checagem de TLS.
+- `Invoke-WebRequest` precisa de `-UseBasicParsing` (sem ele, o 5.1 tenta usar o motor do Internet Explorer e falha). Forma que funciona:
+  ```powershell
+  $token = Read-Host "Token"
+  $r = Invoke-WebRequest -UseBasicParsing -Method POST `
+    -Uri "https://mueudgyivnqhhbwkykkq.supabase.co/functions/v1/job-alert-dispatch" `
+    -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body "{}"
+  $r.StatusCode; $r.Content
+  ```
+  No 5.1, resposta 4xx/5xx vira exceção; para ver o código e o corpo de um 401/503: `try { ...comando acima... } catch { $_.Exception.Response.StatusCode.value__; $_.ErrorDetails.Message }`.
+
+---
+
+### 2026-11-10 (noite) — alertas operacionais gravados no banco
+
+**Decisão do usuário**: opção (a). E **revisão de decisão anterior**: o alerta de falha no login também grava (antes: "fica só no log"). Motivo: aquela decisão pressupunha que o log existia; com menos de 1 hora de retenção na Vercel (Hobby), "só no log" é invisível, e uma falha silenciosa de login de madrugada some antes de alguém ver. Fato novo, decisão nova.
+
+**Onde ficam — `job_runs`, com nome de job próprio** (`jobName = 'alerta:<evento>'`, status FAILURE, `triggeredBy = EVENT`, sem organização, ponto de chamada em `summary.callSite`, mensagem em `error`). Critério: chegar pela corrente do alerta sem virar ruído. A Edge Function já publicada entrega toda FAILURE não alertada — **nada muda nela, nem em produção além do deploy**; tela de jobs, auditoria (V4/V7) e vigia de atraso filtram por nome de job ou organização e não são afetadas. Descartadas: tabela nova (exigiria mudar e republicar a Edge Function) e `Notification` (é por organização e não está na corrente). Sem ruído: linha só quando o evento acontece; uma por ponto de chamada (no login, por usuário) por dia; no máximo 5 por evento por dia + 1 de "teto atingido" (teto baixado de 20 para 5 pelo usuário: a Edge Function manda 1 e-mail por linha, então o pior dia são 2 × 6 = 12 e-mails, ainda legíveis; o detalhe fica nas linhas do banco).
+
+**Implementação**: `src/lib/operational-alerts.ts` (gravador), ligado em `src/lib/prisma.ts` (trava em modo produção) e `src/server/login-organization.ts`. Migration `20261110160000_operational_alert_dedup` — só um índice único parcial (deduplicação no banco, vale entre processos); nenhuma mudança de privilégio. Grava só em produção.
+
+**Travas, com controle negativo** (`tests/integration/operational-alerts.test.ts`, 10 testes):
+1. **Cliente base, sem recursão** — a gravação usa `base.$executeRawUnsafe` (o cliente base não é exportado). Teste: a trava dispara uma vez e grava uma linha, mesmo com a gravação feita ainda dentro do callback da transação. Sabotagem (gravar pelo cliente estendido) → 2 testes falham.
+2. **Disparar e esquecer** — nunca lança nem rejeita; falha vira `operational-alert-write-failed` no console; quem chama não espera (na Vercel, `waitUntil` mantém a função viva até terminar). Teste: com o INSERT em `job_runs` revogado do `app_user`, a consulta e o login seguem normais e nada é gravado. Sabotagem (erro propaga) → 2 testes falham.
+3. **Deduplicação e teto** — 10 mil ocorrências no mesmo ponto → 1 linha e 1 ida ao banco; 10 mil pontos distintos → 5 linhas + 1 de teto; dois gravadores ("processos") → o banco deduplica e respeita o teto. Sabotagem (sem dedup/teto) → 3 testes falham; sem o índice único → o teste de dois processos falha.
+- **Plantado de cada evento**: global dentro de transação em modo produção → 1 linha `alerta:prisma-global-client-in-transaction` com o ponto `Customer.count @ ...`; login com vínculo e organização nula → 1 linha `alerta:login-org-resolution-failed` com `user:<id>`.
+- **Ponta a ponta**: o alerta gravado vira exatamente 1 e-mail pelo código real da Edge Function, sem reenvio.
+- Consulta E do checklist (alertas gravados) validada: vazia → 0 linhas; linha plantada → aparece.
+
+**Pendência — agora PRÉ-REQUISITO BLOQUEANTE com data (2026-11-16)**: `job_runs` é exceção do inventário, mas recebe policy por organização, e **dois** caminhos quebram em silêncio com ela: (1) a gravação dos alertas operacionais (linha sem organização — recusada, e como é "disparar e esquecer", o alerta some); (2) a auditoria V7 lendo o batimento do despacho (sem organização — ALERT permanente). Marcado no roteiro (`docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`, seção 2.1) como bloqueante da ativação de `job_runs`, com a proposta (duas funções SECURITY DEFINER mínimas — aguarda aprovação). Teste no job `test-rls` (`tests/integration/rls-job-runs-bloqueantes.test.ts`): liga a policy planejada e afirma o estado atual (alerta recusado sem erro; V7 em ALERT com batimento recente), com controle embutido (sem a policy, funciona); controle negativo do próprio teste: simulando a policy resolvida, os 3 falham.
+
+**Pedágios do plano gratuito na fase de segurança** (registro para a avaliação dos planos pagos — **pedida pelo usuário para quando a Etapa 4 terminar, com números**):
+1. Supabase: log de ~1 dia (na prática, ~2h30 observadas no incidente de 16/09) — sem como verificar exploração antiga.
+2. Supabase: sem branching — staging separada e manual.
+3. Supabase: pause/restore da staging não confiável (dados "sumidos" no restore de 16/09) — staging aposentada, papel passou para o CI.
+4. Vercel: log de execução com menos de 1 hora — alertas operacionais precisaram ir para o banco.
+
+---
+
+### Aprendizado da fase de segurança — regra do projeto (2026-11-10)
+
+**Quatro testes verdes que não testavam nada**, e nenhum achado lendo código — todos apareceram quando se plantou um erro de propósito: (1) CI conectando como superusuário (set/2026), em que todo teste de RLS daria verde; (2) auditoria V3 comparando grandezas diferentes (valor corrigido sem multa/mora contra o valor final); (3) teste de ambiente pulando em silêncio (Postgres puro sem as roles do Supabase); (4) duas checagens de vazamento entre organizações vazias desde sempre (2026-11-10). Virou regra no `CLAUDE.md`: **toda verificação que serve de prova precisa de controle negativo documentado; teste que nunca falhou não conta como prova** — e um teste que passa com e sem a proteção que diz provar não a prova (por isso os jobs `test`/Pilar 1 e `test-rls`/Pilar 2, nenhum removível como redundante).
+
+**Checklist pós-deploy do login** (merge do PR #1): `docs/CHECKLIST_POS_DEPLOY_LOGIN.md`. Merge adiado por decisão do usuário (precisa de atenção inteira; a correção da comissão só muda comportamento quando o RLS ligar). Consultas de conferência com controle negativo feito. **Decidido (opção a)**: no plano Hobby da Vercel os logs de execução ficam disponíveis por menos de 1 hora; os dois eventos agora gravam no banco e chegam por e-mail (ver seção seguinte acima).
+
+---
+
+### 2026-11-10 (tarde) — correções antes do merge + decisões do usuário
+
+**Decisões do usuário (2026-11-10)**:
+- **Merge**: o branch `sprint-nov-etapa4-prep-sp39ea` entra no PR #1, e vai tudo num deploy só (a correção da comissão é pré-requisito do Grupo 1). O merge no master só com autorização explícita, junto com o checklist pós-deploy do login.
+- **Mudanças de privilégio APROVADAS para produção**: `resolve_user_organization()` e `count_user_access_grants()` (com as travas abaixo).
+- **Alerta de falha no login**: ~~fica só no log~~ — **revisto no mesmo dia**: também grava no banco (ver "alertas operacionais gravados no banco").
+- **Varredura de campos (`isActive`, campos de `Unit`) — ADIADA**: nenhuma mudança de schema no meio da fase de segurança; volta depois que a Etapa 4 terminar. Ver `docs/VARREDURA_CAMPOS_SEM_TELA.md`.
+- **Desempenho**: aceito sem índice; reavaliar no Grupo 16 com `pg_stat_statements`.
+
+**Correção 1 — causa raiz da comissão** (não só o sintoma). Código usando o `prisma` GLOBAL dentro de `prisma.$transaction` é errado mesmo sem RLS: a consulta sai por outra conexão, fora da transação — não vê o que não foi commitado e não participa do rollback.
+- 8 funções consultavam pelo global e eram chamadas dentro de transação; passam a receber o cliente explicitamente (`DbClient`, sem valor padrão — impossível esquecer em silêncio): `getEffectiveDistratoRule`, `getEffectiveCommissionRule`, `getEffectiveCommissionReleaseRule`, `getEffectiveProposalEvaluationRule`, `getEffectiveRenegotiationRule`, `getEffectiveReservationRule`, `resolveExternalSplitsForSale`, `resolveInternalSplitForSale`.
+- 16 chamadas dentro de transação passam `tx`: `contract-distratos.ts` (3), `contracts.ts` (2, uma via `tryReleaseCommissions`), `proposals.ts` (2), `receivables.ts` (1, via `tryReleaseCommissions`), `renegotiations.ts` (1), `reservations.ts` (4, uma via `releaseUnitAndPromoteWaitlist`), `sales.ts` (1), `commissions.ts` (2). Fora de transação (telas, testes e 3 chamadas de `src/server`) passam `prisma`.
+- **Travas permanentes**: (1) em tempo de execução, na extensão do Prisma: como o `tx` vem do cliente base, qualquer chamada que chegue à extensão durante um callback de transação é o cliente global (ou um `$transaction` aninhado) — fora de produção lança erro; em produção registra `prisma-global-client-in-transaction` e segue, ainda com o contexto certo; (2) estática, com o compilador do TypeScript, sobre todo `src/` (uso direto, `prisma` passado como cliente, função chamada que usa o global, inclusive em outro arquivo). Controle negativo: `tx` → `prisma` em `convertProposalToSale` → a estática acusa e os 8 testes do fluxo de venda falham com `CommissionRule.findUnique`.
+
+**Correção 2 — `count_user_access_grants()`**: as travas já eram as mesmas da `resolve_user_organization()` (SECURITY DEFINER, `search_path` vazio, um parâmetro uuid, retorno inteiro escalar sem id de organização, REVOKE de PUBLIC/anon/authenticated/service_role, EXECUTE só para `app_user`, teste estrito com `EXPECT_SUPABASE_ROLES`). Controle negativo das travas: EXECUTE para `anon` → 2 testes falham; para PUBLIC → 3; `search_path = public` → 1; SECURITY INVOKER → 1.
+
+**Correção 3 — prova do Pilar 1 (filtro da aplicação)**. Medido com o filtro de organização removido de `createReservation`:
+- RLS desligado: o teste falha (a reserva cruzada é criada) → prova o Pilar 1.
+- RLS ligado: o teste **passa** mesmo sem o filtro → no job `test-rls` ele só prova o RLS.
+- **Achado**: a checagem de vazamento, sozinha, passava mesmo com o filtro removido e RLS desligado — **vazia desde sempre**, não por causa da troca para a role de migrations: procurava `unitId` = unidade da Org A, e a linha vazada fica na unidade da Org B. Mesmo defeito em `org-scope.test.ts` (proposta). As duas agora procuram o que de fato vazaria (corretor/cliente da Org A numa linha da Org B), pela role de migrations; com o filtro removido, as duas falham.
+- O job `test` (sem RLS) é a prova do Pilar 1 e o `test-rls`, do Pilar 2 — registrado no `ci.yml` para nenhum dos dois ser removido como redundante.
+
+---
+
+### 2026-11-10 — sprint noturna: Etapa 4 inteira provada no CI (nada em produção)
+
+Tudo no branch `sprint-nov-etapa4-prep-sp39ea` (o PR #1, branch `sprint-nov-etapa4-prep`, ficou intocado). Nenhuma escrita, migration ou configuração em produção; nenhuma leitura em produção.
+
+**Bloco 1 — travas**
+- **SET de sessão**: `src/lib/no-session-set-guard.test.ts` + regra `no-restricted-syntax` (eslint) — falham com `set_config` fora de `src/lib/prisma.ts`, sem o terceiro argumento `true`, ou `SET [SESSION|LOCAL] app.*`. Controle negativo: arquivo plantado com as 3 formas → teste e lint acusam as 3; `TRUE`→`FALSE` no `prisma.ts` → teste acusa.
+- **Login barulhento**: `src/server/login-organization.ts`. Resolução nula para usuário COM vínculo registra `login-org-resolution-failed` (JSON no log da Vercel), distinguível de "sem vínculo". Nova `count_user_access_grants()` (SECURITY DEFINER, só a contagem, mesmas travas) — migration `20261110090000` (**mudança de privilégio: só com aprovação**). Controle negativo: comportamento antigo → exatamente os 2 testes do caso de falha falham. **Alertável — avaliado, não implementado**: dá para gravar um `job_runs` FAILURE (o despacho já envia), mas isso põe escrita no caminho do login e precisa de limite por usuário; recomendação: primeiro ver o log por uma semana com o Grupo 17 ativo.
+
+**Bloco 2 — Etapa 4 no CI** (job `test-rls`, paralelo ao `test`)
+- `prisma/rls-etapa4/`: função `app_current_org_id()` + ativação/reversão dos 17 grupos (84 tabelas), gerados de `docs/RLS_INVENTARIO_TIERS.md` + schema por `scripts/rls-generate-policies.mjs` (o CI confere com `--check`). **Fora de `prisma/migrations`**: merge não ativa nada; cada grupo vira migration só por `scripts/rls-promote-group.mjs`, um por deploy.
+- Policy: FOR ALL, TO app_user, USING = WITH CHECK, ENABLE + FORCE. Tier 2/3 pela cadeia de FKs obrigatórias do inventário, com `(SELECT app_current_org_id())` (calculado uma vez por consulta).
+- **Suíte completa com RLS ligado: 455/455** (+ 86 de fronteira/reversão = 541). Sem RLS: 455/455.
+- **Fronteira, tabela por tabela (84)**: `tests/integration/rls-fronteira.test.ts`, fixtures genéricas lidas do catálogo (`helpers/rls-fixtures.ts`), linha da Org A e da Org B com a cadeia de pais inteira (Tier 2/3 pelo caminho indireto real). Leitura, update, delete, escrita (inserir apontando para B; mover A para B → 42501) e fail-closed (sem contexto e placeholder → zero). Controle negativo: `installments` sem policy, `financial_calculations` com `USING (true)`, `customers` com `WITH CHECK (true)` → os três pegos (mais catálogo e reversão).
+- **Reversão**: o `.down.sql` de cada grupo desliga exatamente as tabelas do grupo (teste em transação desfeita). Promoção testada com `prisma migrate deploy` num banco limpo.
+- **O que quebrou com RLS ligado**:
+  1. **App — comissão sumia em silêncio.** Chamada pelo `prisma` GLOBAL dentro do callback de `prisma.$transaction` rodava sem organização: um flag da extensão pulava o `set_config`, mas a chamada ia por outra conexão, fora da transação. `convertProposalToSale` → `resolveExternalSplitsForSale` não achava a regra de comissão e não criava split, sem erro (7 testes de comissão + 13 em cascata). Corrigido removendo o flag (o `tx` vem do cliente base, nunca passou pela extensão). Teste reproduzia (`null`).
+  2. **App (achado na prova do pooler, 2026-11-10)**: `withOrgContext` com promessa preguiçosa — já corrigido, ver acima.
+  3. **Arnês de teste**: os testes montam `AccessContext` à mão e não definiam contexto. `tests/integration/setup.ts` reproduz a invariante de produção (todo `AccessContext` nasce no `getAccessContext`, que define o contexto — conferido: nenhum código de produção monta `AccessContext`): funções de `src/server` chamadas com `AccessContext` rodam em `withOrgContext`. Jobs (recebem id, não `AccessContext`) passam pelo caminho real. Suítes: contexto no `beforeAll` e por teste (`aroundEach`), limpeza pela role de migrations.
+  4. **Testes com segunda organização** liam/limpavam a outra organização no contexto errado (o RLS funcionando). A checagem de vazamento de `org-scope-full` ficaria **vazia** sob RLS — passou para a role de migrations.
+  - Jobs (recálculo, sync, auditoria V1-V7), login, `list_active_org_ids()`, `resolve_user_organization()`, `count_user_access_grants()`, oráculo (V3/V6) e prova do pooler: verdes com RLS ligado.
+- **Desempenho** (`scripts/rls-benchmark.ts`, 3 organizações × 20 mil parcelas, mediana de 5): Tier 2 ~1,0×; Tier 3 pontual +0,3 ms; soma de Tier 3 por carteira até 5,3× (22 → 120 ms); suíte 92 s → 96-101 s. Forma `IN` descartada (busca pontual 670× pior); índices de cobertura sem efeito; índice em `installment_payments.installmentId` piora com RLS (38 → 111 ms). **Nenhum índice proposto**; reavaliar com `pg_stat_statements` de produção depois do Grupo 16.
+
+**Bloco 3** — `docs/RLS_ETAPA4_ROTEIRO_ATIVACAO.md`: pré-requisitos, passo a passo por grupo, telas, esperas (~19 dias), sinais de parada, reversão em menos de 1 minuto (SQL Editor) + registro por migration.
+
+**Bloco 4** — PgBouncer no CI já roda a prova do pooler nos dois jobs. Varredura de campos sem tela em `docs/VARREDURA_CAMPOS_SEM_TELA.md`: 10 modelos com `isActive` que nunca muda; 53 campos sem tela (15 sem uso nem no servidor, 8 deles em `Unit`).
+
+---
+
+### 2026-11-09 — CI na imagem do Supabase; staging aposentada
+
+**Decisões do usuário (2026-11-09)**: um só projeto Incorpora na Supabase — `incorpora-cl` (produção, `mueudgyivnqhhbwkykkq`, plano Free). A staging `incorpora-staging-rls` (`itfndszaryokngxomfxv`) fica **pausada, não apagar**. O projeto `mavuni` (outro produto) fica ativo e não se mexe nele. Hoje não há clientes reais, só teste. Desenvolvimento passa a rodar na nuvem. O papel da staging (replay do zero + prova das travas) passa pro CI.
+
+**Problema que motivou**: o CI usava `postgres:17` puro. Lá não existem `anon`/`authenticated`/`service_role` nem pg_cron, então as travas "nenhuma role do PostgREST consegue X" (`resolve-user-organization-function`, `list-active-org-ids-function`, `no-public-schema-access-for-anon-authenticated`) **passavam vazias**: a consulta não devolvia linha nenhuma e o teste não tinha o que afirmar. O watchdog do pg_cron também era pulado pela guarda da migration. Além disso, a role de migration do CI (`incorpora`) era superusuária, diferente da produção (`postgres` sem superusuário, só BYPASSRLS).
+
+**Mudança** (`.github/workflows/ci.yml`): serviço Postgres trocado por `supabase/postgres:17.6.1.147`, a mesma versão da produção. Migrations aplicadas como `postgres` (não superusuário, igual à produção) no banco `postgres` (o pg_cron da imagem só aceita `CREATE EXTENSION` no banco de `cron.database_name`). `app_user` continua criada pelas migrations e ganha login pelo mesmo `scripts/ci-set-app-user-password.js`, sem mudança. Nenhuma migration foi alterada.
+
+**Travas estritas**: `EXPECT_SUPABASE_ROLES=1` no CI. Com ela, `tests/integration/helpers/supabase-roles.ts` exige as 3 roles: se faltar alguma (imagem errada), os testes **falham** em vez de passar vazios. Sem a variável (Postgres puro local), o comportamento tolerante de antes continua. Teste novo `tests/integration/supabase-image-environment.test.ts` (só roda com a variável; senão aparece como "skipped", nunca verde vazio): as 3 roles existem; a role de migration é `postgres` e não é superusuária; `app_user` sem superusuário e sem BYPASSRLS; o watchdog `job-run-watchdog` está agendado no `cron.job` (`*/15 * * * *`); e duas mutações em transação com rollback — `GRANT EXECUTE` de `resolve_user_organization()` pra `anon` e `GRANT SELECT` de uma tabela nova pra `authenticated` — que a checagem precisa acusar.
+
+**Prova (Docker local, mesma imagem e mesmos comandos do CI, replay do zero)**:
+- 57/57 migrations aplicadas como `postgres`, sem erro; `job-run-watchdog` agendado; as 3 roles sem EXECUTE em `resolve_user_organization()`.
+- Suíte de integração: **447/447** (441 anteriores + 6 novos), 66 arquivos.
+- Mutação real no banco (`GRANT EXECUTE ON FUNCTION resolve_user_organization(uuid) TO anon`): 2 testes falham como devem (`resolve-user-organization-function` e "zero funções com EXECUTE"). Revogado depois.
+- Imagem errada (`postgres:17` puro com `EXPECT_SUPABASE_ROLES=1`): as 11 travas que dependem das roles falham. Sem a variável: 4 passam, 6 aparecem como "skipped".
+
+**`scripts/staging-bootstrap.js` aposentado (removido)**: nunca chegou a ser executado. O que ele fazia agora é feito pelo CI a cada PR: replay completo das migrations com `_prisma_migrations` real, numa imagem igual à da produção, mais os testes de mutação da V3/V6 e o despacho de alerta (todos na suíte de integração). A checagem "pg_net não instalado" continua no teste que falha se alguma migration instalar pg_net e no teste do despacho ("banco sem pg_net"), que agora roda numa imagem onde o pg_net existe de verdade (pré-carregado, não instalado). O script continua no histórico do git, se for preciso.
+
+**Oráculo — ressalva de outubro fechada (2026-11-09, aprovada pelo usuário)**. No CI do PR #1 (run 42720820760, commit `a5be829`, passo "Oráculo — mutações da V3 e da V6a"), contra o banco do job (imagem `supabase/postgres`, conectado como `app_user`):
+- V3: controle sem mutação → OK (`overdueChecked: 1, divergent: 0`); mutações `fine` (multa 3% em vez de 2%), `mora` (1,5%/mês em vez de 1%) e `days` (1 dia a mais) → ALERT acusando a parcela. 4/4.
+- V6a: controle (motor real, recalculado no mesmo mês e num mês novo) → OK; mutações +1 centavo por fora do motor → VALUE_MISMATCH, `correctedValue` no lugar do `resultValue` → VALUE_MISMATCH, memória apagada → MISSING_CALCULATION, memória com data defasada → DATE_MISMATCH. 5/5.
+Como a mutação entra: na V3, o motor é alterado dentro do processo de teste (mock) e o oráculo da auditoria, código independente, lê do banco; na V6a, a mutação é escrita direto no banco. Suíte completa no mesmo run: 447/447.
+
+**Prova do pooler (aprovada pelo usuário em 2026-11-09; script em 2026-11-10)**: `scripts/prove-pooler-tenant-context.ts`, usando a extensão real de `src/lib/prisma.ts`. Prova (1) contexto visível nas duas leituras de cada transação e na chamada avulsa; (2) leitores sem contexto, em paralelo, nunca veem id de organização; (3) policy de RLS numa tabela TEMPORÁRIA (`ON COMMIT DROP`, RLS forçado) devolve só as linhas da organização do contexto, e nada sem contexto; (4) **controle de reuso**: o mesmo processo do Postgres precisa ter atendido organizações diferentes e leitores, senão o resultado é INCONCLUSIVO (saída 2), nunca verde; (5) controle negativo: um SET de sessão numa variável de teste (`app.leak_probe`) mostra se o pooler deixa estado de sessão vazar. Recusa porta diferente de 6543 e usuário diferente de `app_user`; não imprime senha. No CI roda pelo PgBouncer 1.26.1 em modo transação com pool de 2 conexões físicas, com o controle negativo obrigatório.
+- Validação local (Supabase + PgBouncer): APROVADO — 500 transações + 500 chamadas avulsas, 455 leituras sem contexto sem vazamento, policy [A]/[B]/[], 2 processos atenderam até 10 organizações, SET de sessão vazou para outros clientes (103 leituras). Conexão direta, sem pooler: INCONCLUSIVO (o controle de reuso funcionando). Mutação `set_config(..., TRUE)` → `FALSE` em `prisma.ts`: FALHOU com ids de organização vazando para leitores sem contexto.
+- **Achado (2026-11-10), independente do pooler**: `withOrgContext(org, () => prisma.x.findMany())` executava a consulta SEM organização — a PrismaPromise é preguiçosa e só roda no `await` de quem chamou, já fora do `.run()`. Com RLS ativo seria fail-closed (zero linhas), mas quebrado. Nenhum código de produção usava esse formato (o único uso, `jobs.ts`, passa função `async`); a armadilha estava no helper `asOrg` dos testes, que vai ser usado na migração das suítes. Corrigido em `src/lib/tenant-context.ts` (promessa devolvida por `fn` é disparada dentro do contexto), com teste de unidade que reproduzia a falha.
+- Pendente: o usuário rodar contra a produção (Supavisor, porta 6543, como `app_user`) — a senha só existe na Vercel.
+
+**Limite que continua**: o CI não reproduz o pooler (Supavisor) nem o Storage/Auth da produção — o pooler virou pré-requisito da Etapa 4 (decisão do usuário, 2026-11-09): nenhuma policy é ativada antes de provar que o contexto de organização sobrevive ao pooler em modo transação, e a imagem não traz os grants de `supabase_admin` exatamente como num projeto provisionado (a entrada de default privilege de `supabase_admin` existe, e o teste da tabela nova prova que ela não pega tabelas criadas pela role de migration). A conferência final de privilégio em produção continua sendo a consulta direta no banco depois de aplicar.
 
 ---
 
@@ -898,7 +1138,7 @@ Até os segredos existirem (Resend nos segredos da Edge Function — **não** ma
 
 **Staging não confiável — diagnóstico, não suposição**: durante a investigação deste incidente, o projeto de staging (`incorpora-staging-rls`, ref `itfndszaryokngxomfxv` — o mesmo usado desde a Etapa 2.5, nenhuma confusão de projeto) apareceu com 0 tabelas e sem a role `app_user`, depois de um ciclo `pause_project`/`restore_project` que eu mesmo disparei. Sequência observada: `restore_project` chamado → `get_project` reportou `RESTORING` → depois `COMING_UP` → uma consulta SQL já respondeu com sucesso nesse meio-tempo (antes de eu confirmar `ACTIVE_HEALTHY`) → só então percebi 0 tabelas. A documentação oficial do Supabase (consultada agora, não antes) confirma que pause/restore é uma operação real, que "leva um tempo dependendo de quanto dado o banco tem", com aviso por e-mail só quando termina — e, especificamente pra roles customizadas, que **senhas de role customizada não são preservadas no restore** (só senhas — a doc não afirma que a role em si ou os dados somem). **Causa mais provável, não 100% confirmada**: consultei o projeto durante a janela de restauração, antes dos dados terem sido efetivamente restaurados do backup físico — o campo de status provavelmente fica "saudável" antes do restore de dados terminar de verdade, e a leitura antecipada viu um banco momentaneamente vazio. Não descarto uma causa alternativa (reset completo por ciclos repetidos de pause/restore no plano Free) — não tenho visibilidade suficiente pra eliminar essa hipótese com certeza. **Não vou registrar isso como fato determinado** — é o melhor diagnóstico disponível com as ferramentas que tenho.
 
-**Proposta pra Etapa 4 não depender de pause/restore confiável** (✅ construída em 2026-10-22 como `scripts/staging-bootstrap.js` — execução pendente, ver bloco RLS acima): um script de replay completo que recria um projeto de staging do zero sob demanda — todas as migrations + role `app_user` + um seed mínimo — em vez de depender de pausar/restaurar um projeto existente. Elimina a pergunta "os dados ainda estão lá" inteiramente: staging deixa de ser um estado a preservar e passa a ser algo descartável e reconstruível a qualquer momento, do jeito que branching faria se o plano Free suportasse. Ainda não construído — proposta pra aprovação, não feito.
+**Proposta pra Etapa 4 não depender de pause/restore confiável** (construída em 2026-10-22 como `scripts/staging-bootstrap.js`, nunca executada; aposentada em 2026-11-09 — o CI na imagem do Supabase faz esse papel, ver "2026-11-09 — CI na imagem do Supabase"): um script de replay completo que recria um projeto de staging do zero sob demanda — todas as migrations + role `app_user` + um seed mínimo — em vez de depender de pausar/restaurar um projeto existente. Elimina a pergunta "os dados ainda estão lá" inteiramente: staging deixa de ser um estado a preservar e passa a ser algo descartável e reconstruível a qualquer momento, do jeito que branching faria se o plano Free suportasse. Ainda não construído — proposta pra aprovação, não feito.
 
 **Lição estrutural**: default privileges do Supabase concedem acesso total a `anon`/`authenticated` em todo objeto novo do schema `public`, por padrão, em qualquer projeto que não desligue o Data API explicitamente — não é uma configuração que precisa ser "esquecida" pra existir, é o padrão de fábrica. Teste de regressão permanente (`tests/integration/no-public-schema-access-for-anon-authenticated.test.ts`) trava isso: confirma zero privilégio em toda tabela/sequence/função existente, `PUBLIC` sem `USAGE` no schema, `app_user` inalterado, e — o teste mais importante do arquivo — cria uma tabela nova de verdade (pela mesma role que aplica migrations) e confirma que ela nasce sem grant nenhum, provando que a entrada de default privilege fora do nosso alcance (`supabase_admin`) é inerte na prática. **Roda no CI** (mesmo Postgres efêmero, migration replay do zero — confirmado verde depois da correção de portabilidade acima) e roda em qualquer ambiente Supabase (staging, produção) via `npm run test:integration` — não existe hoje um "check pós-deploy" automático separado na Vercel; a confirmação pós-deploy em produção até agora foi manual (consulta direta via Supabase MCP), registrada acima.
 
@@ -929,12 +1169,12 @@ Até os segredos existirem (Resend nos segredos da Edge Function — **não** ma
 | R1 (inline) em: contribuições de investidor da SPE (`investor-contributions.tsx`, expande dentro da linha da tabela) e formulários de modelo de documento (`settings/documents/document-template-form.tsx`) | SPEs, Configurações → Documentos | Encontrado durante a varredura da Sprint V5, reskinado no lugar (não restruturado) — mesmo critério das V2/V4: registrado, não esquecido, não bloqueia o fechamento da sprint |
 | `SpecialPurposeEntity.isActive`, `RealEstateAgency.isActive`, `Broker.isActive` sem caminho de desativação | SPEs, Imobiliárias, Corretores (`src/server/spes.ts`, `src/server/crm.ts`) | Encontrado na varredura leve da Fase C, Etapa 5 (mesmo achado do `Development` na Etapa 1, ver seção 1) — os três campos existem no schema, nascem `true`, nenhum formulário/action toca neles. Não corrigido nesta fase (fora de escopo da Fase C); considerar o que fazer com vínculos ativos (unidades destacadas, reservas) antes de expor o toggle |
 | **Detecção de falha silenciosa INCOMPLETA** — `RESEND_API_KEY`/`JOB_ALERT_EMAIL_TO`/`JOB_ALERT_EMAIL_FROM` não confirmadas na Vercel; nenhum alerta real já disparado | Todos os jobs agendados (`src/lib/alerts.ts`, `src/server/jobs.ts`) | Aberta — bug de job travado sem e-mail corrigido em 2026-10-22 (migration `20261022120000`); falta configurar as 3 variáveis + disparo de teste real; alerta ainda depende do cron da Vercel disparar. Ver seção 1, bloco RLS, Pendência 1 |
-| Oráculo V3 — prova definitiva contra banco real de staging | Auditoria de atualização (`src/server/audit.ts`) | Parcial — amostragem, mutação permanente e V4 resolvidas em 2026-10-22 (CI verde); falta o teste de mutação rodado contra a staging reconstruída. Premissas compartilhadas (30 dias, índice ausente = 0%, fuso local) são ponto cego permanente por desenho |
+| ~~Oráculo V3 — prova definitiva contra banco real~~ | Auditoria de atualização (`src/server/audit.ts`) | ✅ **Fechada em 2026-11-09** (aprovada pelo usuário): mutações da V3 e da V6a rodaram no CI na imagem `supabase/postgres` (run 42720820760, passo "Oráculo"), contra o banco do job, com os controles sem mutação dando OK — ver "2026-11-09 — CI na imagem do Supabase". Premissas compartilhadas (30 dias, índice ausente = 0%, fuso local) continuam ponto cego permanente por desenho |
 | ~~V6 — consistência do histórico `FinancialCalculation`~~ | Auditoria de atualização | ✅ V6a implementada em 2026-10-22 (em produção); V6b descartada por decisão |
 | Alerta independente da Vercel (GitHub Actions → Edge Function) | Detecção de falha silenciosa | Código no master (2026-10-22), pg_net recusado; falta configurar segredos (Edge Function + GitHub), publicar a função e o disparo real |
 | Inventário de tabelas por tier | Etapa 4 do RLS | ✅ Versionado em `docs/RLS_INVENTARIO_TIERS.md` (2026-10-22); 3 caminhos ambíguos decididos pelo caminho da aplicação (40/26/18/6) |
-| Staging sem `_prisma_migrations` (migrations aplicadas via Supabase MCP, versões divergentes do repo) | Ensaio da Etapa 4 do RLS | Script de reconstrução pronto (`scripts/staging-bootstrap.js`); execução pendente de credenciais + aprovação |
-| Padrão recorrente "campo existe no schema, nunca exposto em tela" | Todo o app | Já apareceu 3 vezes em fases diferentes: área da unidade (Sprint V1), campos legais do `Development` (Fase C Etapa 1), `isActive` de SPE/Imobiliária/Corretor (Fase C Etapa 5). Não é urgente, mas vale uma varredura dedicada (todos os models × todos os campos × forms/actions correspondentes) numa passada futura de higiene, em vez de continuar achando um de cada vez de forma incidental |
+| ~~Staging sem `_prisma_migrations`~~ | Ensaio da Etapa 4 do RLS | ✅ Substituído em 2026-11-09: staging pausada por decisão do usuário; o replay do zero passa a ser o CI na imagem `supabase/postgres` (mesma versão da produção), com as travas das roles do Supabase estritas. `scripts/staging-bootstrap.js` removido |
+| Padrão recorrente "campo existe no schema, nunca exposto em tela" | Todo o app | Varredura feita em 2026-11-10: `docs/VARREDURA_CAMPOS_SEM_TELA.md` (10 modelos com `isActive` sem desativação, 53 campos sem tela, 15 sem uso nem no servidor). Aguarda decisão de produto |
 
 ---
 
@@ -947,7 +1187,7 @@ A Sprint 10 é a última do plano original. A regressão técnica (seção 1) n�
 | ~~Sistema nunca foi testado com os dados reais dos empreendimentos-piloto~~ | TSH Laguna e Condomínio Lake House já estão cadastrados em produção (ver seção 1). | Resolvido — próximo teste real é o uso comercial de fato (primeira reserva/proposta/venda real). |
 | ~~Pendências técnicas acumuladas (seção 3) ainda em aberto~~ | Upload real de contrato, worker assíncrono — resolvidos e testados pós-Sprint 10 (ver seção 1). Motor de template segue fora de escopo por decisão consciente. | Resolvido — nenhuma ação pendente aqui. |
 | ~~`CRON_SECRET` ainda não cadastrado na Vercel~~ | Confirmado em produção em 2026-07-26 (ver seção 1) — chamada real ao endpoint com o segredo correto retornou 200. | Resolvido — nenhuma ação pendente aqui. |
-| Ambiente de preview da Vercel aponta para o mesmo banco de produção | Sem banco de staging separado — qualquer deploy de preview (branch/PR) lê e escreve nos mesmos dados reais. | Aceitável enquanto for só a equipe interna testando; separar um projeto Supabase de staging se for abrir acesso a mais gente. |
+| ~~Ambiente de preview da Vercel aponta para o mesmo banco de produção~~ | Confirmado em 2026-11-08: `DATABASE_URL`/`DIRECT_URL` estavam em Production + Preview desde a criação do projeto. | ✅ Corrigido em 2026-11-08: preview deployments desativados, banco só em Production. Pendência menor: `SUPABASE_SERVICE_ROLE_KEY` ainda em Preview. |
 | Usuários reais da TSH ainda não cadastrados (só o admin de teste) | Cada pessoa da equipe (financeiro, comercial, jurídico...) precisa do papel certo antes do uso real. | Levantar com a TSH quem vai usar o sistema e em qual papel, e convidar cada um pela tela de Configurações → Usuários. |
 | ~~UX mínima (HTML simples, sem design system)~~ | Identidade visual da TSH aplicada e padrão de UI profissional (lista+filtro+modal) replicado em todos os módulos de cadastro (ver seção 1). | Resolvido para a estrutura geral. Ajustes finos de UX ficam para feedback específico durante o uso comercial real. |
 

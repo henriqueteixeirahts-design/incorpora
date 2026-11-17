@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
 import { createDevelopment, getDevelopment, updateDevelopment, deleteDevelopment } from "@/server/developments";
 import { listUnits, createUnit, updateUnitStatus, linkUnits } from "@/server/units";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_NAVEGACAO_PERFIS_RBAC.md, Parte 2.5/2.6 — teste de fronteira
@@ -31,6 +33,7 @@ let unitInDevY: { id: string };
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Escopo por Empreendimento" } });
+  setCurrentOrgId(org.id);
   adminUser = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "admin-escopo-dev@teste.local", fullName: "Admin Escopo" },
   });
@@ -59,17 +62,19 @@ beforeAll(async () => {
   };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id];
-  await prisma.unitLink.deleteMany({ where: { principalUnit: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.unitStatusHistory.deleteMany({ where: { unit: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [adminUser.id, restrictedUser.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().unitLink.deleteMany({ where: { principalUnit: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().unitStatusHistory.deleteMany({ where: { unit: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [adminUser.id, restrictedUser.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Development — usuário restrito não vê/altera o empreendimento fora do escopo", () => {

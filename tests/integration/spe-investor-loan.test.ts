@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
 import { createSpeInvestor } from "@/server/spe-people";
 import { createInvestorReturn } from "@/server/spe-investor-returns";
 import { getInvestorLoanPosition } from "@/server/spe-investor-loan";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_APORTES_INVESTIDORES.md, Etapa 5 — motor de mútuo. Cenário
@@ -21,6 +23,7 @@ let investor: Awaited<ReturnType<typeof createSpeInvestor>>;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Motor de Mútuo" } });
+  setCurrentOrgId(org.id);
   otherOrg = await prisma.organization.create({ data: { name: "Org — Motor de Mútuo (outra)" } });
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "motor-mutuo@teste.local", fullName: "Usuário Motor Mútuo" },
@@ -57,19 +60,21 @@ beforeAll(async () => {
   });
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id, otherOrg.id];
-  await prisma.speInvestorLoanCalculation.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.speInvestorReturn.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.payable.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.supplier.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().speInvestorLoanCalculation.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().speInvestorReturn.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().payable.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().supplier.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("motor de mútuo — saldo devedor e amortização", () => {

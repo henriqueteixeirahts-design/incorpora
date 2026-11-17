@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -10,6 +10,8 @@ import {
   listConstructionMeasurements,
   getLatestConstructionMeasurement,
 } from "@/server/construction";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_FASE_C_DASHBOARD_EMPREENDIMENTOS.md, Etapa 2 — fases de obra +
@@ -25,6 +27,7 @@ let developmentId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Fases de Obra" } });
+  setCurrentOrgId(org.id);
   otherOrg = await prisma.organization.create({ data: { name: "Org — Fases de Obra (outra)" } });
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "fases-obra@teste.local", fullName: "Usuário Fases de Obra" },
@@ -39,17 +42,19 @@ beforeAll(async () => {
   developmentId = development.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id, otherOrg.id];
-  await prisma.constructionPhaseMeasurementValue.deleteMany({ where: { phase: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.constructionMeasurement.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.constructionPhase.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().constructionPhaseMeasurementValue.deleteMany({ where: { phase: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().constructionMeasurement.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().constructionPhase.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().developmentEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("createConstructionMeasurement — % geral ponderado pelo peso das fases", () => {

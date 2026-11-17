@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import {
   runJobForAllOrganizations,
@@ -8,6 +8,8 @@ import {
   getJobByName,
   type JobDefinition,
 } from "@/server/jobs";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Contrato de Job + tabela JobRun (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
@@ -50,8 +52,11 @@ const fakeThrowJob: JobDefinition = {
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Teste de Jobs", isActive: true } });
+  setCurrentOrgId(org.id);
   inactiveOrg = await prisma.organization.create({ data: { name: "Org Inativa — Teste de Jobs", isActive: false } });
 });
+
+aroundEach((runTest) => withOrgContext(org.id, runTest));
 
 afterAll(async () => {
   // runJobForAllOrganizations itera TODA organização ativa do banco — em dev
@@ -59,9 +64,9 @@ afterAll(async () => {
   // criadas aqui. Limpa por prefixo de nome do job (todos os jobs fake
   // deste arquivo começam com "teste-job"), não só por organizationId, pra
   // não deixar rastro em nenhuma organização, real ou de teste.
-  await prisma.jobRun.deleteMany({ where: { jobName: { startsWith: "teste-job" } } });
-  await prisma.jobRun.deleteMany({ where: { organizationId: { in: [org.id, inactiveOrg.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: [org.id, inactiveOrg.id] } } });
+  await fixturePrisma().jobRun.deleteMany({ where: { jobName: { startsWith: "teste-job" } } });
+  await fixturePrisma().jobRun.deleteMany({ where: { organizationId: { in: [org.id, inactiveOrg.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: [org.id, inactiveOrg.id] } } });
 });
 
 describe("Runner: registra JobRun com o resultado certo", () => {

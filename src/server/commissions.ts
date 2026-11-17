@@ -120,7 +120,7 @@ export async function tryReleaseCommissions(
   // proporcionalmente a cada parcela paga (src/server/commission-payment-
   // recognition.ts) e são consolidados num Payable periódico
   // (settleInternalCommissions), não liberados de uma vez aqui.
-  const commissionRule = await getEffectiveCommissionRule(organizationId, contract.developmentId);
+  const commissionRule = await getEffectiveCommissionRule(tx, organizationId, contract.developmentId);
   const usesNewInternalModel = commissionRule.internalCommissionPercent !== null;
 
   const pendingSplits = contract.sale.commissionSplits.filter(
@@ -128,7 +128,7 @@ export async function tryReleaseCommissions(
   );
   if (pendingSplits.length === 0) return;
 
-  const rule = await getEffectiveCommissionReleaseRule(organizationId, contract.developmentId);
+  const rule = await getEffectiveCommissionReleaseRule(tx, organizationId, contract.developmentId);
   const installments = contract.portfolio?.installments ?? [];
 
   let eligible = false;

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -13,6 +13,8 @@ import {
   createContribution,
   deleteContribution,
 } from "@/server/spe-contributions";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_APORTES_INVESTIDORES.md, etapas 1-2: capital comprometido +
@@ -33,6 +35,7 @@ let bankAccountA: Awaited<ReturnType<typeof createBankAccount>>;
 
 beforeAll(async () => {
   orgA = await prisma.organization.create({ data: { name: "Org A — Aportes" } });
+  setCurrentOrgId(orgA.id);
   orgB = await prisma.organization.create({ data: { name: "Org B — Aportes" } });
 
   userA = await prisma.user.create({
@@ -73,19 +76,21 @@ beforeAll(async () => {
   });
 });
 
+aroundEach((runTest) => withOrgContext(orgA.id, runTest));
+
 afterAll(async () => {
   const orgIds = [orgA.id, orgB.id];
-  await prisma.speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.speInvestorContributionForecast.deleteMany({
+  await fixturePrisma().speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().speInvestorContributionForecast.deleteMany({
     where: { investor: { spe: { organizationId: { in: orgIds } } } },
   });
-  await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
-  await prisma.speBankAccount.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
-  await prisma.bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().speBankAccount.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("previsão de aporte — baixa total/parcial", () => {

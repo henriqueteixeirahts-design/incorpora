@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createDevelopment } from "@/server/developments";
@@ -8,6 +8,8 @@ import { setPayableAllocations } from "@/server/payable-allocations";
 import { createReceivable, registerReceivableReceipt } from "@/server/receivables-avulsos";
 import { createBankAccount, linkSpeBankAccount } from "@/server/bank-accounts";
 import { getCashFlow } from "@/server/cash-flow";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * Fase B, etapa 7 (docs/ESPEC_FASE_B_CARTEIRA_FINANCEIRO_1.md, Parte 4.4) —
@@ -29,6 +31,7 @@ let devCId: string; // SPE B
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Cash Flow Refinado" } });
+  setCurrentOrgId(org.id);
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "cashflow-refinado@teste.local", fullName: "Usuário Fluxo" },
   });
@@ -59,9 +62,11 @@ beforeAll(async () => {
   devCId = devC.id;
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
 });
 
 describe("Granularidade semanal e diária", () => {

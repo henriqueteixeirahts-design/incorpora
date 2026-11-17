@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { type DbClient } from "@/lib/prisma";
 import { getEffectiveCommissionRule } from "@/server/commission-rules";
 import { resolveAgencySplit } from "@/server/agency-split-tiers";
 import { computeAllocationAmountsFromPercent } from "@/lib/payable-allocation";
@@ -27,14 +27,14 @@ export type ExternalSplitToCreate = {
  * Fase A (100% direto pro corretor/imobiliária via `CommissionSplit`).
  * `[]` = configurado, mas a venda não tem corretor/imobiliária nenhum.
  */
-export async function resolveExternalSplitsForSale(params: {
+export async function resolveExternalSplitsForSale(db: DbClient, params: {
   organizationId: string;
   developmentId: string;
   salePrice: number;
   brokerId: string | null;
   agencyId: string | null;
 }): Promise<ExternalSplitToCreate[] | null> {
-  const rule = await getEffectiveCommissionRule(params.organizationId, params.developmentId);
+  const rule = await getEffectiveCommissionRule(db, params.organizationId, params.developmentId);
   if (rule.externalCommissionPercent === null) return null;
   if (!params.brokerId && !params.agencyId) return [];
 
@@ -46,7 +46,7 @@ export async function resolveExternalSplitsForSale(params: {
     return [{ beneficiaryType: "BROKER", brokerId: params.brokerId, agencyId: null, label: null, percent: 100, value: totalCommission }];
   }
 
-  const tiers = await prisma.agencySplitTier.findMany({ where: { agencyId: params.agencyId } });
+  const tiers = await db.agencySplitTier.findMany({ where: { agencyId: params.agencyId } });
 
   // Imobiliária vinculada mas sem split configurado ainda: não trava o
   // fechamento da venda por um cadastro incompleto em outra tela — tudo vai
@@ -66,7 +66,7 @@ export async function resolveExternalSplitsForSale(params: {
     ];
   }
 
-  const manager = params.brokerId ? await prisma.broker.findUnique({ where: { id: params.brokerId } }) : null;
+  const manager = params.brokerId ? await db.broker.findUnique({ where: { id: params.brokerId } }) : null;
 
   const resolvedTiers = resolveAgencySplit(
     tiers.map((t) => ({ label: t.label, percent: Number(t.percent), kind: t.kind, fixedBrokerId: t.fixedBrokerId })),
@@ -107,13 +107,13 @@ export type InternalSplitToCreate = {
  * `CommissionRule.internalManagerBrokerId` configurado, ou
  * PARTICIPATED_ONLY sem `Sale.internalManagerBrokerId` setado nesta venda.
  */
-export async function resolveInternalSplitForSale(params: {
+export async function resolveInternalSplitForSale(db: DbClient, params: {
   organizationId: string;
   developmentId: string;
   salePrice: number;
   saleInternalManagerBrokerId: string | null;
 }): Promise<InternalSplitToCreate | null> {
-  const rule = await getEffectiveCommissionRule(params.organizationId, params.developmentId);
+  const rule = await getEffectiveCommissionRule(db, params.organizationId, params.developmentId);
   if (rule.internalCommissionPercent === null) return null;
 
   const managerId = params.saleInternalManagerBrokerId ?? (rule.internalCommissionAppliesTo === "ALL_SALES" ? rule.internalManagerBrokerId : null);

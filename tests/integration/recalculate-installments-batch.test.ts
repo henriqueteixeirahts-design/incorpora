@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { runJobForSingleOrganization, runJobForAllOrganizations, recalculateInstallmentsJob } from "@/server/jobs";
 import { recalculateAllOpenInstallments, recalculateInstallment } from "@/server/receivables";
 import { runAuditForOrganization } from "@/server/audit";
+import { setCurrentOrgId } from "@/lib/tenant-context";
 
 /**
  * Regressão da correção do recalculate-installments (deadline 2026-09-25,
@@ -24,6 +25,7 @@ async function createOrg() {
   const org = await prisma.organization.create({
     data: { name: `Org — Teste Lote Recálculo ${++fixtureCounter}`, isActive: true },
   });
+  setCurrentOrgId(org.id);
   createdOrgIds.push(org.id);
   return org;
 }
@@ -115,6 +117,7 @@ afterEach(async () => {
 describe("Idempotência: rodar o job duas vezes no mesmo mês não duplica histórico", () => {
   it("segunda execução produz o mesmo resultValue e não cria linha nova em financial_calculations", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     const fixture = await createContractWithInstallments(org.id, 3);
 
     const first = await runJobForSingleOrganization(recalculateInstallmentsJob, org.id, "MANUAL");
@@ -142,6 +145,7 @@ describe("Idempotência: rodar o job duas vezes no mesmo mês não duplica hist�
 
   it("forçar recalculateAllOpenInstallments direto (sem o no-op do job) faz upsert, não duplica", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     const fixture = await createContractWithInstallments(org.id, 2);
 
     await recalculateAllOpenInstallments(org.id);
@@ -165,6 +169,7 @@ describe("Idempotência: rodar o job duas vezes no mesmo mês não duplica hist�
 describe("Checkpoint: execução interrompida retoma sem reprocessar nem duplicar", () => {
   it("resumeAfterId pula as já processadas e completa só o restante", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     const fixture = await createContractWithInstallments(org.id, 4);
     const installments = await prisma.installment.findMany({
       where: { portfolioId: fixture.portfolio.id },
@@ -201,6 +206,7 @@ describe("Checkpoint: execução interrompida retoma sem reprocessar nem duplica
 describe("Watchdog: JobRun travado (RUNNING além do teto) vira FAILURE na próxima execução de qualquer job", () => {
   it("marca o órfão como FAILURE ao disparar outro job", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     const orphan = await prisma.jobRun.create({
       data: {
         jobName: "recalculate-installments",
@@ -222,6 +228,7 @@ describe("Watchdog: JobRun travado (RUNNING além do teto) vira FAILURE na próx
 
   it("JobRun RUNNING recente (dentro do teto) não é tocado pelo watchdog", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     const recent = await prisma.jobRun.create({
       data: {
         jobName: "recalculate-installments",
@@ -245,6 +252,7 @@ describe("Watchdog: JobRun travado (RUNNING além do teto) vira FAILURE na próx
 describe("Conferência cruzada com o oráculo independente da auditoria (V3)", () => {
   it("depois do recálculo em lote, V3_MEMORY_CONSISTENCY (full) não acusa nenhuma divergência", async () => {
     const org = await createOrg();
+    setCurrentOrgId(org.id);
     await createContractWithInstallments(org.id, 5, new Date("2022-06-15"));
     await recalculateAllOpenInstallments(org.id);
 
@@ -259,6 +267,7 @@ describe("Volume: 1.500 parcelas sintéticas processam dentro do orçamento de t
     "recalculateAllOpenInstallments processa as 1.500 (em uma ou mais chamadas, via cursor) sem duplicar nem pular",
     async () => {
       const org = await createOrg();
+      setCurrentOrgId(org.id);
       const TOTAL = 1500;
       const fixture = await createContractWithInstallments(org.id, TOTAL, new Date("2023-03-10"));
 

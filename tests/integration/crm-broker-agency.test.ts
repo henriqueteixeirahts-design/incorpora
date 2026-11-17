@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createAgency, createBroker, updateBroker, deleteBroker } from "@/server/crm";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_CORRETOR_COMISSIONAMENTO.md, Etapa 2 — cadastro de
@@ -17,18 +19,21 @@ let context: AccessContext;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — Corretores e Imobiliárias" } });
+  setCurrentOrgId(org.id);
   const actor = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "actor-crm-broker@teste.local", fullName: "Ator CRM" },
   });
   context = { userId: actor.id, organizationId: org.id, roleNames: [], permissions: new Set(), developmentAccess: "ALL" };
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
-  await prisma.auditEvent.deleteMany({ where: { organizationId: org.id } });
-  await prisma.broker.deleteMany({ where: { organizationId: org.id } });
-  await prisma.realEstateAgency.deleteMany({ where: { organizationId: org.id } });
-  await prisma.organization.delete({ where: { id: org.id } });
-  await prisma.user.deleteMany({ where: { email: "actor-crm-broker@teste.local" } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().broker.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().realEstateAgency.deleteMany({ where: { organizationId: org.id } });
+  await fixturePrisma().organization.delete({ where: { id: org.id } });
+  await fixturePrisma().user.deleteMany({ where: { email: "actor-crm-broker@teste.local" } });
 });
 
 describe("Endereço — número obrigatório quando logradouro é informado", () => {

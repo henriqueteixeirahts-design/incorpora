@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -7,6 +7,8 @@ import { createContributionForecast, createContribution } from "@/server/spe-con
 import { createReceivable, registerReceivableReceipt } from "@/server/receivables-avulsos";
 import { listConsolidatedReceivables, summarizeConsolidatedReceivables } from "@/server/receivables-consolidated";
 import { getSalesSummary, getReceivablesSummary } from "@/server/reports";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_APORTES_INVESTIDORES.md, Etapa 7 — contas a receber consolidado.
@@ -25,6 +27,7 @@ let bankAccountId: string;
 
 beforeAll(async () => {
   org = await prisma.organization.create({ data: { name: "Org — AR Consolidado" } });
+  setCurrentOrgId(org.id);
   otherOrg = await prisma.organization.create({ data: { name: "Org — AR Consolidado (outra)" } });
   user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: "ar-consolidado@teste.local", fullName: "Usuário AR Consolidado" },
@@ -61,17 +64,19 @@ beforeAll(async () => {
   await createContribution(context, investorId, { amount: 12000, creditDate: new Date(2024, 0, 10), bankAccountId });
 });
 
+aroundEach((runTest) => withOrgContext(org.id, runTest));
+
 afterAll(async () => {
   const orgIds = [org.id, otherOrg.id];
-  await prisma.speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.speInvestorContributionForecast.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
-  await prisma.speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
-  await prisma.receivable.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: user.id } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().speInvestorContribution.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().speInvestorContributionForecast.deleteMany({ where: { investor: { spe: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().speInvestor.deleteMany({ where: { spe: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().receivable.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().bankAccount.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: user.id } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("listConsolidatedReceivables", () => {

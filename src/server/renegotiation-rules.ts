@@ -1,6 +1,6 @@
 import "server-only";
 
-import { prisma } from "@/lib/prisma";
+import { prisma, type DbClient } from "@/lib/prisma";
 import { recordAuditEvent } from "@/lib/audit";
 import { canAccessDevelopment } from "@/server/scope";
 import type { AccessContext } from "@/server/auth-context";
@@ -45,11 +45,11 @@ function toValues(rule: {
   };
 }
 
-export async function getEffectiveRenegotiationRule(organizationId: string, developmentId: string): Promise<RenegotiationRuleValues> {
-  const rule = await prisma.renegotiationRule.findUnique({ where: { developmentId } });
+export async function getEffectiveRenegotiationRule(db: DbClient, organizationId: string, developmentId: string): Promise<RenegotiationRuleValues> {
+  const rule = await db.renegotiationRule.findUnique({ where: { developmentId } });
   if (rule) return toValues(rule);
 
-  const general = await prisma.renegotiationRule.findFirst({ where: { organizationId, developmentId: null } });
+  const general = await db.renegotiationRule.findFirst({ where: { organizationId, developmentId: null } });
   if (general) return toValues(general);
 
   return DEFAULT_RENEGOTIATION_RULE;

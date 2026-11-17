@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {aroundEach, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { createSpe } from "@/server/spes";
@@ -11,6 +11,8 @@ import {
   destacarUnidade,
   removerDestaque,
 } from "@/server/exchange-contracts";
+import { setCurrentOrgId, withOrgContext } from "@/lib/tenant-context";
+import { fixturePrisma } from "./helpers/tenant";
 
 /**
  * docs/ESPEC_MODULO_COMERCIAL.md etapa 1 + docs/ESPEC_PERMUTANTES.md etapas
@@ -32,6 +34,7 @@ let permutanteA: Awaited<ReturnType<typeof createPermutante>>;
 
 beforeAll(async () => {
   orgA = await prisma.organization.create({ data: { name: "Org A — Permuta" } });
+  setCurrentOrgId(orgA.id);
   orgB = await prisma.organization.create({ data: { name: "Org B — Permuta" } });
 
   userA = await prisma.user.create({
@@ -65,21 +68,23 @@ beforeAll(async () => {
   });
 });
 
+aroundEach((runTest) => withOrgContext(orgA.id, runTest));
+
 afterAll(async () => {
   const orgIds = [orgA.id, orgB.id];
-  await prisma.unit.updateMany({
+  await fixturePrisma().unit.updateMany({
     where: { development: { organizationId: { in: orgIds } } },
     data: { exchangeContractId: null },
   });
-  await prisma.exchangeContractLand.deleteMany({ where: { exchangeContract: { development: { organizationId: { in: orgIds } } } } });
-  await prisma.exchangeContract.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
-  await prisma.development.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.permutante.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await fixturePrisma().exchangeContractLand.deleteMany({ where: { exchangeContract: { development: { organizationId: { in: orgIds } } } } });
+  await fixturePrisma().exchangeContract.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().unit.deleteMany({ where: { development: { organizationId: { in: orgIds } } } });
+  await fixturePrisma().development.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().permutante.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().specialPurposeEntity.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().auditEvent.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await fixturePrisma().user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+  await fixturePrisma().organization.deleteMany({ where: { id: { in: orgIds } } });
 });
 
 describe("Permutante", () => {

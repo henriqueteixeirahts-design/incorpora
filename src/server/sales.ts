@@ -188,7 +188,7 @@ export async function convertProposalToSale(context: AccessContext, proposalId: 
     // split (ExternalCommissionSplit, nunca vira Payable) em vez do split
     // legado de 100% pro corretor/imobiliária (CommissionSplit, Fase A) —
     // substitui, não roda em paralelo (ver resolveExternalSplitsForSale).
-    const resolvedExternalSplits = await resolveExternalSplitsForSale({
+    const resolvedExternalSplits = await resolveExternalSplitsForSale(tx, {
       organizationId: context.organizationId,
       developmentId: proposal.developmentId,
       salePrice: Number(proposal.salePrice),

@@ -1,6 +1,6 @@
 // Núcleo do despacho de alertas de falha de job — roda na Edge Function
-// `job-alert-dispatch` (Supabase), chamada a cada 15 min pelo GitHub Actions
-// (.github/workflows/job-alert-dispatch.yml).
+// `job-alert-dispatch` (Supabase), chamada a cada 15 min pelo cron-job.org
+// (gatilho principal) e pelo GitHub Actions (.github/workflows/job-alert-dispatch.yml).
 // Independente da Vercel e do banco por desenho: nada aqui depende do runtime do
 // Next.js nem de um cron da Vercel disparar (o incidente de 2026-09-02 era
 // exatamente o cron/função da Vercel morrendo em silêncio).
@@ -98,6 +98,101 @@ export async function recordDispatchHeartbeat(
      VALUES (gen_random_uuid(), 'job-alert-dispatch', NULL, $1, 'CRON', now(), now(), $2::jsonb, $3, true)`,
     [outcome.success ? "SUCCESS" : "FAILURE", JSON.stringify(outcome.summary), outcome.error ?? null],
   );
+}
+
+/**
+ * Canal de e-mail sem configuração na função: configuração PENDENTE (nunca
+ * houve despacho bem-sucedido — o primeiro batimento SUCCESS é o marco) ou
+ * QUEBRA (já funcionou e parou: segredo apagado, projeto recriado). A
+ * resposta HTTP muda com isso: 503 (o workflow trata como configuração, no
+ * máximo 1 falha/dia) ou 500 (falha real, em toda execução). Decisão de
+ * 2026-11-08.
+ */
+export async function classifyMissingEmailConfig(db: DispatchDb): Promise<"pending_setup" | "broken"> {
+  const [row] = await db.query<{ ever: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM job_runs
+        WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL AND status = 'SUCCESS'
+     ) AS ever`,
+  );
+  return row?.ever ? "broken" : "pending_setup";
+}
+
+export type StalenessProblem =
+  | { kind: "old_pending_alert"; jobRunId: string; jobName: string; minutes: number }
+  | { kind: "dispatch_gap"; minutes: number }
+  | { kind: "job_overdue"; organizationId: string; jobName: string; lastSuccessAt: string | null };
+
+// Janelas do vigia de atraso (decisão de 2026-11-08: o vigia mora na Edge
+// Function, fora da Vercel, do banco e do GitHub — se a Vercel morrer, o
+// cron diário não roda e a auditoria V7 nunca é avaliada; aqui não).
+export const STALENESS_WINDOWS = {
+  pendingAlertMinutes: 60, // alerta que continua sem entrega depois de 1h
+  dispatchGapMinutes: 60, // intervalo entre dois despachos bem-sucedidos
+  jobs: [
+    { jobName: "recalculate-installments", maxHours: 26 }, // diário (03:00 UTC) + folga
+    { jobName: "sync-index-values", maxHours: 8 * 24 }, // semanal (segunda 04:00 UTC) + folga
+  ],
+} as const;
+
+/**
+ * Vigia de atraso. Rodada na própria Edge Function a cada chamada — se
+ * achar qualquer problema, a função responde erro e quem a chamou (o
+ * cron-job.org, por e-mail próprio; o GitHub Actions) avisa. Três sinais:
+ * - alerta pendente antigo (FAILURE sem entrega há mais de 1h, depois da
+ *   tentativa de entrega desta mesma chamada);
+ * - buraco no gatilho: o despacho bem-sucedido ANTERIOR a esta chamada tem
+ *   mais de 1h (um dos agendadores parou); ignorado enquanto nunca houve
+ *   despacho bem-sucedido (configuração inicial);
+ * - job sem execução bem-sucedida dentro da janela, por organização ativa
+ *   (o cron da Vercel morreu — exatamente o incidente de 2026-09-02).
+ * Chamar ANTES de gravar o batimento desta execução.
+ */
+export async function evaluateStaleness(db: DispatchDb): Promise<StalenessProblem[]> {
+  const problems: StalenessProblem[] = [];
+
+  const oldPending = await db.query<{ id: string; jobName: string; minutes: number }>(
+    `SELECT id, "jobName", floor(extract(epoch FROM now() - coalesce("finishedAt", "startedAt")) / 60)::int AS minutes
+       FROM job_runs
+      WHERE status = 'FAILURE' AND "alertSentAt" IS NULL AND NOT "alertSuppressed"
+        AND coalesce("finishedAt", "startedAt") < now() - make_interval(mins => $1)
+      ORDER BY "startedAt" ASC
+      LIMIT 20`,
+    [STALENESS_WINDOWS.pendingAlertMinutes],
+  );
+  for (const row of oldPending) {
+    problems.push({ kind: "old_pending_alert", jobRunId: row.id, jobName: row.jobName, minutes: row.minutes });
+  }
+
+  const [gap] = await db.query<{ minutes: number | null }>(
+    `SELECT floor(extract(epoch FROM now() - max("startedAt")) / 60)::int AS minutes
+       FROM job_runs
+      WHERE "jobName" = 'job-alert-dispatch' AND "organizationId" IS NULL AND status = 'SUCCESS'`,
+  );
+  if (gap?.minutes != null && gap.minutes > STALENESS_WINDOWS.dispatchGapMinutes) {
+    problems.push({ kind: "dispatch_gap", minutes: gap.minutes });
+  }
+
+  for (const job of STALENESS_WINDOWS.jobs) {
+    const overdue = await db.query<{ organizationId: string; lastSuccessAt: string | null }>(
+      `SELECT o.id AS "organizationId",
+              (SELECT max(r."startedAt") FROM job_runs r
+                WHERE r."organizationId" = o.id AND r."jobName" = $1 AND r.status = 'SUCCESS')::text AS "lastSuccessAt"
+         FROM organizations o
+        WHERE o."isActive"
+          AND NOT EXISTS (
+            SELECT 1 FROM job_runs r
+             WHERE r."organizationId" = o.id AND r."jobName" = $1 AND r.status = 'SUCCESS'
+               AND r."startedAt" >= now() - make_interval(hours => $2)
+          )`,
+      [job.jobName, job.maxHours],
+    );
+    for (const row of overdue) {
+      problems.push({ kind: "job_overdue", organizationId: row.organizationId, jobName: job.jobName, lastSuccessAt: row.lastSuccessAt });
+    }
+  }
+
+  return problems;
 }
 
 /** `null` = entregue (Resend aceitou); senão, o motivo da falha. */

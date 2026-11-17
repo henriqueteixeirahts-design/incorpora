@@ -57,6 +57,18 @@ describe("withOrgContext — escopo por .run(), seguro pra várias organizaçõe
     expect(getCurrentOrgId()).toBeNull();
   });
 
+  it("promessa PREGUIÇOSA devolvida por fn (como a PrismaPromise) roda dentro do contexto — achado da prova do pooler, 2026-11-10", async () => {
+    // A PrismaPromise só executa quando alguém chama `.then` — e o `await`
+    // de quem chamou acontece DEPOIS que `.run()` já saiu. Sem o tratamento
+    // em withOrgContext, `withOrgContext(org, () => prisma.x.findMany())`
+    // rodava a consulta sem organização (placeholder): fail-closed, mas
+    // quebrado. Este thenable imita esse comportamento.
+    const lazy = { then: (resolve: (v: string | null) => void) => resolve(getCurrentOrgId()) };
+    const seen = await withOrgContext("org-lazy", () => lazy as unknown as Promise<string | null>);
+    expect(seen).toBe("org-lazy");
+    expect(getCurrentOrgId()).toBeNull();
+  });
+
   it("withOrgContext aninhado dentro de outro restaura o contexto externo ao sair", () => {
     withOrgContext("org-outer", () => {
       expect(getCurrentOrgId()).toBe("org-outer");

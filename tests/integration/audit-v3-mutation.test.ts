@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { runAuditForOrganization } from "@/server/audit";
 import { recalculateInstallment } from "@/server/receivables";
+import { setCurrentOrgId } from "@/lib/tenant-context";
 
 /**
  * Teste de mutação PERMANENTE do oráculo da V3 (auditoria de atualização,
@@ -49,6 +50,7 @@ afterEach(() => {
 
 async function makeOverdueInstallment(tag: string) {
   const org = await prisma.organization.create({ data: { name: `Org — Mutação V3 — ${tag}` } });
+  setCurrentOrgId(org.id);
   const user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário Mutação V3" },
   });
@@ -130,6 +132,7 @@ async function cleanup(orgId: string, userId: string) {
 /** Grava o valor com o motor (mutado ou não) e roda a auditoria SEMANAL — a vencida tem que entrar na amostra. */
 async function v3AfterRecalc(mutation: Mutation) {
   const { org, user, installment } = await makeOverdueInstallment(mutation);
+  setCurrentOrgId(org.id);
   try {
     state.mutation = mutation;
     await prisma.$transaction((tx) => recalculateInstallment(tx, installment.id, new Date("2026-03-01T12:00:00")));
@@ -137,7 +140,7 @@ async function v3AfterRecalc(mutation: Mutation) {
 
     const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
     const v3 = result.checks.find((c) => c.code === "V3_MEMORY_CONSISTENCY")!;
-    // Evidência legível quando rodado à mão (scripts/staging-bootstrap.js --mutation-test).
+    // Evidência legível quando rodado à mão (V3_MUTATION_VERBOSE=1 npm run test:integration).
     if (process.env.V3_MUTATION_VERBOSE) {
       console.info(`[V3 mutação=${mutation}] status=${v3.status} summary=${JSON.stringify(v3.summary)} issues=${JSON.stringify(v3.issues)}`);
     }

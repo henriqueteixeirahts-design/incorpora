@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { AccessContext } from "@/server/auth-context";
 import { runAuditForOrganization, getIndexFreshnessWarnings } from "@/server/audit";
 import { recalculateInstallment } from "@/server/receivables";
+import { setCurrentOrgId } from "@/lib/tenant-context";
 
 /**
  * Auditoria de atualização (docs/ESPEC_CONFIABILIDADE_JOBS_AUDITORIA.md,
@@ -16,6 +17,7 @@ import { recalculateInstallment } from "@/server/receivables";
 
 async function makeOrg(name: string) {
   const org = await prisma.organization.create({ data: { name } });
+  setCurrentOrgId(org.id);
   const user = await prisma.user.create({
     data: { id: crypto.randomUUID(), email: `${crypto.randomUUID()}@teste.local`, fullName: "Usuário Auditoria" },
   });
@@ -106,6 +108,7 @@ async function makeContractWithPortfolio(orgId: string, tag: string) {
 describe("V1 — Frescor dos índices", () => {
   it("alerta quando o mês fechado está ausente após o prazo, e some quando o valor é lançado", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V1");
+    setCurrentOrgId(org.id);
     try {
       // "Hoje" fixo em 25/mar/2026 — depois do prazo padrão dos 3 índices
       // pro mês fechado (fev/2026): IGP-M dia 5, IPCA dia 12, INCC dia 20 de março.
@@ -144,6 +147,7 @@ describe("V1 — Frescor dos índices", () => {
 
   it("não alerta antes do prazo de publicação vencer", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V1 Antes do Prazo");
+    setCurrentOrgId(org.id);
     try {
       // 3/mar/2026 — antes de todos os prazos padrão pro mês fechado (fev/2026)
       vi.useFakeTimers();
@@ -166,6 +170,7 @@ describe("V1 — Frescor dos índices", () => {
 describe("V2 — Cobertura da correção", () => {
   it("alerta parcela em aberto de contrato com correção ativa nunca recalculada, some depois de recalculada", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V2");
+    setCurrentOrgId(org.id);
     try {
       const rule = await prisma.indexRule.create({
         data: { organizationId: org.id, code: "IPCA", name: "IPCA Teste V2", isActive: true },
@@ -251,6 +256,7 @@ describe("V2 — Cobertura da correção", () => {
 describe("V3 — Consistência da memória (recálculo por caminho independente)", () => {
   it("não alerta quando o valor gravado bate com o recálculo independente, e detecta divergência de 1 centavo", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V3");
+    setCurrentOrgId(org.id);
     try {
       const spe = await prisma.specialPurposeEntity.create({
         data: { organizationId: org.id, name: "SPE V3", document: "46127017000105", status: "ACTIVE" },
@@ -348,6 +354,7 @@ describe("V3 — Consistência da memória (recálculo por caminho independente)
 
   it("não alerta parcela vencida (com multa + mora) calculada corretamente pelo motor real — regressão do bug achado em 2026-09-18 (V3 comparava correctedValue sem multa/mora contra o resultValue gravado, dava ALERT falso em toda parcela vencida)", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V3 — Parcela Vencida");
+    setCurrentOrgId(org.id);
     try {
       const spe = await prisma.specialPurposeEntity.create({
         data: { organizationId: org.id, name: "SPE V3 Vencida", document: "46127017000105", status: "ACTIVE" },
@@ -431,6 +438,7 @@ describe("V3 — Consistência da memória (recálculo por caminho independente)
 describe("V3 — amostragem da auditoria semanal (não completa)", () => {
   it("confere SEMPRE toda parcela vencida, mesmo fora das primeiras 50 por id — erro de 1 centavo plantado numa vencida é pego pela semanal, não só pela completa", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V3 — Amostragem");
+    setCurrentOrgId(org.id);
     try {
       const { portfolio } = await makeContractWithPortfolio(org.id, "V3-AMOSTRA");
 
@@ -487,6 +495,7 @@ describe("V3 — amostragem da auditoria semanal (não completa)", () => {
 
   it("sorteia o restante em vez de pegar sempre as primeiras por id", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V3 — Sorteio");
+    setCurrentOrgId(org.id);
     try {
       const { portfolio } = await makeContractWithPortfolio(org.id, "V3-SORTEIO");
       await prisma.installment.createMany({
@@ -538,6 +547,7 @@ describe("V7 — vigia do alerta (batimento do despacho)", () => {
 
   it("acusa sem batimento nenhum, com último sucesso há mais de 1h, e com só falhas recentes; fica OK com sucesso na última hora", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V7");
+    setCurrentOrgId(org.id);
     try {
       await clearBeats();
       const never = await v7(org.id);
@@ -564,6 +574,7 @@ describe("V7 — vigia do alerta (batimento do despacho)", () => {
 describe("V4 — tolerância do recalculate-installments (job diário)", () => {
   it("acusa sem SUCCESS há mais de 3 dias e aceita SUCCESS de 2 dias atrás", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V4 — Tolerância");
+    setCurrentOrgId(org.id);
     const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
     try {
       await prisma.jobRun.create({
@@ -590,6 +601,7 @@ describe("V4 — tolerância do recalculate-installments (job diário)", () => {
 describe("V4 — Execução dos jobs", () => {
   it("alerta quando os jobs agendados não têm JobRun de sucesso recente, some depois de um sucesso registrado", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V4");
+    setCurrentOrgId(org.id);
     try {
       const missing = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
       const v4Alert = missing.checks.find((c) => c.code === "V4_JOB_EXECUTION")!;
@@ -616,6 +628,7 @@ describe("V4 — Execução dos jobs", () => {
 describe("V5 — Divergência de fonte (sem tocar rede no CI)", () => {
   it("fica OK sem checar nada quando não há índice oficial ativo com valor gravado", async () => {
     const { org, user } = await makeOrg("Org — Auditoria V5");
+    setCurrentOrgId(org.id);
     try {
       const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "MANUAL" });
       const v5 = result.checks.find((c) => c.code === "V5_SOURCE_DIVERGENCE")!;
@@ -630,6 +643,7 @@ describe("V5 — Divergência de fonte (sem tocar rede no CI)", () => {
 describe("Orquestrador — persistência e status geral", () => {
   it("grava AuditRun com status ALERT quando qualquer verificação falha, e persiste os 7 AuditCheckResult", async () => {
     const { org, user } = await makeOrg("Org — Auditoria Orquestrador");
+    setCurrentOrgId(org.id);
     try {
       // Organização "vazia" já basta pro V4 alertar (nenhum JobRun ainda) — suficiente pra provar a propagação do status geral.
       const result = await runAuditForOrganization(org.id, { full: false, triggeredBy: "CRON" });

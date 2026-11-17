@@ -1,6 +1,7 @@
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
+import { existingSupabaseRoles } from "./helpers/supabase-roles";
 
 /**
  * INCIDENTE DE SEGURANÇA (ver docs/STATUS_IMPLANTACAO.md) — o Supabase
@@ -13,21 +14,16 @@ import { prisma } from "@/lib/prisma";
  * todo ambiente Supabase pra nunca deixar isso voltar sem ninguém notar.
  *
  * Em Postgres local puro (Docker) as roles anon/authenticated/service_role
- * não existem — os testes que dependem delas viram no-op explícito
- * (comentado no próprio teste), não um erro.
+ * não existem — os testes que dependem delas viram no-op explícito. No CI
+ * (imagem supabase/postgres, EXPECT_SUPABASE_ROLES=1) as 3 roles são
+ * obrigatórias: `existingSupabaseRoles()` falha se faltar alguma, então
+ * nenhum destes testes passa vazio lá.
  */
-
-async function existingSupabaseRoles(): Promise<string[]> {
-  const rows = await prisma.$queryRawUnsafe<{ rolname: string }[]>(
-    `SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role')`,
-  );
-  return rows.map((r) => r.rolname);
-}
 
 describe("Nenhuma role do PostgREST tem acesso a objeto nenhum do schema public", () => {
   it("zero tabelas com qualquer privilégio pra anon/authenticated/service_role", async () => {
     const roles = await existingSupabaseRoles();
-    if (roles.length === 0) return; // Postgres local puro — nada a checar
+    if (roles.length === 0) return; // Postgres local puro — nada a checar (no CI isso nunca acontece: o helper falha antes)
 
     const rows = await prisma.$queryRawUnsafe<{ rolname: string; tabela: string; privilegio: string }[]>(`
       SELECT grantee AS rolname, table_name AS tabela, privilege_type AS privilegio

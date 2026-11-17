@@ -4,6 +4,7 @@ import { requireAccessContext, hasPermission } from "@/server/auth-context";
 import { getDevelopment } from "@/server/developments";
 import { getEffectiveProposalEvaluationRule, getProposalEvaluationRule } from "@/server/proposal-evaluation-rules";
 import { ProposalEvaluationRuleForm } from "./proposal-evaluation-rule-form";
+import { prisma } from "@/lib/prisma";
 
 export default async function ProposalEvaluationRulesPage({
   params,
@@ -17,7 +18,7 @@ export default async function ProposalEvaluationRulesPage({
   if (!development) notFound();
 
   const [rule, ownRule] = await Promise.all([
-    getEffectiveProposalEvaluationRule(context.organizationId, id),
+    getEffectiveProposalEvaluationRule(prisma, context.organizationId, id),
     getProposalEvaluationRule(context, id),
   ]);
   const canEdit = hasPermission(context, "development", "EDIT");

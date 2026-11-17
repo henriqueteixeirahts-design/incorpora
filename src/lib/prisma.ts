@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 import { getCurrentOrgId } from "@/lib/tenant-context";
+import { observeQueryWithoutOrg } from "@/lib/rls-observe";
+import { callSiteFromStack, createOperationalAlertRecorder } from "@/lib/operational-alerts";
 
 const globalForPrisma = globalThis as unknown as {
   prismaBase: PrismaClient | undefined;
@@ -26,18 +28,51 @@ function currentOrgIdOrPlaceholder() {
 }
 
 /**
- * Marca "já estou dentro de uma transação que a extensão já preparou com
- * SET LOCAL" — evita que `$allOperations` abra uma SEGUNDA transação (via
- * `base.$transaction([...])`) por cima de uma já aberta pelo override de
- * `$transaction` abaixo, o que quebraria a atomicidade (cada operação
- * comitando sozinha em vez de fazer parte da transação real do chamador).
- * Achado num spike antes de codar: a primeira versão desta extensão (sem
- * este flag) passava em todos os testes de "o valor certo aparece", mas
- * quebrava silenciosamente o rollback de `prisma.$transaction(async tx =>
- * {...})` — uma criação sobrevivia mesmo depois de um erro lançado dentro da
- * mesma transação. Nunca subiu pra produção; pego antes de qualquer commit.
+ * TRAVA: cliente GLOBAL dentro de transação interativa (2026-11-10).
+ *
+ * Dentro de `prisma.$transaction(async tx => ...)`, toda operação tem que ir
+ * pelo `tx`. Uma chamada pelo `prisma` global (ou um `prisma.$transaction`
+ * aninhado) sai por OUTRA conexão, fora da transação: não vê o que ainda não
+ * foi commitado e não participa do rollback. Foi a causa raiz do achado da
+ * Etapa 4 (convertProposalToSale → resolveExternalSplitsForSale pelo
+ * `prisma` global: com RLS, a regra de comissão sumia e nenhum split era
+ * criado, sem erro).
+ *
+ * Como o `tx` vem de `base.$transaction` (cliente SEM esta extensão),
+ * operações via `tx` nunca chegam a `$allOperations` nem ao `$transaction`
+ * daqui — então QUALQUER chamada que chegue aqui com este marcador ligado é,
+ * por definição, o cliente global dentro de um callback de transação.
+ * Fora de produção (testes, `next dev`): lança erro. Em produção: registra
+ * `prisma-global-client-in-transaction` no log E GRAVA um alerta em
+ * `job_runs` (o log da Vercel no Hobby dura menos de 1 hora) e segue (não
+ * derruba um caminho que os testes não cubram). Testes:
+ * tests/integration/prisma-transaction-guard.test.ts e operational-alerts.test.ts.
  */
-const insidePrimedTransaction = new AsyncLocalStorage<boolean>();
+const insideInteractiveTransaction = new AsyncLocalStorage<true>();
+
+export const GLOBAL_CLIENT_IN_TRANSACTION_EVENT = "prisma-global-client-in-transaction";
+
+/**
+ * Gravador de alertas operacionais (src/lib/operational-alerts.ts) pelo
+ * CLIENTE BASE — sem a extensão, então gravar nunca passa pela trava nem pelo
+ * set_config de novo (gravar pela extensão de dentro da extensão seria laço).
+ * `job_runs` está fora do RLS (exceção do inventário); quando entrar, esta
+ * gravação precisa de caminho próprio (ver docs/STATUS_IMPLANTACAO.md).
+ */
+export const recordOperationalAlert = createOperationalAlertRecorder((sql, ...params) => base.$executeRawUnsafe(sql, ...params));
+
+function guardGlobalClientInTransaction(what: string) {
+  if (!insideInteractiveTransaction.getStore()) return;
+  const message = `Cliente prisma GLOBAL usado dentro de prisma.$transaction (${what}) — passe o \`tx\` do callback.`;
+  if (process.env.NODE_ENV === "production") {
+    const stack = new Error().stack;
+    const callSite = callSiteFromStack(stack);
+    console.error(JSON.stringify({ event: GLOBAL_CLIENT_IN_TRANSACTION_EVENT, level: "error", what, callSite, stack }));
+    void recordOperationalAlert(GLOBAL_CLIENT_IN_TRANSACTION_EVENT, `${what} @ ${callSite}`, `${message} Ponto de chamada: ${callSite}`);
+    return;
+  }
+  throw new Error(message);
+}
 
 /**
  * RLS (docs/ESPEC_MULTITENANT_FUNDACOES.md, Pilar 2) — toda query passa a
@@ -55,9 +90,9 @@ const insidePrimedTransaction = new AsyncLocalStorage<boolean>();
  * - `client.$transaction` — intercepta a chamada de `$transaction` em si
  *   (forma callback OU array) e injeta o SET LOCAL como a PRIMEIRA operação
  *   da transação real do chamador — nunca uma transação separada.
- * - `query.$allOperations` — só entra em ação pra chamadas FORA de uma
- *   transação já preparada pelo item acima (senão dá dupla-transação e
- *   quebra rollback — ver o comentário do flag acima). Usa a forma array de
+ * - `query.$allOperations` — toda chamada pelo client estendido (inclusive
+ *   uma chamada pelo `prisma` global feita DENTRO do callback de uma
+ *   transação interativa, que roda em outra conexão). Usa a forma array de
  *   `$transaction([...])` pra garantir a mesma conexão física.
  */
 type TransactionOptions = { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel };
@@ -69,6 +104,7 @@ type TransactionOptions = { maxWait?: number; timeout?: number; isolationLevel?:
 // tipagem forte de `tx` em todo `prisma.$transaction(async tx => ...)` do
 // app — sem isso, TypeScript perde a sobrecarga e todo `tx` vira `any`.
 const $transaction = ((...txArgs: unknown[]) => {
+  guardGlobalClientInTransaction("$transaction aninhado");
   const orgId = currentOrgIdOrPlaceholder();
   const [first, options] = txArgs as [unknown, TransactionOptions | undefined];
 
@@ -79,7 +115,7 @@ const $transaction = ((...txArgs: unknown[]) => {
         `SELECT set_config('app.current_org_id', $1, TRUE)`,
         orgId,
       );
-      return insidePrimedTransaction.run(true, () => userCallback(tx));
+      return insideInteractiveTransaction.run(true, () => userCallback(tx));
     };
     return base.$transaction(primed, options);
   }
@@ -105,10 +141,11 @@ export const prisma = base.$extends({
   name: "rls-tenant-context",
   client: { $transaction },
   query: {
-    $allOperations({ args, query }) {
-      if (insidePrimedTransaction.getStore()) {
-        return query(args);
-      }
+    $allOperations({ model, operation, args, query }) {
+      // Semana de observação da Etapa 4 (desligada sem RLS_OBSERVE=1): só
+      // registra, nunca altera a consulta. Ver src/lib/rls-observe.ts.
+      observeQueryWithoutOrg(model, operation, getCurrentOrgId());
+      guardGlobalClientInTransaction(`${model ?? "raw"}.${operation}`);
       const orgId = currentOrgIdOrPlaceholder();
       return base
         .$transaction([base.$executeRawUnsafe(`SELECT set_config('app.current_org_id', $1, TRUE)`, orgId), query(args)])
@@ -125,3 +162,6 @@ export const prisma = base.$extends({
  * client `base` sem RLS.
  */
 export type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** Cliente do banco recebido explicitamente: `tx` dentro de transação, `prisma` fora. Ver a trava do cliente global dentro de transação, no topo deste arquivo. */
+export type DbClient = TransactionClient | typeof prisma;

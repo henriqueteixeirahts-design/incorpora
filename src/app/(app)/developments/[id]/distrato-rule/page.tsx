@@ -5,6 +5,7 @@ import { getDevelopment } from "@/server/developments";
 import { getEffectiveDistratoRule, getDistratoRule } from "@/server/distrato-rules";
 import { maxRetentionPercent } from "@/lib/distrato-settlement";
 import { DistratoRuleForm } from "./distrato-rule-form";
+import { prisma } from "@/lib/prisma";
 
 export default async function DistratoRulePage({
   params,
@@ -18,7 +19,7 @@ export default async function DistratoRulePage({
   if (!development) notFound();
 
   const [rule, ownRule] = await Promise.all([
-    getEffectiveDistratoRule(context.organizationId, id),
+    getEffectiveDistratoRule(prisma, context.organizationId, id),
     getDistratoRule(context, id),
   ]);
   const canEdit = hasPermission(context, "development", "EDIT");

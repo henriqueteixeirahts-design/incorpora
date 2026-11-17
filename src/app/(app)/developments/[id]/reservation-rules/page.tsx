@@ -5,6 +5,7 @@ import { getDevelopment } from "@/server/developments";
 import { getEffectiveReservationRule, getReservationRule } from "@/server/reservation-rules";
 import { listRoles } from "@/server/users";
 import { ReservationRuleForm } from "./reservation-rule-form";
+import { prisma } from "@/lib/prisma";
 
 export default async function ReservationRulesPage({
   params,
@@ -18,7 +19,7 @@ export default async function ReservationRulesPage({
   if (!development) notFound();
 
   const [rule, ownRule, roles] = await Promise.all([
-    getEffectiveReservationRule(context.organizationId, id),
+    getEffectiveReservationRule(prisma, context.organizationId, id),
     getReservationRule(context, id),
     listRoles(context.organizationId),
   ]);
