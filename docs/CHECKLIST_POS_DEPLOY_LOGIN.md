@@ -1,6 +1,6 @@
 # Checklist pós-deploy do login (merge do PR #1)
 
-> Para o dia do merge do PR #1. O deploy muda o login (`resolve_user_organization()`, `count_user_access_grants()`), corrige a causa raiz da comissão (funções recebem o `tx`) e liga a trava `prisma-global-client-in-transaction` em modo produção. Nenhuma policy de RLS é ativada.
+> Para o dia do merge do PR #1 — **depois** da troca da senha do `app_user` e da prova do pooler, na mesma sessão (`docs/ROTEIRO_TROCA_SENHA_APP_USER.md`). O deploy muda o login (`resolve_user_organization()`, `count_user_access_grants()`), corrige a causa raiz da comissão (funções recebem o `tx`) e liga a trava `prisma-global-client-in-transaction` em modo produção. Nenhuma policy de RLS é ativada.
 > Quem detecta login quebrado é você abrindo o sistema: reserve ~30 minutos de atenção inteira, sem outra tarefa no meio.
 > **Pré-condição**: a corrente do alerta já funcionando (o deploy liga a auditoria diária encadeada no cron; com a V7 em ALERT, ela gera uma falha por dia) — ✅ **cumprida em 16/11/2026**. Depois do merge, reativar o workflow "Alerta de jobs" no GitHub (Actions → Alerta de jobs → Enable workflow).
 
@@ -10,14 +10,14 @@
 |---|---|---|
 | 0.1 | CI do PR #1 verde nos dois jobs (`test` e `test-rls`) no último commit | você confere no PR |
 | 0.2 | **Foto da comissão ANTES** — consulta C (seção 3), resultado guardado | eu rodo (só leitura) |
-| 0.3 | Anotar o deploy de produção atual na Vercel (Deployments → o primeiro com "Production"/"Current") — commit `6a60219`. É o alvo do rollback | você |
+| 0.3 | Anotar o deploy **D1** — o redeploy feito logo depois da troca da senha do `app_user` (`docs/ROTEIRO_TROCA_SENHA_APP_USER.md`, passo 9). Na lista de Deployments ele aparece com o mesmo commit `6a60219`, mas é o **mais recente** com esse commit, criado na janela. **É o alvo do rollback.** Os deploys anteriores a ele têm a senha antiga embutida e **não conectam mais** — nunca voltar para eles | você |
 | 0.4 | Janela anônima aberta, conta de teste à mão | você |
 
 ## 1. Na Vercel, antes de testar (assim que der push/merge)
 
 1. Vercel → projeto `incorpora` → **Deployments**.
 2. O deploy novo aparece no topo, **Environment: Production**. Clicar nele e conferir:
-   - **Commit**: o hash do merge (o mesmo que o GitHub mostra no PR mergeado) — não o `6a60219`.
+   - **Commit**: o hash do merge (o mesmo que o GitHub mostra no PR mergeado) — não o `6a60219` do D1.
    - **Status: Ready** (verde). Enquanto estiver *Building*, espere.
 3. Se o status for **Error**: o build falhou — muito provavelmente na migration (o build roda `prisma migrate deploy` antes do `next build`). **Nada foi ao ar**: a produção continua no deploy anterior. Não faça rollback; me mande o log do build.
 4. Se for **Ready**: o deploy está servindo produção. Siga.
@@ -138,7 +138,7 @@ SELECT "jobName", summary ->> 'callSite' AS ponto, "startedAt", "alertSentAt", e
 ## 6. Instant Rollback, passo a passo (menos de 1 minuto)
 
 1. Vercel → projeto `incorpora` → **Deployments**.
-2. Achar o deploy de produção **anterior** — commit `6a60219` (anotado no passo 0.3).
+2. Achar o **D1** (anotado no passo 0.3): o redeploy da troca de senha, commit `6a60219`, criado na janela. **Não** escolher um deploy mais antigo com o mesmo commit: esses têm a senha antiga e não conectam.
 3. Menu **⋯** desse deploy → **Instant Rollback** → confirmar. Não rebuilda: troca em segundos.
 4. Repetir o passo 2 do teste (login em janela anônima) para confirmar que voltou.
 5. **As migrations ficam no banco, e isso é inofensivo**: elas só criam as duas funções (com EXECUTE só para `app_user`); o código antigo não as chama e lê `access_grants` direto (não há RLS ativo). **Não apagar** as funções nem as migrations (CLAUDE.md); a correção entra como commit novo.

@@ -20,3 +20,9 @@ Motivo: na fase de segurança (set–nov/2026) foram **quatro** testes verdes qu
 3. Teste de ambiente que pulava em silêncio (no Postgres puro não havia as roles do Supabase; as travas "nenhuma role consegue X" passavam vazias).
 4. Duas checagens de vazamento entre organizações vazias desde sempre (procuravam a linha errada; passavam mesmo com o filtro da aplicação removido) — 2026-11-10.
 Detalhes em `docs/STATUS_IMPLANTACAO.md`.
+
+## Credenciais: guarda registrada
+
+**Toda credencial criada ou trocada (senha de role do banco, token, chave de API) tem a guarda registrada no `docs/STATUS_IMPLANTACAO.md`, na tabela "Registro de credenciais", no mesmo dia: quem gerou, quando, como, onde está guardada (nome do gerenciador e do item) e onde está configurada. Nunca o valor.** Credencial cujo "onde está guardada" é desconhecido é tratada como perdida: o caminho é trocar, não procurar.
+
+Motivo: a senha do `app_user` de produção, criada na Etapa 2.5 (set/2026), não foi registrada em lugar nenhum; quando a Vercel passou a esconder o valor (variável *sensitive*), ninguém conseguia recuperá-la — e uma credencial com escrita em todas as tabelas ficou sem dono conhecido (2026-11-16).

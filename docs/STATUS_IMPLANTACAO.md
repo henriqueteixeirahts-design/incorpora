@@ -954,6 +954,32 @@ Recomendação: **(a) agora**, antes de qualquer push; **(b) depois** que a stag
 
 ---
 
+### 2026-11-17 — troca da senha do `app_user` (preparada, não executada) e registro de credenciais
+
+**Por quê**: para a prova do pooler, o usuário precisa da `DATABASE_URL` de produção, mas `DATABASE_URL` e `DIRECT_URL` estão como *sensitive* na Vercel (o valor não pode mais ser lido, só substituído) — e a senha do `app_user` criada na Etapa 2.5 (set/2026) **não está registrada em lugar nenhum**: o STATUS da época diz só que foi criada "à parte, fora do controle de versão", sem dizer quem gerou nem onde ficou. **Buraco de processo** — virou regra no `CLAUDE.md` ("Credenciais: guarda registrada").
+
+**Busca de vazamento (16/11)**: a senha não aparece no repositório nem em todo o histórico — 163 commits, todos os branches, desde 21/07, incluindo conteúdo apagado (a cópia local era rasa, 78 commits; o histórico foi completado antes de concluir). Nenhum `.env` versionado, nenhuma string de conexão ou `ALTER ROLE` com senha de produção, nenhuma chave com formato de segredo. Só credenciais de CI/local (`app_user_ci_pw`, `incorpora`, `placeholder`). **Sem achado de segurança.**
+
+**Decisão do usuário**: procurar no gerenciador (10 min, no máximo 2 tentativas de conexão); não achando, **trocar a senha** — opção (c), role temporária, descartada (a checagem de porta e usuário sobre a URL real era metade da prova). Sessão única: troca + redeploy (**D1**) → confirmação → prova do pooler → merge (**D2**), com o D1 como alvo de rollback. Roteiro: `docs/ROTEIRO_TROCA_SENHA_APP_USER.md`; checklist do login atualizado (alvo de rollback = D1, não mais o commit `6a60219`: depois da troca, todo deploy anterior ao D1 tem a senha antiga e não conecta).
+
+**Ferramenta**: `scripts/app-user-password.mjs` — `gerar` (senha de 64 hex + `ALTER ROLE` com a senha já cifrada em SCRAM-SHA-256, para o texto puro não ir ao SQL Editor, ao histórico dele nem ao log do Postgres), `cifrar` (refaz o hash de uma senha guardada — para o rollback) e `conferir` (uma conexão pela URL nova; recusa porta ≠ 6543 e usuário ≠ app_user). **Controle negativo** (Postgres local, imagem do Supabase): o hash guardado é idêntico ao enviado; a senha gerada conecta; a senha antiga e uma com 1 dígito errado são recusadas; **um hash malformado é aceito pelo `ALTER ROLE` sem erro e vira a própria "senha"** (o Postgres o trata como texto em claro) — por isso a confirmação no roteiro é sempre conectar (`conferir`), nunca "o comando rodou"; `cifrar` com a mesma senha conecta, com outra não.
+
+**Lacuna registrada (futuro, não bloqueia)**: nada avisa quando o app inteiro fica fora do ar — a corrente do alerta cobre falha de job, não disponibilidade. Durante a janela da troca o esperado é **nenhum** e-mail. Candidato simples: um segundo cronjob no cron-job.org batendo numa rota de saúde da aplicação, com o e-mail de falha do próprio cron-job.org.
+
+#### Registro de credenciais de produção (guarda — NUNCA o valor)
+
+| Credencial | Onde está configurada | Onde está guardada | Quem gerou / quando | Situação |
+|---|---|---|---|---|
+| Senha do `app_user` (Postgres) | Vercel `DATABASE_URL` (Production, *sensitive*) | **desconhecida** (Etapa 2.5) | desconhecido / set/2026 | ⏳ troca preparada — preencher esta linha depois do passo 7 do roteiro |
+| Senha do `postgres` (Postgres, migrations) | Vercel `DIRECT_URL` (Production, *sensitive*) | **desconhecida** | desconhecido | ⚠ mesmo buraco; não tocar na janela do `app_user`. Se precisar ler, é troca (Supabase → Settings → Database → reset da senha do banco + atualizar `DIRECT_URL`) — planejar à parte |
+| `JOB_ALERT_DISPATCH_TOKEN` | segredo da Edge Function, secret do GitHub, cron-job.org | a confirmar com o usuário | usuário / 16/11/2026 | ativo |
+| `RESEND_API_KEY` | segredo da Edge Function | painel do Resend (a chave pode ser recriada lá) — confirmar se há cópia | usuário / 16/11/2026 | ativo |
+| `CRON_SECRET` | Vercel (Production) | a confirmar | desconhecido | ativo |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel (Production + Preview — pendência menor de 08/11) | painel do Supabase (Settings → API; legível lá) | Supabase | ativo |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel | pública por desenho | Supabase | ativo |
+
+---
+
 ### 2026-11-16 — corrente do alerta COMPLETA e provada em produção (pré-requisito CUMPRIDO)
 
 Configuração feita pelo usuário: 5 segredos na Edge Function `job-alert-dispatch` (`JOB_ALERT_DISPATCH_TOKEN`, `RESEND_API_KEY`, `JOB_ALERT_EMAIL_TO`, `JOB_ALERT_EMAIL_FROM` = `onboarding@resend.dev` por enquanto — só entrega no e-mail da conta do Resend; trocar por domínio verificado antes de ter outro destinatário —, `JOB_ALERT_ENV_LABEL`); cron-job.org com POST + `Authorization: Bearer` + corpo `{}` nos minutos 5/20/35/50, notificação de falha depois de 2 falhas seguidas e de recuperação ligadas; GitHub com o secret `JOB_ALERT_DISPATCH_TOKEN` e a variável `JOB_ALERT_DISPATCH_URL` — **workflow "Alerta de jobs" continua DESATIVADO até o merge do PR #1** (o agendado roda a versão do master).
